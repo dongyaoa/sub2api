@@ -33,7 +33,7 @@ const routes: RouteRecordRaw[] = [
   {
     path: '/home',
     name: 'Home',
-    component: () => import('@/views/HomeView.vue'),
+    component: () => import('@/views/custom/CustomHomeView.vue'),
     meta: {
       requiresAuth: false,
       title: 'Home'
@@ -155,6 +155,15 @@ const routes: RouteRecordRaw[] = [
     meta: {
       requiresAuth: false,
       title: 'Reset Password'
+    }
+  },
+    {
+    path: '/tutorial',
+    name: 'Tutorial',
+    component: () => import('@/views/custom/TutorialView.vue'),
+    meta: {
+      requiresAuth: false,
+      title: 'Tutorial'
     }
   },
   {
