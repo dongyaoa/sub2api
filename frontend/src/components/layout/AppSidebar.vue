@@ -122,6 +122,7 @@
             <span v-if="item.iconSvg" class="h-5 w-5 flex-shrink-0 sidebar-svg-icon" v-html="sanitizeSvg(item.iconSvg)"></span>
             <component v-else :is="item.icon" class="h-5 w-5 flex-shrink-0" />
             <span class="sidebar-label" :class="{ 'sidebar-label-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">{{ item.label }}</span>
+            <span v-if="item.isNew && !sidebarCollapsed" class="sidebar-new-badge" aria-hidden="true">NEW</span>
           </router-link>
         </div>
       </template>
@@ -142,6 +143,7 @@
             <span v-if="item.iconSvg" class="h-5 w-5 flex-shrink-0 sidebar-svg-icon" v-html="sanitizeSvg(item.iconSvg)"></span>
             <component v-else :is="item.icon" class="h-5 w-5 flex-shrink-0" />
             <span class="sidebar-label" :class="{ 'sidebar-label-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">{{ item.label }}</span>
+            <span v-if="item.isNew && !sidebarCollapsed" class="sidebar-new-badge" aria-hidden="true">NEW</span>
           </router-link>
         </div>
       </template>
@@ -203,6 +205,7 @@ interface NavItem {
   label: string
   icon: unknown
   iconSvg?: string
+  isNew?: boolean
   hideInSimpleMode?: boolean
   children?: NavItem[]
   /**
@@ -234,7 +237,7 @@ function applyFeatureFlags(items: NavItem[]): NavItem[] {
   return out
 }
 
-const { t } = useI18n()
+const { t, locale } = useI18n()
 
 const route = useRoute()
 const router = useRouter()
@@ -703,6 +706,7 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
     { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon },
     { path: '/batch-image', label: t('nav.batchImage'), icon: BatchImageIcon, hideInSimpleMode: true, featureFlag: flagBatchImageAccess },
     { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true },
+    { path: '/models', label: locale.value === 'zh' ? '模型广场' : 'Model Square', icon: PriceTagIcon, isNew: true, hideInSimpleMode: true, featureFlag: flagAvailableChannels },
     { path: '/available-channels', label: t('nav.availableChannels'), icon: ChannelIcon, hideInSimpleMode: true, featureFlag: flagAvailableChannels },
     { path: '/monitor', label: t('nav.channelStatus'), icon: SignalIcon, featureFlag: flagChannelMonitor },
     { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true },
@@ -1070,6 +1074,27 @@ onBeforeUnmount(() => {
   opacity: 0;
   transform: translateX(-4px);
   pointer-events: none;
+}
+
+/* Optional badge for newly released navigation entries. */
+.sidebar-new-badge {
+  flex: 0 0 auto;
+  margin-left: auto;
+  border: 1px solid rgb(167 243 208);
+  border-radius: 999px;
+  background-color: rgb(209 250 229);
+  padding: 0.1875rem 0.375rem;
+  color: rgb(4 120 87);
+  font-size: 0.5625rem;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+:global(.dark) .sidebar-new-badge {
+  border-color: rgb(52 211 153 / 30%);
+  background-color: rgb(16 185 129 / 16%);
+  color: rgb(110 231 183);
 }
 
 /* Custom SVG icon in sidebar: constrain size without overriding uploaded SVG colors */
