@@ -33,6 +33,40 @@ type updateServiceGitHubClientStub struct {
 	recentErr      error
 }
 
+func TestCompareVersionsUsesBaseVersionForCustomBuilds(t *testing.T) {
+	tests := []struct {
+		name    string
+		current string
+		latest  string
+		want    int
+	}{
+		{
+			name:    "custom build matches its upstream base",
+			current: "0.1.153-custom.2",
+			latest:  "0.1.153",
+			want:    0,
+		},
+		{
+			name:    "build metadata matches its upstream base",
+			current: "v0.1.153+custom.2",
+			latest:  "0.1.153",
+			want:    0,
+		},
+		{
+			name:    "newer upstream release remains an update",
+			current: "0.1.153-custom.2",
+			latest:  "0.1.154",
+			want:    -1,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, compareVersions(tt.current, tt.latest))
+		})
+	}
+}
+
 func (s *updateServiceGitHubClientStub) FetchLatestRelease(context.Context, string) (*GitHubRelease, error) {
 	return s.release, nil
 }
