@@ -264,7 +264,7 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
-    path: '/models',
+    path: '/model-square',
     name: 'ModelSquare',
     component: () => import('@/views/user/ModelSquareView.vue'),
     meta: {
