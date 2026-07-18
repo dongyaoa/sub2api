@@ -23,6 +23,18 @@
 
       <!-- Right: Announcements + Docs + Language + Subscriptions + Balance + User Dropdown -->
       <div class="flex items-center gap-3">
+        <!-- Customer support and group chat -->
+        <button
+          v-if="user"
+          type="button"
+          class="flex h-9 items-center gap-1.5 rounded-xl border border-sky-100 bg-sky-50 px-2.5 text-sm font-semibold text-sky-700 transition-colors hover:border-sky-200 hover:bg-sky-100 dark:border-sky-900/50 dark:bg-sky-950/30 dark:text-sky-300 dark:hover:bg-sky-950/60"
+          aria-label="客服群聊"
+          title="客服群聊"
+          @click="openSupportModal"
+        >
+          <Icon name="chat" size="sm" />
+          <span class="hidden md:inline">客服群聊</span>
+        </button>
         <!-- Announcement Bell -->
         <AnnouncementBell v-if="user" />
 
@@ -91,6 +103,18 @@
           </div>
         </div>
 
+        <!-- Recharge shortcut -->
+        <button
+          v-if="user && paymentEnabled"
+          type="button"
+          class="flex h-9 items-center gap-1.5 rounded-xl border border-emerald-100 bg-emerald-50 px-2.5 text-sm font-semibold text-emerald-700 transition-colors hover:border-emerald-200 hover:bg-emerald-100 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-300 dark:hover:bg-emerald-950/60"
+          aria-label="充值"
+          title="充值"
+          @click="goToRecharge"
+        >
+          <Icon name="creditCard" size="sm" />
+          <span class="hidden md:inline">充值</span>
+        </button>
         <!-- User Dropdown -->
         <div v-if="user" class="relative" ref="dropdownRef">
           <button
@@ -237,6 +261,93 @@
       </div>
     </div>
   </header>
+  <!-- Support modal -->
+  <Teleport to="body">
+    <Transition name="support-modal">
+      <div
+        v-if="supportModalOpen && user"
+        class="fixed inset-0 z-[110] flex items-start justify-center overflow-y-auto bg-slate-950/65 p-4 pt-[8vh] backdrop-blur-sm sm:items-center sm:pt-4"
+        role="presentation"
+        @click.self="closeSupportModal"
+      >
+        <section
+          class="w-full max-w-3xl overflow-hidden rounded-3xl border border-white/60 bg-white shadow-2xl shadow-slate-950/20 dark:border-dark-700 dark:bg-dark-800"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="support-modal-title"
+          @click.stop
+        >
+          <div class="flex items-start justify-between gap-4 border-b border-gray-100 bg-gray-50/80 px-5 py-5 dark:border-dark-700 dark:bg-dark-900/50 sm:px-7">
+            <div class="flex min-w-0 items-center gap-3">
+              <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-sky-100 bg-sky-50 text-sky-600 dark:border-sky-900/50 dark:bg-sky-950/40 dark:text-sky-300">
+                <Icon name="chat" size="lg" />
+              </div>
+              <div class="min-w-0">
+                <p class="text-[11px] font-bold uppercase tracking-[0.18em] text-sky-600 dark:text-sky-300">Support Center</p>
+                <h2 id="support-modal-title" class="mt-1 truncate text-xl font-bold text-gray-950 dark:text-white">客服群聊</h2>
+                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">售前售后都可以联系我们</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-gray-400 transition-colors hover:bg-gray-200/80 hover:text-gray-700 dark:hover:bg-dark-700 dark:hover:text-gray-200"
+              aria-label="关闭客服群聊弹窗"
+              title="关闭"
+              @click="closeSupportModal"
+            >
+              <Icon name="x" size="sm" />
+            </button>
+          </div>
+          <div class="grid gap-4 p-5 sm:grid-cols-2 sm:gap-5 sm:p-7">
+            <article class="rounded-2xl border border-sky-100 bg-sky-50/60 p-4 dark:border-sky-900/50 dark:bg-sky-950/20 sm:p-5">
+              <div class="flex items-start gap-3">
+                <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-sky-600 text-white shadow-lg shadow-sky-600/20">
+                  <Icon name="chatBubble" size="sm" />
+                </div>
+                <div class="min-w-0">
+                  <h3 class="text-base font-bold text-gray-950 dark:text-white">客服 QQ</h3>
+                  <p class="mt-1 text-xs leading-relaxed text-sky-800/80 dark:text-sky-200/80">售前售后客服，有问题联系</p>
+                </div>
+              </div>
+              <div class="mt-4 flex items-center justify-between rounded-xl border border-sky-100 bg-white/80 px-3 py-2.5 dark:border-sky-900/40 dark:bg-dark-800/70">
+                <span class="text-xs font-medium text-gray-500 dark:text-gray-400">QQ 号</span>
+                <span class="font-mono text-lg font-bold tracking-wide text-sky-700 dark:text-sky-300">{{ supportContact.qq }}</span>
+              </div>
+              <a class="group mt-4 flex justify-center rounded-2xl border border-sky-100 bg-white p-3 transition-colors hover:border-sky-300 hover:bg-sky-50 dark:border-sky-900/50 dark:bg-dark-900/50 dark:hover:border-sky-700 dark:hover:bg-sky-950/30" :href="supportContact.qqQr" target="_blank" rel="noopener noreferrer" aria-label="打开客服 QQ 二维码原图">
+                <img :src="supportContact.qqQr" alt="客服 QQ 二维码" class="aspect-square w-full max-w-[220px] rounded-xl object-contain" loading="lazy" referrerpolicy="no-referrer" />
+              </a>
+              <p class="mt-2 text-center text-xs text-gray-400 dark:text-gray-500">点击二维码查看大图</p>
+            </article>
+            <article class="rounded-2xl border border-violet-100 bg-violet-50/60 p-4 dark:border-violet-900/50 dark:bg-violet-950/20 sm:p-5">
+              <div class="flex items-start gap-3">
+                <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-600 text-white shadow-lg shadow-violet-600/20">
+                  <Icon name="users" size="sm" />
+                </div>
+                <div class="min-w-0">
+                  <h3 class="text-base font-bold text-gray-950 dark:text-white">QQ群聊</h3>
+                  <p class="mt-1 text-xs leading-relaxed text-violet-800/80 dark:text-violet-200/80">加群及时获取活动倍率通知，不定时抽奖</p>
+                </div>
+              </div>
+              <div class="mt-4 flex items-center justify-between rounded-xl border border-violet-100 bg-white/80 px-3 py-2.5 dark:border-violet-900/40 dark:bg-dark-800/70">
+                <span class="text-xs font-medium text-gray-500 dark:text-gray-400">群号</span>
+                <span class="font-mono text-lg font-bold tracking-wide text-violet-700 dark:text-violet-300">{{ supportContact.group }}</span>
+              </div>
+              <a class="group mt-4 flex justify-center rounded-2xl border border-violet-100 bg-white p-3 transition-colors hover:border-violet-300 hover:bg-violet-50 dark:border-violet-900/50 dark:bg-dark-900/50 dark:hover:border-violet-700 dark:hover:bg-violet-950/30" :href="supportContact.groupQr" target="_blank" rel="noopener noreferrer" aria-label="打开 QQ 群二维码原图">
+                <img :src="supportContact.groupQr" alt="QQ群二维码" class="aspect-square w-full max-w-[220px] rounded-xl object-contain" loading="lazy" referrerpolicy="no-referrer" />
+              </a>
+              <p class="mt-2 text-center text-xs text-gray-400 dark:text-gray-500">点击二维码查看大图</p>
+            </article>
+          </div>
+          <div class="border-t border-gray-100 bg-gray-50/70 px-5 py-4 dark:border-dark-700 dark:bg-dark-900/35 sm:px-7">
+            <p class="flex items-center justify-center gap-2 text-center text-xs text-gray-500 dark:text-gray-400">
+              <Icon name="infoCircle" size="xs" class="shrink-0 text-gray-400" />
+              请认准官方客服与群聊信息，谨防冒充和诈骗
+            </p>
+          </div>
+        </section>
+      </div>
+    </Transition>
+  </Teleport>
 </template>
 
 <script setup lang="ts">
@@ -263,6 +374,14 @@ const user = computed(() => authStore.user)
 const dropdownOpen = ref(false)
 const dropdownRef = ref<HTMLElement | null>(null)
 const contactInfo = computed(() => appStore.contactInfo)
+const supportModalOpen = ref(false)
+const paymentEnabled = computed(() => appStore.cachedPublicSettings?.payment_enabled === true)
+const supportContact = {
+  qq: '1009700115',
+  qqQr: 'https://pan.qzyun.net/f/rQ5Pt5/QQ20260709-112354.jpg',
+  group: '383233702',
+  groupQr: 'https://pan.qzyun.net/f/Pvv6s3/QQ20260709-112108.jpg',
+} as const
 const docUrl = computed(() => sanitizeUrl(appStore.docUrl))
 const avatarUrl = computed(() => user.value?.avatar_url?.trim() || '')
 const availableBalance = computed(() => Number(user.value?.balance || 0))
@@ -325,6 +444,17 @@ function toggleMobileSidebar() {
   appStore.toggleMobileSidebar()
 }
 
+function openSupportModal() {
+  closeDropdown()
+  supportModalOpen.value = true
+}
+function closeSupportModal() {
+  supportModalOpen.value = false
+}
+function goToRecharge() {
+  closeDropdown()
+  router.push('/purchase')
+}
 function toggleDropdown() {
   dropdownOpen.value = !dropdownOpen.value
 }
@@ -360,12 +490,19 @@ function handleClickOutside(event: MouseEvent) {
   }
 }
 
+function handleGlobalKeydown(event: KeyboardEvent) {
+  if (event.key === 'Escape' && supportModalOpen.value) {
+    closeSupportModal()
+  }
+}
 onMounted(() => {
   document.addEventListener('click', handleClickOutside)
+  document.addEventListener('keydown', handleGlobalKeydown)
 })
 
 onBeforeUnmount(() => {
   document.removeEventListener('click', handleClickOutside)
+  document.removeEventListener('keydown', handleGlobalKeydown)
 })
 </script>
 
@@ -379,5 +516,17 @@ onBeforeUnmount(() => {
 .dropdown-leave-to {
   opacity: 0;
   transform: scale(0.95) translateY(-4px);
+}
+.support-modal-enter-active,
+.support-modal-leave-active {
+  transition: opacity 0.2s ease;
+}
+.support-modal-enter-from,
+.support-modal-leave-to {
+  opacity: 0;
+}
+.support-modal-enter-from section,
+.support-modal-leave-to section {
+  transform: translateY(-8px) scale(0.98);
 }
 </style>
