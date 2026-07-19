@@ -87,6 +87,7 @@
                         :min="globalMinAmount"
                         :max="globalMaxAmount"
                         :currency="selectedCurrency"
+                        :help-text="checkout.help_text"
                       />
                       <p v-if="amountError" class="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-300">{{ amountError }}</p>
                     </div>
@@ -165,13 +166,10 @@
                       </button>
                     </div>
                   </div>
-                  <div v-if="checkout.help_text || checkout.help_image_url" class="card overflow-hidden">
+                  <div v-if="checkout.help_image_url" class="card overflow-hidden">
                     <img v-if="checkout.help_image_url" :src="checkout.help_image_url" alt=""
                       class="h-44 w-full cursor-pointer object-cover transition-opacity hover:opacity-90"
                       @click="previewImage = checkout.help_image_url" />
-                    <div v-if="checkout.help_text" class="p-4 text-sm leading-relaxed text-gray-500 dark:text-gray-400">
-                      {{ checkout.help_text }}
-                    </div>
                   </div>
                 </aside>
               </div>

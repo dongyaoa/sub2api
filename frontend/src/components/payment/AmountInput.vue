@@ -48,8 +48,8 @@
           @input="handleInput"
         />
       </div>
-      <p class="mt-3 rounded-xl border border-primary-100 bg-primary-50/70 px-3 py-2 text-xs font-medium leading-relaxed text-primary-700 dark:border-primary-900/40 dark:bg-primary-950/30 dark:text-primary-200">
-        支付实时到账，如果遇到支付后未到账可联系客服提供订单号！
+      <p v-if="helpText" class="mt-3 rounded-xl border border-primary-100 bg-primary-50/70 px-3 py-2 text-xs font-medium leading-relaxed text-primary-700 dark:border-primary-900/40 dark:bg-primary-950/30 dark:text-primary-200">
+        {{ helpText }}
       </p>
     </div>
   </div>
@@ -66,11 +66,13 @@ const props = withDefaults(defineProps<{
   min?: number
   max?: number
   currency?: string
+  helpText?: string
 }>(), {
   amounts: () => [10, 20, 50, 100, 200, 500, 1000, 2000, 5000],
   min: 0,
   max: 0,
   currency: undefined,
+  helpText: '',
 })
 
 const emit = defineEmits<{
