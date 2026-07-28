@@ -1,8 +1,11 @@
 package handler
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -104,6 +107,72 @@ func TestAsyncImageHandlerSubmitAndPoll(t *testing.T) {
 	require.Equal(t, "no-store", pollWriter.Header().Get("Cache-Control"))
 	require.Empty(t, pollWriter.Header().Get("Retry-After"))
 	require.Contains(t, pollWriter.Body.String(), "https://example.test/image.png")
+}
+
+func TestAsyncImageHandlerSubmitMultipartEdit(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	store := &asyncImageMemoryStore{tasks: make(map[string]*service.ImageTaskRecord)}
+	tasks := service.NewImageTaskServiceWithUploader(store, nil, time.Hour, time.Minute)
+	type capturedRequest struct {
+		path        string
+		contentType string
+		body        string
+		err         error
+	}
+	captured := make(chan capturedRequest, 1)
+	h := &AsyncImageHandler{tasks: tasks}
+	h.execute = func(_ string, c *gin.Context) {
+		body, err := io.ReadAll(c.Request.Body)
+		captured <- capturedRequest{
+			path:        c.Request.URL.Path,
+			contentType: c.GetHeader("Content-Type"),
+			body:        string(body),
+			err:         err,
+		}
+		c.JSON(http.StatusOK, gin.H{"data": []gin.H{{"url": "https://example.test/edited.png"}}})
+	}
+
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		groupID := int64(3)
+		c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{
+			ID:      9,
+			UserID:  7,
+			GroupID: &groupID,
+			Group:   &service.Group{ID: groupID, Platform: service.PlatformOpenAI, AllowImageGeneration: true},
+		})
+		c.Next()
+	})
+	router.POST("/v1/images/edits/async", h.Submit)
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	require.NoError(t, writer.WriteField("model", "gpt-image-2"))
+	require.NoError(t, writer.WriteField("prompt", "replace the background"))
+	part, err := writer.CreateFormFile("image", "source.png")
+	require.NoError(t, err)
+	_, err = part.Write([]byte("fake-png-content"))
+	require.NoError(t, err)
+	require.NoError(t, writer.Close())
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/edits/async", bytes.NewReader(body.Bytes()))
+	req.Header.Set("Content-Type", writer.FormDataContentType())
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusAccepted, rec.Code)
+
+	select {
+	case got := <-captured:
+		require.NoError(t, got.err)
+		require.Equal(t, "/v1/images/edits", got.path)
+		require.Equal(t, writer.FormDataContentType(), got.contentType)
+		require.Contains(t, got.body, "gpt-image-2")
+		require.Contains(t, got.body, "replace the background")
+		require.Contains(t, got.body, "source.png")
+		require.Contains(t, got.body, "fake-png-content")
+	case <-time.After(time.Second):
+		t.Fatal("timed out waiting for asynchronous edit request")
+	}
 }
 
 // When object storage is not configured the feature is fully disabled: the

@@ -228,6 +228,17 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/image-studio',
+    name: 'ImageStudio',
+    component: () => import('@/features/image-studio/ImageStudioView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Image Studio',
+      titleKey: 'imageStudio.title'
+    }
+  },
+  {
     path: '/usage',
     name: 'Usage',
     component: () => import('@/views/user/UsageView.vue'),
