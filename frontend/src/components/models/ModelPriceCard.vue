@@ -53,12 +53,12 @@
         <div class="metric-value">
           <span
             class="price"
-            :class="{ 'price--adjusted': showMultiplier }"
+            :class="{ 'price--adjusted': showAdjustedPrice }"
             :title="primaryPrice(row.value, row.scale)"
           >{{ primaryPrice(row.value, row.scale) }}</span>
           <span class="unit">{{ displayUnit(row) }}</span>
         </div>
-        <div v-if="showMultiplier && row.value != null" class="adjusted-meta">
+        <div v-if="showAdjustedPrice && row.value != null" class="adjusted-meta">
           <span class="base-price">{{ basePrice(row.value, row.scale) }} {{ displayUnit(row) }}</span>
           <span class="multiplier-pill">
             <Icon name="bolt" size="xs" class="multiplier-icon" />
@@ -179,6 +179,8 @@ const { t } = useI18n({ useScope: 'local', messages: modelSquareMessages })
 const { copyToClipboard } = useClipboard()
 const showIntervals = ref(false)
 const pricing = computed(() => props.variant?.pricing ?? null)
+const showAdjustedPrice = computed(
+  () => props.showMultiplier && pricing.value?.billing_mode !== BILLING_MODE_IMAGE)
 
 const billingModeLabel = computed(() => {
   switch (pricing.value?.billing_mode) {
@@ -219,7 +221,7 @@ const priceRows = computed<PriceRow[]>(() => {
       {
         key: 'image',
         label: t('modelSquare.imageOutput'),
-        value: value.image_output_price ?? value.per_request_price,
+        value: value.per_request_price,
         scale: 1,
         unit: t('modelSquare.perRequest'),
         icon: 'sparkles',
@@ -257,7 +259,7 @@ const priceRows = computed<PriceRow[]>(() => {
 const effectivePricePlatform = computed(() => props.pricePlatform || props.model.platform)
 
 const priceTextClass = computed(() => {
-  if (!props.showMultiplier) return 'text-gray-900 dark:text-white'
+  if (!showAdjustedPrice.value) return 'text-gray-900 dark:text-white'
   return platformTextClass(effectivePricePlatform.value)
 })
 
@@ -269,7 +271,7 @@ const multiplierLabel = computed(() => {
 function primaryPrice(value: number | null, scale: number): string {
   return formatModelPrice(value, {
     scale,
-    multiplier: props.showMultiplier ? (props.multiplier?.value ?? 1) : 1,
+    multiplier: showAdjustedPrice.value ? (props.multiplier?.value ?? 1) : 1,
     symbol: '$',
   })
 }
