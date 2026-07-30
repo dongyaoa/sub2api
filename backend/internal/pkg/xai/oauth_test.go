@@ -337,7 +337,7 @@ func TestRuntimeSanityReportsInvalidOverridesWithoutSecrets(t *testing.T) {
 	require.NotContains(t, report.ProxyPolicy, "client-secret-like-value")
 }
 
-func TestDefaultModelMappingIncludesGrokAliases(t *testing.T) {
+func TestDefaultModelMappingIncludesSupportedGrokMediaModels(t *testing.T) {
 	t.Parallel()
 
 	mapping := DefaultModelMapping()
@@ -352,10 +352,11 @@ func TestDefaultModelMappingIncludesGrokAliases(t *testing.T) {
 	require.Equal(t, "grok-4.20-0309-reasoning", mapping["grok-4.20-reasoning"])
 	require.Equal(t, "grok-4.20-0309-non-reasoning", mapping["grok-4.20-non-reasoning"])
 	require.Equal(t, "grok-4.20-multi-agent-0309", mapping["grok-4.20-multi-agent-0309"])
-	require.Equal(t, "grok-imagine", mapping["grok-imagine"])
 	require.Equal(t, "grok-imagine-image", mapping["grok-imagine-image"])
 	require.Equal(t, "grok-imagine-image-quality", mapping["grok-imagine-image-quality"])
-	require.Equal(t, "grok-imagine-edit", mapping["grok-imagine-edit"])
 	require.Equal(t, "grok-imagine-video", mapping["grok-imagine-video"])
-	require.Equal(t, "grok-imagine-video-1.5", mapping["grok-imagine-video-1.5"])
+	require.Equal(t, "grok-imagine-video-1.5-preview", mapping["grok-imagine-video-1.5-preview"])
+	require.NotContains(t, mapping, "grok-imagine")
+	require.NotContains(t, mapping, "grok-imagine-edit")
+	require.NotContains(t, mapping, "grok-imagine-video-1.5")
 }

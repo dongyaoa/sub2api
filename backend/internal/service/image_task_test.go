@@ -39,17 +39,41 @@ func (s *imageTaskMemoryStore) Get(_ context.Context, _ string) (*ImageTaskRecor
 	return &copy, nil
 }
 
+func (s *imageTaskMemoryStore) List(_ context.Context, owner ImageTaskOwner, limit int) ([]*ImageTaskRecord, error) {
+	if s.getErr != nil {
+		return nil, s.getErr
+	}
+	if s.task == nil || s.task.UserID != owner.UserID || s.task.APIKeyID != owner.APIKeyID || limit <= 0 {
+		return nil, nil
+	}
+	copy := *s.task
+	return []*ImageTaskRecord{&copy}, nil
+}
+
+func (s *imageTaskMemoryStore) Clear(_ context.Context, owner ImageTaskOwner) error {
+	if s.getErr != nil {
+		return s.getErr
+	}
+	if s.task != nil && s.task.UserID == owner.UserID && s.task.APIKeyID == owner.APIKeyID {
+		s.task = nil
+	}
+	return nil
+}
+
 func TestImageTaskServiceLifecycleAndOwnership(t *testing.T) {
 	store := &imageTaskMemoryStore{}
 	svc := NewImageTaskServiceWithOptions(store, time.Hour, 10*time.Minute)
 	owner := ImageTaskOwner{UserID: 7, APIKeyID: 9}
+	require.Equal(t, 1, svc.RetentionDays())
+	svc.WithTTLResolver(func() time.Duration { return 7 * 24 * time.Hour })
+	require.Equal(t, 7, svc.RetentionDays())
 
 	created, err := svc.Create(context.Background(), owner)
 	require.NoError(t, err)
 	require.Equal(t, ImageTaskStatusProcessing, created.Status)
 	require.Equal(t, created.ID, created.TaskID)
 	require.Equal(t, "image.generation.task", created.Object)
-	require.Equal(t, time.Hour, store.ttl)
+	require.Equal(t, 7*24*time.Hour, store.ttl)
 	require.Equal(t, owner.UserID, store.task.UserID)
 	require.Equal(t, owner.APIKeyID, store.task.APIKeyID)
 
@@ -66,6 +90,40 @@ func TestImageTaskServiceLifecycleAndOwnership(t *testing.T) {
 	require.Equal(t, "https://example.test/image.png", completed.ImageURL)
 	require.JSONEq(t, string(result), string(completed.Result))
 	require.NotNil(t, completed.CompletedAt)
+}
+
+func TestImageTaskServiceListsMetadataAndClears(t *testing.T) {
+	store := &imageTaskMemoryStore{}
+	svc := NewImageTaskServiceWithOptions(store, time.Hour, time.Minute)
+	owner := ImageTaskOwner{UserID: 7, APIKeyID: 9}
+	metadata := ImageTaskMetadata{
+		Operation:   "edit",
+		Model:       "gpt-image-2",
+		Prompt:      "replace the background",
+		Quantity:    2,
+		Size:        "1536x1024",
+		Quality:     "high",
+		AspectRatio: "3:2",
+		Resolution:  "2K",
+	}
+
+	created, err := svc.CreateWithMetadata(context.Background(), owner, metadata)
+	require.NoError(t, err)
+	require.Equal(t, "image.edit.task", created.Object)
+
+	listed, err := svc.List(context.Background(), owner, 10)
+	require.NoError(t, err)
+	require.Len(t, listed, 1)
+	require.Equal(t, metadata, listed[0].Metadata)
+
+	other, err := svc.List(context.Background(), ImageTaskOwner{UserID: 7, APIKeyID: 10}, 10)
+	require.NoError(t, err)
+	require.Empty(t, other)
+
+	require.NoError(t, svc.Clear(context.Background(), owner))
+	listed, err = svc.List(context.Background(), owner, 10)
+	require.NoError(t, err)
+	require.Empty(t, listed)
 }
 
 func TestImageTaskServiceInvalidResultBecomesFailed(t *testing.T) {

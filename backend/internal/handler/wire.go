@@ -189,6 +189,9 @@ func ProvideHandlers(
 	_ *service.IdempotencyCoordinator,
 	_ *service.IdempotencyCleanupService,
 ) *Handlers {
+	if asyncImageHandler != nil {
+		asyncImageHandler.gemini = gatewayHandler
+	}
 	return &Handlers{
 		Auth:             authHandler,
 		User:             userHandler,

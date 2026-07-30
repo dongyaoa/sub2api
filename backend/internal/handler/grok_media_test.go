@@ -31,19 +31,19 @@ func TestShouldRecordGrokMediaUsage(t *testing.T) {
 		{
 			name:     "image generation records usage",
 			endpoint: service.GrokMediaEndpointImagesGenerations,
-			model:    "grok-imagine",
+			model:    "grok-imagine-image",
 			want:     true,
 		},
 		{
 			name:     "image edit records usage",
 			endpoint: service.GrokMediaEndpointImagesEdits,
-			model:    "grok-imagine-edit",
+			model:    "grok-imagine-image-quality",
 			want:     true,
 		},
 		{
 			name:     "video generation records usage",
 			endpoint: service.GrokMediaEndpointVideosGenerations,
-			model:    "grok-imagine-video-1.5",
+			model:    "grok-imagine-video-1.5-preview",
 			want:     true,
 		},
 		{
@@ -100,8 +100,8 @@ func TestGrokMediaScheduleModelUsesNormalizedMappedUpstream(t *testing.T) {
 		Platform: service.PlatformGrok,
 		Credentials: map[string]any{
 			"model_mapping": map[string]any{
-				"grok-imagine-video-1.5": "wrong-raw-model",
-				"grok-imagine-video":     "mapped-video-model",
+				"grok-imagine-video-1.5-preview": "wrong-raw-model",
+				"grok-imagine-video":             "mapped-video-model",
 			},
 		},
 	}

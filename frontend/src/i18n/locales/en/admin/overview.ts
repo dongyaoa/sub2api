@@ -112,7 +112,9 @@ export default {
         prefix: 'Key prefix',
         publicBaseUrl: 'Public base URL',
         publicBaseUrlPlaceholder: 'Leave empty to return presigned links',
-        presignExpiryHours: 'Presigned link TTL (hours)',
+        presignExpiryHours: 'Presigned link TTL (hours, max 168)',
+        historyRetentionDays: 'Creation history retention (days)',
+        historyRetentionHint: 'Defaults to 7 days. Configure an R2 lifecycle rule separately to delete objects after the same period.',
         saved: 'Async image object storage saved'
       },
       schedule: {
@@ -967,7 +969,7 @@ export default {
       },
       imagePricing: {
         title: 'Image Generation Pricing',
-        description: 'Configure image generation access and base image prices. Leave empty to use default prices.',
+        description: 'Configure image generation access and base prices. Grok is priced per model with the same 1K / 2K rate; other platforms are priced by resolution. Leave empty to use defaults.',
         allowImageGeneration: 'Allow image generation for this group',
         allowBatchImageGeneration: 'Allow batch image generation for this group',
         independentMultiplier: 'Use independent image multiplier',
@@ -984,7 +986,7 @@ export default {
       videoPricing: {
         title: 'Video Generation Pricing',
         description:
-          'Configure Grok video generation prices in USD per second of output video. Leave empty to use the default per-second rates (grok-imagine-video: $0.05/s 480p, $0.07/s 720p; video-1.5: $0.08/s 480p, $0.14/s 720p, $0.25/s 1080p).',
+          'Configure Grok video prices per model in USD per second. Defaults are $0.05/s for grok-imagine-video and $0.15/s for grok-imagine-video-1.5-preview, with the same rate for 480p / 720p / 1080p.',
         independentMultiplier: 'Use independent video multiplier',
         videoMultiplier: 'Video multiplier',
         modeHint:

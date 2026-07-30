@@ -6,8 +6,11 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"mime"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"time"
 
@@ -23,6 +26,7 @@ import (
 type AsyncImageHandler struct {
 	tasks   *service.ImageTaskService
 	openAI  *OpenAIGatewayHandler
+	gemini  *GatewayHandler
 	execute func(platform string, c *gin.Context)
 }
 
@@ -62,7 +66,7 @@ func (h *AsyncImageHandler) Submit(c *gin.Context) {
 	if apiKey.Group != nil {
 		platform = apiKey.Group.Platform
 	}
-	if platform != service.PlatformOpenAI && platform != service.PlatformGrok {
+	if platform != service.PlatformOpenAI && platform != service.PlatformGrok && platform != service.PlatformGemini {
 		imageTaskJSONError(c, http.StatusNotFound, "not_found_error", "Images API is not supported for this platform")
 		return
 	}
@@ -101,7 +105,12 @@ func (h *AsyncImageHandler) Submit(c *gin.Context) {
 	}
 
 	taskCtx, recorder, cancel := newAsyncImageContext(c, body, h.tasks.ExecutionTimeout())
-	task, err := h.tasks.Create(c.Request.Context(), service.ImageTaskOwner{UserID: apiKey.UserID, APIKeyID: apiKey.ID})
+	metadata := parseAsyncImageTaskMetadata(c.Request.URL.Path, c.GetHeader("Content-Type"), body)
+	task, err := h.tasks.CreateWithMetadata(
+		c.Request.Context(),
+		service.ImageTaskOwner{UserID: apiKey.UserID, APIKeyID: apiKey.ID},
+		metadata,
+	)
 	if err != nil {
 		cancel()
 		imageTaskError(c, err)
@@ -136,7 +145,16 @@ func (h *AsyncImageHandler) checkSecurityAuditBeforeSubmit(c *gin.Context, apiKe
 	}
 	model := ""
 	moderationBody := body
-	if platform == service.PlatformGrok {
+	moderationProtocol := service.ContentModerationProtocolOpenAIImages
+	if platform == service.PlatformGemini {
+		var err error
+		model, moderationBody, err = buildGeminiStudioImageRequest(c.Request.URL.Path, c.GetHeader("Content-Type"), body)
+		if err != nil {
+			imageTaskJSONError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
+			return false
+		}
+		moderationProtocol = service.ContentModerationProtocolGemini
+	} else if platform == service.PlatformGrok {
 		parsed := service.ParseGrokMediaRequest(c.GetHeader("Content-Type"), body)
 		model, moderationBody = parsed.Model, parsed.ModerationBody()
 	} else if h.openAI.gatewayService != nil {
@@ -153,7 +171,7 @@ func (h *AsyncImageHandler) checkSecurityAuditBeforeSubmit(c *gin.Context, apiKe
 	}
 	reqLog := requestLogger(c, "handler.async_image.security_audit",
 		zap.Int64("user_id", subject.UserID), zap.Int64("api_key_id", apiKey.ID), zap.String("model", model))
-	decision := h.openAI.checkSecurityAudit(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIImages, model, moderationBody)
+	decision := h.openAI.checkSecurityAudit(c, reqLog, apiKey, subject, moderationProtocol, model, moderationBody)
 	if decision != nil && !decision.AllowNextStage {
 		h.openAI.openAISecurityAuditError(c, decision)
 		return false
@@ -187,7 +205,132 @@ func (h *AsyncImageHandler) Get(c *gin.Context) {
 	c.JSON(http.StatusOK, task)
 }
 
+func (h *AsyncImageHandler) List(c *gin.Context) {
+	if !h.pollable() {
+		imageTaskJSONError(c, http.StatusNotFound, "not_found_error", "async image tasks are not enabled")
+		return
+	}
+	apiKey, ok := middleware2.GetAPIKeyFromContext(c)
+	if !ok || apiKey == nil || apiKey.UserID <= 0 || apiKey.ID <= 0 {
+		imageTaskError(c, service.ErrImageTaskForbidden)
+		return
+	}
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
+	tasks, err := h.tasks.List(
+		c.Request.Context(),
+		service.ImageTaskOwner{UserID: apiKey.UserID, APIKeyID: apiKey.ID},
+		limit,
+	)
+	if err != nil {
+		imageTaskError(c, err)
+		return
+	}
+	c.Header("Cache-Control", "no-store")
+	c.JSON(http.StatusOK, gin.H{
+		"object":         "list",
+		"data":           tasks,
+		"retention_days": h.tasks.RetentionDays(),
+	})
+}
+
+func (h *AsyncImageHandler) Clear(c *gin.Context) {
+	if !h.pollable() {
+		imageTaskJSONError(c, http.StatusNotFound, "not_found_error", "async image tasks are not enabled")
+		return
+	}
+	apiKey, ok := middleware2.GetAPIKeyFromContext(c)
+	if !ok || apiKey == nil || apiKey.UserID <= 0 || apiKey.ID <= 0 {
+		imageTaskError(c, service.ErrImageTaskForbidden)
+		return
+	}
+	if err := h.tasks.Clear(
+		c.Request.Context(),
+		service.ImageTaskOwner{UserID: apiKey.UserID, APIKeyID: apiKey.ID},
+	); err != nil {
+		imageTaskError(c, err)
+		return
+	}
+	c.Header("Cache-Control", "no-store")
+	c.Status(http.StatusNoContent)
+}
+
+func parseAsyncImageTaskMetadata(path, contentType string, body []byte) service.ImageTaskMetadata {
+	metadata := service.ImageTaskMetadata{Operation: "generate", Quantity: 1}
+	if strings.Contains(path, "/edits") {
+		metadata.Operation = "edit"
+	}
+	if isMultipartImagesContentType(contentType) {
+		_, params, err := mime.ParseMediaType(contentType)
+		if err != nil || strings.TrimSpace(params["boundary"]) == "" {
+			return metadata
+		}
+		reader := multipart.NewReader(bytes.NewReader(body), params["boundary"])
+		for {
+			part, err := reader.NextPart()
+			if errors.Is(err, io.EOF) {
+				break
+			}
+			if err != nil {
+				break
+			}
+			if part.FileName() == "" {
+				value, _ := io.ReadAll(io.LimitReader(part, 64<<10))
+				setAsyncImageMetadataField(&metadata, part.FormName(), strings.TrimSpace(string(value)))
+			}
+			_ = part.Close()
+		}
+		return metadata
+	}
+	var payload struct {
+		Model       string `json:"model"`
+		Prompt      string `json:"prompt"`
+		Quantity    int    `json:"n"`
+		Size        string `json:"size"`
+		Quality     string `json:"quality"`
+		AspectRatio string `json:"aspect_ratio"`
+		Resolution  string `json:"resolution"`
+	}
+	if json.Unmarshal(body, &payload) == nil {
+		metadata.Model = strings.TrimSpace(payload.Model)
+		metadata.Prompt = strings.TrimSpace(payload.Prompt)
+		metadata.Quantity = payload.Quantity
+		metadata.Size = strings.TrimSpace(payload.Size)
+		metadata.Quality = strings.TrimSpace(payload.Quality)
+		metadata.AspectRatio = strings.TrimSpace(payload.AspectRatio)
+		metadata.Resolution = strings.TrimSpace(payload.Resolution)
+	}
+	if metadata.Quantity <= 0 {
+		metadata.Quantity = 1
+	}
+	return metadata
+}
+
+func setAsyncImageMetadataField(metadata *service.ImageTaskMetadata, name, value string) {
+	switch name {
+	case "model":
+		metadata.Model = value
+	case "prompt":
+		metadata.Prompt = value
+	case "n":
+		if quantity, err := strconv.Atoi(value); err == nil && quantity > 0 {
+			metadata.Quantity = quantity
+		}
+	case "size":
+		metadata.Size = value
+	case "quality":
+		metadata.Quality = value
+	case "aspect_ratio":
+		metadata.AspectRatio = value
+	case "resolution":
+		metadata.Resolution = value
+	}
+}
+
 func (h *AsyncImageHandler) validateRequest(c *gin.Context, platform string, body []byte) error {
+	if platform == service.PlatformGemini {
+		_, _, err := buildGeminiStudioImageRequest(c.Request.URL.Path, c.GetHeader("Content-Type"), body)
+		return err
+	}
 	if h.openAI == nil || h.openAI.gatewayService == nil {
 		return nil
 	}
@@ -217,6 +360,10 @@ func (h *AsyncImageHandler) executeWithGateway(platform string, c *gin.Context) 
 		h.openAI.GrokImages(c)
 		return
 	}
+	if platform == service.PlatformGemini {
+		h.executeGeminiStudioImage(c)
+		return
+	}
 	h.openAI.Images(c)
 }
 
@@ -244,6 +391,12 @@ func (h *AsyncImageHandler) run(taskID, platform string, taskCtx *gin.Context, r
 			h.failTask(taskID, http.StatusBadGateway, imageTaskErrorPayload("api_error", "upstream returned an invalid image response"))
 			return
 		}
+		normalizedBody, err := normalizeGeminiImageTaskBody(platform, body)
+		if err != nil {
+			h.failTask(taskID, http.StatusBadGateway, imageTaskErrorPayload("api_error", err.Error()))
+			return
+		}
+		body = normalizedBody
 		if err := h.tasks.Complete(context.Background(), taskID, statusCode, json.RawMessage(body)); err != nil {
 			logger.L().Error("image_task.complete_store_failed", zap.String("task_id", taskID), zap.Error(err))
 		}

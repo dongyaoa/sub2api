@@ -733,22 +733,22 @@ func TestGrokMediaGenerationGateCoversImagesAndVideo(t *testing.T) {
 }
 
 func TestExtractGrokMediaModelSupportsJSONAndMultipart(t *testing.T) {
-	require.Equal(t, "grok-imagine", ExtractGrokMediaModel("application/json", []byte(`{"model":"grok-imagine"}`)))
+	require.Equal(t, "grok-imagine-image", ExtractGrokMediaModel("application/json", []byte(`{"model":"grok-imagine-image"}`)))
 
 	var buf bytes.Buffer
 	writer := multipart.NewWriter(&buf)
 	require.NoError(t, writer.WriteField("prompt", "draw a cat"))
-	require.NoError(t, writer.WriteField("model", "grok-imagine-edit"))
+	require.NoError(t, writer.WriteField("model", "grok-imagine-image-quality"))
 	require.NoError(t, writer.Close())
 
-	require.Equal(t, "grok-imagine-edit", ExtractGrokMediaModel(writer.FormDataContentType(), buf.Bytes()))
+	require.Equal(t, "grok-imagine-image-quality", ExtractGrokMediaModel(writer.FormDataContentType(), buf.Bytes()))
 }
 
 func TestParseGrokMediaRequestBuildsMultipartModerationBody(t *testing.T) {
 	var buf bytes.Buffer
 	writer := multipart.NewWriter(&buf)
 	require.NoError(t, writer.WriteField("prompt", "edit this private image"))
-	require.NoError(t, writer.WriteField("model", "grok-imagine-edit"))
+	require.NoError(t, writer.WriteField("model", "grok-imagine-image-quality"))
 	partHeader := textproto.MIMEHeader{}
 	partHeader.Set("Content-Disposition", `form-data; name="image"; filename="input.png"`)
 	partHeader.Set("Content-Type", "image/png")
@@ -759,7 +759,7 @@ func TestParseGrokMediaRequestBuildsMultipartModerationBody(t *testing.T) {
 	require.NoError(t, writer.Close())
 
 	info := ParseGrokMediaRequest(writer.FormDataContentType(), buf.Bytes())
-	require.Equal(t, "grok-imagine-edit", info.Model)
+	require.Equal(t, "grok-imagine-image-quality", info.Model)
 	require.Equal(t, "edit this private image", info.Prompt)
 
 	moderationBody := info.ModerationBody()
@@ -777,7 +777,7 @@ func TestParseGrokMediaVideoRequestResolution(t *testing.T) {
 
 func TestParseGrokMediaRequestAcceptsOfficialImageURLFields(t *testing.T) {
 	body := []byte(`{
-		"model":"grok-imagine-video-1.5",
+		"model":"grok-imagine-video-1.5-preview",
 		"image":{"url":"https://example.com/source.png"},
 		"reference_images":[{"url":"https://example.com/reference.png"}]
 	}`)
@@ -793,7 +793,7 @@ func TestParseGrokMediaRequestAcceptsOfficialImageURLFields(t *testing.T) {
 
 func TestNormalizeGrokMediaForwardBodyCanonicalizesImageURLAlias(t *testing.T) {
 	body := []byte(`{
-		"model":"grok-imagine-video-1.5",
+		"model":"grok-imagine-video-1.5-preview",
 		"prompt":"animate",
 		"image":{"image_url":"https://example.com/source.png"},
 		"duration":8
@@ -803,14 +803,14 @@ func TestNormalizeGrokMediaForwardBodyCanonicalizesImageURLAlias(t *testing.T) {
 
 	require.NoError(t, err)
 	require.Equal(t, "application/json", contentType)
-	require.Equal(t, "grok-imagine-video-1.5", gjson.GetBytes(out, "model").String())
+	require.Equal(t, "grok-imagine-video-1.5-preview", gjson.GetBytes(out, "model").String())
 	require.Equal(t, "https://example.com/source.png", gjson.GetBytes(out, "image.url").String())
 	require.False(t, gjson.GetBytes(out, "image.image_url").Exists())
 }
 
 func TestNormalizeGrokMediaForwardBodyPreservesImageToVideoModelForOfficialURL(t *testing.T) {
 	body := []byte(`{
-		"model":"grok-imagine-video-1.5",
+		"model":"grok-imagine-video-1.5-preview",
 		"prompt":"animate",
 		"image":{"url":"https://example.com/source.png"}
 	}`)
@@ -818,7 +818,7 @@ func TestNormalizeGrokMediaForwardBodyPreservesImageToVideoModelForOfficialURL(t
 	out, _, err := normalizeGrokMediaForwardBody(GrokMediaEndpointVideosGenerations, body, "application/json")
 
 	require.NoError(t, err)
-	require.Equal(t, "grok-imagine-video-1.5", gjson.GetBytes(out, "model").String())
+	require.Equal(t, "grok-imagine-video-1.5-preview", gjson.GetBytes(out, "model").String())
 	require.Equal(t, "https://example.com/source.png", gjson.GetBytes(out, "image.url").String())
 }
 
@@ -865,13 +865,11 @@ func TestNormalizeGrokMediaModelForEndpoint(t *testing.T) {
 		hasInputImage bool
 		want          string
 	}{
-		{name: "image generation alias", endpoint: GrokMediaEndpointImagesGenerations, model: "grok-imagine", want: "grok-imagine-image-quality"},
-		{name: "image edit alias", endpoint: GrokMediaEndpointImagesEdits, model: "grok-imagine", want: "grok-imagine-image-quality"},
 		{name: "image quality passthrough", endpoint: GrokMediaEndpointImagesGenerations, model: "grok-imagine-image-quality", want: "grok-imagine-image-quality"},
 		{name: "image fast passthrough", endpoint: GrokMediaEndpointImagesGenerations, model: "grok-imagine-image", want: "grok-imagine-image"},
 		{name: "video passthrough", endpoint: GrokMediaEndpointVideosGenerations, model: "grok-imagine-video", want: "grok-imagine-video"},
-		{name: "video 1.5 text-only fallback", endpoint: GrokMediaEndpointVideosGenerations, model: "grok-imagine-video-1.5", want: "grok-imagine-video"},
-		{name: "video 1.5 image-to-video passthrough", endpoint: GrokMediaEndpointVideosGenerations, model: "grok-imagine-video-1.5", hasInputImage: true, want: "grok-imagine-video-1.5"},
+		{name: "video 1.5 preview passthrough", endpoint: GrokMediaEndpointVideosGenerations, model: "grok-imagine-video-1.5-preview", hasInputImage: true, want: "grok-imagine-video-1.5-preview"},
+		{name: "trims model whitespace", endpoint: GrokMediaEndpointVideosGenerations, model: " grok-imagine-video ", want: "grok-imagine-video"},
 	}
 
 	for _, tt := range tests {
@@ -881,13 +879,13 @@ func TestNormalizeGrokMediaModelForEndpoint(t *testing.T) {
 	}
 }
 
-func TestForwardGrokMediaImagesGenerationNormalizesImagineAlias(t *testing.T) {
+func TestForwardGrokMediaImagesGenerationPreservesSupportedModel(t *testing.T) {
 	t.Setenv(xai.EnvAllowUnsafeURLOverrides, "true")
 	gin.SetMode(gin.TestMode)
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
-	body := []byte(`{"model":"grok-imagine","prompt":"draw a cat"}`)
+	body := []byte(`{"model":"grok-imagine-image-quality","prompt":"draw a cat"}`)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 
@@ -946,10 +944,10 @@ func TestForwardGrokMediaAppliesAccountModelMappingAfterEndpointNormalization(t 
 		responseBody     string
 	}{
 		{
-			name:             "image generation maps normalized image alias",
+			name:             "image generation maps quality model",
 			endpoint:         GrokMediaEndpointImagesGenerations,
 			path:             "/v1/images/generations",
-			body:             `{"model":"grok-imagine","prompt":"draw a cat"}`,
+			body:             `{"model":"grok-imagine-image-quality","prompt":"draw a cat"}`,
 			modelMapping:     map[string]any{"grok-imagine-image-quality": "vendor-image-model"},
 			wantRequestModel: "grok-imagine-image-quality",
 			wantUpstream:     "vendor-image-model",
@@ -957,10 +955,10 @@ func TestForwardGrokMediaAppliesAccountModelMappingAfterEndpointNormalization(t 
 			responseBody:     `{"data":[{"url":"https://images.test/mapped.png"}]}`,
 		},
 		{
-			name:             "video generation maps text-only fallback model",
+			name:             "video generation maps standard model",
 			endpoint:         GrokMediaEndpointVideosGenerations,
 			path:             "/v1/videos/generations",
-			body:             `{"model":"grok-imagine-video-1.5","prompt":"waves"}`,
+			body:             `{"model":"grok-imagine-video","prompt":"waves"}`,
 			modelMapping:     map[string]any{"grok-imagine-video": "grok-image-video"},
 			wantRequestModel: "grok-imagine-video",
 			wantUpstream:     "grok-image-video",
@@ -971,9 +969,9 @@ func TestForwardGrokMediaAppliesAccountModelMappingAfterEndpointNormalization(t 
 			name:             "image-to-video preserves then maps the requested model",
 			endpoint:         GrokMediaEndpointVideosGenerations,
 			path:             "/v1/videos/generations",
-			body:             `{"model":"grok-imagine-video-1.5","prompt":"animate","image":{"url":"https://example.com/input.png"}}`,
-			modelMapping:     map[string]any{"grok-imagine-video-1.5": "vendor-image-video"},
-			wantRequestModel: "grok-imagine-video-1.5",
+			body:             `{"model":"grok-imagine-video-1.5-preview","prompt":"animate","image":{"url":"https://example.com/input.png"}}`,
+			modelMapping:     map[string]any{"grok-imagine-video-1.5-preview": "vendor-image-video"},
+			wantRequestModel: "grok-imagine-video-1.5-preview",
 			wantUpstream:     "vendor-image-video",
 			wantBody:         `{"model":"vendor-image-video","prompt":"animate","image":{"url":"https://example.com/input.png"}}`,
 			responseBody:     `{"request_id":"image-video-request-mapped"}`,
@@ -982,7 +980,7 @@ func TestForwardGrokMediaAppliesAccountModelMappingAfterEndpointNormalization(t 
 			name:             "mapping and image sanitization compose",
 			endpoint:         GrokMediaEndpointImagesGenerations,
 			path:             "/v1/images/generations",
-			body:             `{"model":"grok-imagine","prompt":"draw","size":"1024x1024"}`,
+			body:             `{"model":"grok-imagine-image-quality","prompt":"draw","size":"1024x1024"}`,
 			modelMapping:     map[string]any{"grok-imagine-image-quality": "vendor-image-model"},
 			wantRequestModel: "grok-imagine-image-quality",
 			wantUpstream:     "vendor-image-model",
@@ -993,7 +991,7 @@ func TestForwardGrokMediaAppliesAccountModelMappingAfterEndpointNormalization(t 
 			name:             "whitespace mapping target safely preserves normalized model",
 			endpoint:         GrokMediaEndpointImagesGenerations,
 			path:             "/v1/images/generations",
-			body:             `{"model":"grok-imagine","prompt":"draw"}`,
+			body:             `{"model":"grok-imagine-image-quality","prompt":"draw"}`,
 			modelMapping:     map[string]any{"grok-imagine-image-quality": "   "},
 			wantRequestModel: "grok-imagine-image-quality",
 			wantUpstream:     "grok-imagine-image-quality",
@@ -1093,9 +1091,8 @@ func TestForwardGrokMediaImagesGenerationStripsUnsupportedSize(t *testing.T) {
 		Type:        AccountTypeAPIKey,
 		Concurrency: 1,
 		Credentials: map[string]any{
-			"api_key":       "api-key",
-			"base_url":      "https://xai.test/v1",
-			"model_mapping": map[string]any{"grok-imagine-edit": "vendor-image-edit"},
+			"api_key":  "api-key",
+			"base_url": "https://xai.test/v1",
 		},
 	}
 	upstream := &httpUpstreamRecorder{resp: &http.Response{
@@ -1120,7 +1117,7 @@ func TestForwardGrokMediaImagesEditMultipartConvertsToJSON(t *testing.T) {
 
 	var buf bytes.Buffer
 	writer := multipart.NewWriter(&buf)
-	require.NoError(t, writer.WriteField("model", "grok-imagine-edit"))
+	require.NoError(t, writer.WriteField("model", "grok-imagine-image-quality"))
 	require.NoError(t, writer.WriteField("prompt", "edit this private image"))
 	partHeader := textproto.MIMEHeader{}
 	partHeader.Set("Content-Disposition", `form-data; name="image"; filename="input.png"`)
@@ -1145,7 +1142,7 @@ func TestForwardGrokMediaImagesEditMultipartConvertsToJSON(t *testing.T) {
 		Credentials: map[string]any{
 			"api_key":       "api-key",
 			"base_url":      "https://xai.test/v1",
-			"model_mapping": map[string]any{"grok-imagine-edit": "vendor-image-edit"},
+			"model_mapping": map[string]any{"grok-imagine-image-quality": "vendor-image-edit"},
 		},
 	}
 	upstream := &httpUpstreamRecorder{resp: &http.Response{
@@ -1166,7 +1163,7 @@ func TestForwardGrokMediaImagesEditMultipartConvertsToJSON(t *testing.T) {
 	require.Equal(t, "edit this private image", gjson.GetBytes(upstream.lastBody, "prompt").String())
 	require.True(t, strings.HasPrefix(gjson.GetBytes(upstream.lastBody, "image.url").String(), "data:image/png;base64,"))
 	require.False(t, gjson.GetBytes(upstream.lastBody, "image.image_url").Exists())
-	require.Equal(t, "grok-imagine-edit", result.BillingModel)
+	require.Equal(t, "grok-imagine-image-quality", result.BillingModel)
 	require.Equal(t, "vendor-image-edit", result.UpstreamModel)
 }
 
@@ -1176,7 +1173,7 @@ func TestForwardGrokMediaVideoGenerationReturnsUsageAndResponseID(t *testing.T) 
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
-	body := []byte(`{"model":"grok-imagine-video-1.5","prompt":"waves","resolution":"720p","duration":10}`)
+	body := []byte(`{"model":"grok-imagine-video","prompt":"waves","resolution":"720p","duration":10}`)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/videos/generations", bytes.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 
@@ -1222,7 +1219,7 @@ func TestForwardGrokMediaVideoGenerationPreservesImageToVideoModel(t *testing.T)
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
-	body := []byte(`{"model":"grok-imagine-video-1.5","prompt":"animate","image":{"image_url":"data:image/png;base64,aW1n"}}`)
+	body := []byte(`{"model":"grok-imagine-video-1.5-preview","prompt":"animate","image":{"image_url":"data:image/png;base64,aW1n"}}`)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/videos/generations", bytes.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 
@@ -1249,9 +1246,9 @@ func TestForwardGrokMediaVideoGenerationPreservesImageToVideoModel(t *testing.T)
 	result, err := svc.ForwardGrokMedia(context.Background(), c, account, GrokMediaEndpointVideosGenerations, "", body, "application/json")
 	require.NoError(t, err)
 	require.Equal(t, "https://xai.test/v1/videos/generations", upstream.lastReq.URL.String())
-	require.JSONEq(t, `{"model":"grok-imagine-video-1.5","prompt":"animate","image":{"url":"data:image/png;base64,aW1n"}}`, string(upstream.lastBody))
+	require.JSONEq(t, `{"model":"grok-imagine-video-1.5-preview","prompt":"animate","image":{"url":"data:image/png;base64,aW1n"}}`, string(upstream.lastBody))
 	require.Equal(t, "video-request-456", result.ResponseID)
-	require.Equal(t, "grok-imagine-video-1.5", result.BillingModel)
+	require.Equal(t, "grok-imagine-video-1.5-preview", result.BillingModel)
 	// 未指定 duration 时按上游默认 8 秒计费。
 	require.Equal(t, VideoBillingDefaultDurationSeconds, result.VideoDurationSeconds)
 }
@@ -1262,7 +1259,7 @@ func TestForwardGrokMediaOAuthImageToVideoUsesOfficialAPIForLargeBody(t *testing
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
 	imageData := strings.Repeat("A", 2*1024*1024)
-	body := []byte(`{"model":"grok-imagine-video-1.5","prompt":"animate","image":{"image_url":"data:image/png;base64,` + imageData + `"}}`)
+	body := []byte(`{"model":"grok-imagine-video-1.5-preview","prompt":"animate","image":{"image_url":"data:image/png;base64,` + imageData + `"}}`)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/videos/generations", bytes.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 
@@ -1427,7 +1424,7 @@ func TestForwardGrokMedia429ReconcilesRateLimitBeforeCustomErrorBypass(t *testin
 
 	recorder := httptest.NewRecorder()
 	c, _ := gin.CreateTestContext(recorder)
-	body := []byte(`{"model":"grok-imagine","prompt":"draw a cat"}`)
+	body := []byte(`{"model":"grok-imagine-image","prompt":"draw a cat"}`)
 	c.Request = httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
 	c.Request.Header.Set("Content-Type", "application/json")
 
@@ -1488,7 +1485,7 @@ func TestGrokMedia429FailoverPreservesRetryAfter(t *testing.T) {
 		Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"rate limited"}}`)),
 	}
 
-	result, err := svc.handleGrokMediaErrorResponse(context.Background(), resp, c, account, "request-id", "grok-imagine")
+	result, err := svc.handleGrokMediaErrorResponse(context.Background(), resp, c, account, "request-id", "grok-imagine-image")
 
 	require.Nil(t, result)
 	var failoverErr *UpstreamFailoverError
@@ -3153,10 +3150,11 @@ func TestIsGrokImageGenerationModel(t *testing.T) {
 		model string
 		want  bool
 	}{
-		{"grok-imagine", true},
+		{"grok-imagine-image", true},
 		{"grok-imagine-image-quality", true},
-		{"grok-imagine-edit", true},
-		{"grok-imagine-image-hd", true},
+		{"grok-imagine", false},
+		{"grok-imagine-edit", false},
+		{"grok-imagine-image-hd", false},
 		{"grok-4.5", false},
 		{"grok-composer", false},
 	}

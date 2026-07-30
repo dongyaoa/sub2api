@@ -112,7 +112,9 @@ export default {
         prefix: 'Key 前缀',
         publicBaseUrl: '公开访问域名',
         publicBaseUrlPlaceholder: '留空则返回预签名临时链接',
-        presignExpiryHours: '预签名链接有效期（小时）',
+        presignExpiryHours: '预签名链接有效期（小时，最高 168）',
+        historyRetentionDays: '生成记录保留天数',
+        historyRetentionHint: '默认 7 天；R2 对象删除需另行配置同期限的生命周期规则。',
         saved: '异步生图对象存储配置已保存'
       },
       schedule: {
@@ -964,7 +966,7 @@ export default {
       },
       imagePricing: {
         title: '图片生成计费',
-        description: '配置图片生成能力和图片基础单价，留空则使用默认价格',
+        description: '配置图片生成能力和基础单价；Grok 按模型计价且 1K / 2K 同价，其他平台按分辨率计价。留空则使用默认价格。',
         allowImageGeneration: '允许当前分组生图',
         allowBatchImageGeneration: '允许当前分组批量生图',
         independentMultiplier: '生图倍率独立',
@@ -981,7 +983,7 @@ export default {
       videoPricing: {
         title: '视频生成计费',
         description:
-          '配置 Grok 视频生成的每秒单价（USD/秒），留空则使用默认每秒价（grok-imagine-video：480p $0.05/s、720p $0.07/s；video-1.5：480p $0.08/s、720p $0.14/s、1080p $0.25/s）',
+          '按模型配置 Grok 视频生成的每秒单价（USD/秒）。留空使用默认价：grok-imagine-video 为 $0.05/秒，grok-imagine-video-1.5-preview 为 $0.15/秒；480p / 720p / 1080p 同价。',
         independentMultiplier: '视频倍率独立',
         videoMultiplier: '视频独立倍率',
         modeHint:

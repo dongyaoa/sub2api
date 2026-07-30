@@ -908,9 +908,9 @@
               placeholder="1"
             />
           </div>
-          <div class="grid grid-cols-3 gap-3">
+          <div class="grid gap-3" :class="createForm.platform === 'grok' ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-3'">
             <div>
-              <label class="input-label">1K ($)</label>
+              <label class="input-label">{{ createForm.platform === 'grok' ? 'grok-imagine-image ($/张)' : '1K ($)' }}</label>
               <input
                 v-model.number="createForm.image_price_1k"
                 type="number"
@@ -921,7 +921,7 @@
               />
             </div>
             <div>
-              <label class="input-label">2K ($)</label>
+              <label class="input-label">{{ createForm.platform === 'grok' ? 'grok-imagine-image-quality ($/张)' : '2K ($)' }}</label>
               <input
                 v-model.number="createForm.image_price_2k"
                 type="number"
@@ -931,7 +931,7 @@
                 :placeholder="getImagePricePlaceholder(createForm.platform, 'image_price_2k')"
               />
             </div>
-            <div>
+            <div v-if="createForm.platform !== 'grok'">
               <label class="input-label">4K ($)</label>
               <input
                 v-model.number="createForm.image_price_4k"
@@ -950,7 +950,7 @@
             <div class="mb-1 font-medium">
               {{ t(imagePricingI18nKey(createForm.platform, "finalPricePreview")) }}
             </div>
-            <div class="grid grid-cols-3 gap-2">
+            <div class="grid gap-2" :class="createForm.platform === 'grok' ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-3'">
               <div
                 v-for="item in createImageFinalPricePreview"
                 :key="item.label"
@@ -1052,9 +1052,9 @@
               placeholder="1"
             />
           </div>
-          <div class="grid grid-cols-3 gap-3">
+          <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
             <div>
-              <label class="input-label">480p ($/s)</label>
+              <label class="input-label">grok-imagine-video ($/s)</label>
               <input
                 v-model.number="createForm.video_price_480p"
                 type="number"
@@ -1065,7 +1065,7 @@
               />
             </div>
             <div>
-              <label class="input-label">720p ($/s)</label>
+              <label class="input-label">grok-imagine-video-1.5-preview ($/s)</label>
               <input
                 v-model.number="createForm.video_price_720p"
                 type="number"
@@ -1073,17 +1073,6 @@
                 min="0"
                 class="input"
                 :placeholder="getVideoPricePlaceholder(createForm.platform, 'video_price_720p')"
-              />
-            </div>
-            <div>
-              <label class="input-label">1080p ($/s)</label>
-              <input
-                v-model.number="createForm.video_price_1080p"
-                type="number"
-                step="0.001"
-                min="0"
-                class="input"
-                :placeholder="getVideoPricePlaceholder(createForm.platform, 'video_price_1080p')"
               />
             </div>
           </div>
@@ -1094,7 +1083,7 @@
             <div class="mb-1 font-medium">
               {{ t(videoPricingI18nKey("finalPricePreview")) }}
             </div>
-            <div class="grid grid-cols-3 gap-2">
+            <div class="grid grid-cols-1 gap-2 md:grid-cols-2">
               <div
                 v-for="item in createVideoFinalPricePreview"
                 :key="item.label"
@@ -2463,9 +2452,9 @@
               placeholder="1"
             />
           </div>
-          <div class="grid grid-cols-3 gap-3">
+          <div class="grid gap-3" :class="editForm.platform === 'grok' ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-3'">
             <div>
-              <label class="input-label">1K ($)</label>
+              <label class="input-label">{{ editForm.platform === 'grok' ? 'grok-imagine-image ($/张)' : '1K ($)' }}</label>
               <input
                 v-model.number="editForm.image_price_1k"
                 type="number"
@@ -2476,7 +2465,7 @@
               />
             </div>
             <div>
-              <label class="input-label">2K ($)</label>
+              <label class="input-label">{{ editForm.platform === 'grok' ? 'grok-imagine-image-quality ($/张)' : '2K ($)' }}</label>
               <input
                 v-model.number="editForm.image_price_2k"
                 type="number"
@@ -2486,7 +2475,7 @@
                 :placeholder="getImagePricePlaceholder(editForm.platform, 'image_price_2k')"
               />
             </div>
-            <div>
+            <div v-if="editForm.platform !== 'grok'">
               <label class="input-label">4K ($)</label>
               <input
                 v-model.number="editForm.image_price_4k"
@@ -2505,7 +2494,7 @@
             <div class="mb-1 font-medium">
               {{ t(imagePricingI18nKey(editForm.platform, "finalPricePreview")) }}
             </div>
-            <div class="grid grid-cols-3 gap-2">
+            <div class="grid gap-2" :class="editForm.platform === 'grok' ? 'grid-cols-1 md:grid-cols-2' : 'grid-cols-3'">
               <div
                 v-for="item in editImageFinalPricePreview"
                 :key="item.label"
@@ -2607,9 +2596,9 @@
               placeholder="1"
             />
           </div>
-          <div class="grid grid-cols-3 gap-3">
+          <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
             <div>
-              <label class="input-label">480p ($/s)</label>
+              <label class="input-label">grok-imagine-video ($/s)</label>
               <input
                 v-model.number="editForm.video_price_480p"
                 type="number"
@@ -2620,7 +2609,7 @@
               />
             </div>
             <div>
-              <label class="input-label">720p ($/s)</label>
+              <label class="input-label">grok-imagine-video-1.5-preview ($/s)</label>
               <input
                 v-model.number="editForm.video_price_720p"
                 type="number"
@@ -2628,17 +2617,6 @@
                 min="0"
                 class="input"
                 :placeholder="getVideoPricePlaceholder(editForm.platform, 'video_price_720p')"
-              />
-            </div>
-            <div>
-              <label class="input-label">1080p ($/s)</label>
-              <input
-                v-model.number="editForm.video_price_1080p"
-                type="number"
-                step="0.001"
-                min="0"
-                class="input"
-                :placeholder="getVideoPricePlaceholder(editForm.platform, 'video_price_1080p')"
               />
             </div>
           </div>
@@ -2649,7 +2627,7 @@
             <div class="mb-1 font-medium">
               {{ t(videoPricingI18nKey("finalPricePreview")) }}
             </div>
-            <div class="grid grid-cols-3 gap-2">
+            <div class="grid grid-cols-1 gap-2 md:grid-cols-2">
               <div
                 v-for="item in editVideoFinalPricePreview"
                 :key="item.label"
@@ -5025,13 +5003,19 @@ type VideoPricingFormState = {
   video_price_1080p: number | string | null;
 };
 
-const imagePricingTiers = [
+const imagePricingTiers = (platform: GroupPlatform) => platform === "grok" ? [
+  { key: "image_price_1k", label: "grok-imagine-image" },
+  { key: "image_price_2k", label: "grok-imagine-image-quality" },
+] as const : [
   { key: "image_price_1k", label: "1K" },
   { key: "image_price_2k", label: "2K" },
   { key: "image_price_4k", label: "4K" },
 ] as const;
 
-const videoPricingTiers = [
+const videoPricingTiers = (platform: GroupPlatform) => platform === "grok" ? [
+  { key: "video_price_480p", label: "grok-imagine-video" },
+  { key: "video_price_720p", label: "grok-imagine-video-1.5-preview" },
+] as const : [
   { key: "video_price_480p", label: "480p" },
   { key: "video_price_720p", label: "720p" },
   { key: "video_price_1080p", label: "1080p" },
@@ -5080,7 +5064,7 @@ const buildImageFinalPricePreview = (form: ImagePricingFormState) => {
     ? normalizePreviewNumber(form.image_rate_multiplier, 1)
     : normalizePreviewNumber(form.rate_multiplier, 1);
   const multiplier = imageMultiplier;
-  return imagePricingTiers.map((tier) => {
+  return imagePricingTiers(form.platform).map((tier) => {
     const basePrice =
       parsePreviewPrice(form[tier.key]) ??
       getDefaultImagePreviewPrice(form.platform, tier.key);
@@ -5097,7 +5081,7 @@ const buildVideoFinalPricePreview = (form: VideoPricingFormState) => {
   const multiplier = form.video_rate_independent
     ? normalizePreviewNumber(form.video_rate_multiplier, 1)
     : normalizePreviewNumber(form.rate_multiplier, 1);
-  return videoPricingTiers.map((tier) => {
+  return videoPricingTiers(form.platform).map((tier) => {
     const basePrice =
       parsePreviewPrice(form[tier.key]) ??
       getDefaultVideoPreviewPrice(form.platform, tier.key);

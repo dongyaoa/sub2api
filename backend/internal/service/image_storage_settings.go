@@ -7,13 +7,19 @@ import (
 	"fmt"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"go.uber.org/zap"
 )
 
-const settingKeyImageStorageConfig = "image_storage_config"
+const (
+	settingKeyImageStorageConfig      = "image_storage_config"
+	defaultImageHistoryRetentionDays  = 7
+	maxImageHistoryRetentionDays      = 365
+	maxImageStoragePresignExpiryHours = 168
+)
 
 // ErrImageStorageIncomplete 表示开关已打开但凭证不全，无法启用异步生图。
 var ErrImageStorageIncomplete = errors.New("image storage is enabled but bucket/access_key_id/secret_access_key are incomplete")
@@ -30,11 +36,12 @@ type ImageStorageSettings struct {
 	Enabled       bool `json:"enabled"`
 	ReuseBackupS3 bool `json:"reuse_backup_s3"`
 
-	Bucket           string `json:"bucket"` // 留空且复用备份时，沿用备份桶
-	Prefix           string `json:"prefix"`
-	PublicBaseURL    string `json:"public_base_url"`
-	PresignExpiry    int    `json:"presign_expiry_hours"`
-	MaxDownloadBytes int64  `json:"max_download_bytes"`
+	Bucket               string `json:"bucket"` // 留空且复用备份时，沿用备份桶
+	Prefix               string `json:"prefix"`
+	PublicBaseURL        string `json:"public_base_url"`
+	PresignExpiry        int    `json:"presign_expiry_hours"`
+	HistoryRetentionDays int    `json:"history_retention_days"`
+	MaxDownloadBytes     int64  `json:"max_download_bytes"`
 
 	// 以下仅在 ReuseBackupS3 为假时使用
 	Endpoint        string `json:"endpoint"`
@@ -146,6 +153,7 @@ func (s *ImageStorageSettingService) Get(ctx context.Context) (*ImageStorageSett
 	if settings == nil {
 		settings = settingsFromConfig(s.fallback)
 	}
+	normalizeImageStorageSettings(settings)
 	settings.SecretAccessKey = ""
 	return settings, nil
 }
@@ -225,6 +233,14 @@ func (s *ImageStorageSettingService) TestConnection(ctx context.Context, in Imag
 }
 
 // effectiveConfig 把后台设置（或 config.yaml 回落）解析成运行时配置。
+func (s *ImageStorageSettingService) HistoryTTL() time.Duration {
+	cfg, err := s.effectiveConfig(context.Background())
+	if err != nil || cfg == nil || cfg.HistoryRetentionDays <= 0 {
+		return defaultImageHistoryRetentionDays * 24 * time.Hour
+	}
+	return time.Duration(cfg.HistoryRetentionDays) * 24 * time.Hour
+}
+
 func (s *ImageStorageSettingService) effectiveConfig(ctx context.Context) (*config.ImageStorageConfig, error) {
 	settings, err := s.load(ctx)
 	if err != nil {
@@ -232,24 +248,29 @@ func (s *ImageStorageSettingService) effectiveConfig(ctx context.Context) (*conf
 	}
 	if settings == nil {
 		fallback := s.fallback
+		normalizeImageStorageConfig(&fallback)
 		return &fallback, nil
 	}
 	return s.toImageStorageConfig(ctx, settings)
 }
 
 func (s *ImageStorageSettingService) toImageStorageConfig(ctx context.Context, in *ImageStorageSettings) (*config.ImageStorageConfig, error) {
+	normalized := *in
+	normalizeImageStorageSettings(&normalized)
+	in = &normalized
 	cfg := &config.ImageStorageConfig{
-		Enabled:         in.Enabled,
-		Bucket:          in.Bucket,
-		Prefix:          in.Prefix,
-		PublicBaseURL:   in.PublicBaseURL,
-		PresignExpiry:   in.PresignExpiry,
-		MaxDownloadByte: in.MaxDownloadBytes,
-		Endpoint:        in.Endpoint,
-		Region:          in.Region,
-		AccessKeyID:     in.AccessKeyID,
-		SecretAccessKey: in.SecretAccessKey,
-		ForcePathStyle:  in.ForcePathStyle,
+		Enabled:              in.Enabled,
+		Bucket:               in.Bucket,
+		Prefix:               in.Prefix,
+		PublicBaseURL:        in.PublicBaseURL,
+		PresignExpiry:        in.PresignExpiry,
+		HistoryRetentionDays: in.HistoryRetentionDays,
+		MaxDownloadByte:      in.MaxDownloadBytes,
+		Endpoint:             in.Endpoint,
+		Region:               in.Region,
+		AccessKeyID:          in.AccessKeyID,
+		SecretAccessKey:      in.SecretAccessKey,
+		ForcePathStyle:       in.ForcePathStyle,
 	}
 
 	if in.ReuseBackupS3 {
@@ -306,18 +327,30 @@ func (s *ImageStorageSettingService) load(ctx context.Context) (*ImageStorageSet
 
 func settingsFromConfig(cfg config.ImageStorageConfig) *ImageStorageSettings {
 	return &ImageStorageSettings{
-		Enabled:          cfg.Enabled,
-		Bucket:           cfg.Bucket,
-		Prefix:           cfg.Prefix,
-		PublicBaseURL:    cfg.PublicBaseURL,
-		PresignExpiry:    cfg.PresignExpiry,
-		MaxDownloadBytes: cfg.MaxDownloadByte,
-		Endpoint:         cfg.Endpoint,
-		Region:           cfg.Region,
-		AccessKeyID:      cfg.AccessKeyID,
-		SecretAccessKey:  cfg.SecretAccessKey,
-		ForcePathStyle:   cfg.ForcePathStyle,
+		Enabled:              cfg.Enabled,
+		Bucket:               cfg.Bucket,
+		Prefix:               cfg.Prefix,
+		PublicBaseURL:        cfg.PublicBaseURL,
+		PresignExpiry:        cfg.PresignExpiry,
+		HistoryRetentionDays: cfg.HistoryRetentionDays,
+		MaxDownloadBytes:     cfg.MaxDownloadByte,
+		Endpoint:             cfg.Endpoint,
+		Region:               cfg.Region,
+		AccessKeyID:          cfg.AccessKeyID,
+		SecretAccessKey:      cfg.SecretAccessKey,
+		ForcePathStyle:       cfg.ForcePathStyle,
 	}
+}
+
+func normalizeImageStorageConfig(cfg *config.ImageStorageConfig) {
+	settings := settingsFromConfig(*cfg)
+	normalizeImageStorageSettings(settings)
+	cfg.Prefix = settings.Prefix
+	cfg.Region = settings.Region
+	cfg.PublicBaseURL = settings.PublicBaseURL
+	cfg.PresignExpiry = settings.PresignExpiry
+	cfg.HistoryRetentionDays = settings.HistoryRetentionDays
+	cfg.MaxDownloadByte = settings.MaxDownloadBytes
 }
 
 func normalizeImageStorageSettings(in *ImageStorageSettings) {
@@ -338,8 +371,21 @@ func normalizeImageStorageSettings(in *ImageStorageSettings) {
 	if in.Region == "" {
 		in.Region = "auto"
 	}
-	if in.PresignExpiry <= 0 {
-		in.PresignExpiry = 24
+	if in.HistoryRetentionDays <= 0 {
+		in.HistoryRetentionDays = defaultImageHistoryRetentionDays
+	}
+	if in.HistoryRetentionDays > maxImageHistoryRetentionDays {
+		in.HistoryRetentionDays = maxImageHistoryRetentionDays
+	}
+	targetPresignHours := in.HistoryRetentionDays * 24
+	if targetPresignHours > maxImageStoragePresignExpiryHours {
+		targetPresignHours = maxImageStoragePresignExpiryHours
+	}
+	if in.PresignExpiry <= 0 || (in.PublicBaseURL == "" && in.PresignExpiry < targetPresignHours) {
+		in.PresignExpiry = targetPresignHours
+	}
+	if in.PresignExpiry > maxImageStoragePresignExpiryHours {
+		in.PresignExpiry = maxImageStoragePresignExpiryHours
 	}
 	if in.MaxDownloadBytes <= 0 {
 		in.MaxDownloadBytes = defaultImageMaxDownloadBytes

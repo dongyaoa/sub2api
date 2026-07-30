@@ -29,20 +29,23 @@ const GROK_RATIOS: StudioOption<ImageAspectRatio>[] = [
 ]
 
 const OPENAI_RESOLUTIONS: ImageResolutionTier[] = ['1K', '2K']
-const GROK_RESOLUTIONS: ImageResolutionTier[] = ['1K', '2K', '4K']
+const GROK_RESOLUTIONS: ImageResolutionTier[] = ['1K', '2K']
+const GEMINI_RESOLUTIONS: ImageResolutionTier[] = ['1K', '2K', '4K']
+
+const GEMINI_IMAGE_MODELS = new Set([
+  'gemini-3.1-flash-image',
+  'gemini-3-pro-image-preview',
+])
 
 export function isImageStudioPlatform(platform: string | undefined): platform is ImageStudioPlatform {
-  return platform === 'openai' || platform === 'grok'
+  return platform === 'openai' || platform === 'gemini' || platform === 'grok'
 }
 
 export function isImageGenerationModel(platform: ImageStudioPlatform, modelId: string): boolean {
   const id = modelId.trim().toLowerCase()
   if (platform === 'openai') return id.startsWith('gpt-image-')
-  return (
-    id === 'grok-imagine' ||
-    id === 'grok-imagine-image' ||
-    id === 'grok-imagine-image-quality'
-  )
+  if (platform === 'gemini') return GEMINI_IMAGE_MODELS.has(id)
+  return id === 'grok-imagine-image' || id === 'grok-imagine-image-quality'
 }
 
 export function filterImageModels(platform: ImageStudioPlatform, models: ImageModel[]): ImageModel[] {
@@ -60,7 +63,22 @@ export function getAspectRatioOptions(platform: ImageStudioPlatform): StudioOpti
 }
 
 export function getResolutionOptions(platform: ImageStudioPlatform): ImageResolutionTier[] {
-  return platform === 'openai' ? OPENAI_RESOLUTIONS : GROK_RESOLUTIONS
+  if (platform === 'openai') return OPENAI_RESOLUTIONS
+  return platform === 'gemini' ? GEMINI_RESOLUTIONS : GROK_RESOLUTIONS
+}
+
+export function supportsImageEditing(platform: ImageStudioPlatform): boolean {
+  return platform === 'openai' || platform === 'gemini' || platform === 'grok'
+}
+
+export function getMaxImageQuantity(platform: ImageStudioPlatform): number {
+  return platform === 'gemini' ? 1 : 4
+}
+
+export function getPreferredImageModel(platform: ImageStudioPlatform): string {
+  if (platform === 'openai') return 'gpt-image-2'
+  if (platform === 'gemini') return 'gemini-3.1-flash-image'
+  return 'grok-imagine-image'
 }
 
 export function normalizeStudioSelection(
@@ -108,7 +126,7 @@ export function buildGenerateImageRequest(input: {
   const base: GenerateImageRequest = {
     model: input.model.trim(),
     prompt: input.prompt.trim(),
-    n: Math.min(4, Math.max(1, Math.round(input.quantity))),
+    n: Math.min(getMaxImageQuantity(input.platform), Math.max(1, Math.round(input.quantity))),
     size:
       input.platform === 'openai'
         ? getOpenAIImageSize(normalized.ratio, normalized.resolution)

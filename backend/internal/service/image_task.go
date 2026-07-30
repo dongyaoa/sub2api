@@ -19,7 +19,7 @@ const (
 	ImageTaskStatusCompleted  = "completed"
 	ImageTaskStatusFailed     = "failed"
 
-	defaultImageTaskTTL              = 24 * time.Hour
+	defaultImageTaskTTL              = 7 * 24 * time.Hour
 	defaultImageTaskExecutionTimeout = 30 * time.Minute
 )
 
@@ -29,34 +29,49 @@ var (
 	ErrImageTaskUnavailable = infraerrors.New(http.StatusServiceUnavailable, "IMAGE_TASK_UNAVAILABLE", "image task storage is unavailable")
 )
 
+// ImageTaskMetadata contains the small, display-safe subset of the original
+// request needed to rebuild image-studio history without storing source images.
+type ImageTaskMetadata struct {
+	Operation   string `json:"operation,omitempty"`
+	Model       string `json:"model,omitempty"`
+	Prompt      string `json:"prompt,omitempty"`
+	Quantity    int    `json:"quantity,omitempty"`
+	Size        string `json:"size,omitempty"`
+	Quality     string `json:"quality,omitempty"`
+	AspectRatio string `json:"aspect_ratio,omitempty"`
+	Resolution  string `json:"resolution,omitempty"`
+}
+
 // ImageTaskRecord is the private Redis representation of an asynchronous image
 // request. Ownership fields are intentionally omitted from the public view.
 type ImageTaskRecord struct {
-	ID          string          `json:"id"`
-	UserID      int64           `json:"user_id"`
-	APIKeyID    int64           `json:"api_key_id"`
-	Status      string          `json:"status"`
-	HTTPStatus  int             `json:"http_status,omitempty"`
-	Result      json.RawMessage `json:"result,omitempty"`
-	Error       json.RawMessage `json:"error,omitempty"`
-	CreatedAt   int64           `json:"created_at"`
-	CompletedAt *int64          `json:"completed_at,omitempty"`
-	ExpiresAt   int64           `json:"expires_at"`
+	ID          string            `json:"id"`
+	UserID      int64             `json:"user_id"`
+	APIKeyID    int64             `json:"api_key_id"`
+	Status      string            `json:"status"`
+	HTTPStatus  int               `json:"http_status,omitempty"`
+	Result      json.RawMessage   `json:"result,omitempty"`
+	Error       json.RawMessage   `json:"error,omitempty"`
+	CreatedAt   int64             `json:"created_at"`
+	CompletedAt *int64            `json:"completed_at,omitempty"`
+	ExpiresAt   int64             `json:"expires_at"`
+	Metadata    ImageTaskMetadata `json:"metadata,omitempty"`
 }
 
 // ImageTask is the API-safe task representation returned to callers.
 type ImageTask struct {
-	ID          string          `json:"id"`
-	TaskID      string          `json:"task_id"`
-	Object      string          `json:"object"`
-	Status      string          `json:"status"`
-	HTTPStatus  int             `json:"http_status,omitempty"`
-	ImageURL    string          `json:"image_url,omitempty"`
-	Result      json.RawMessage `json:"result,omitempty"`
-	Error       json.RawMessage `json:"error,omitempty"`
-	CreatedAt   int64           `json:"created_at"`
-	CompletedAt *int64          `json:"completed_at,omitempty"`
-	ExpiresAt   int64           `json:"expires_at"`
+	ID          string            `json:"id"`
+	TaskID      string            `json:"task_id"`
+	Object      string            `json:"object"`
+	Status      string            `json:"status"`
+	HTTPStatus  int               `json:"http_status,omitempty"`
+	ImageURL    string            `json:"image_url,omitempty"`
+	Result      json.RawMessage   `json:"result,omitempty"`
+	Error       json.RawMessage   `json:"error,omitempty"`
+	CreatedAt   int64             `json:"created_at"`
+	CompletedAt *int64            `json:"completed_at,omitempty"`
+	ExpiresAt   int64             `json:"expires_at"`
+	Metadata    ImageTaskMetadata `json:"metadata,omitempty"`
 }
 
 type ImageTaskOwner struct {
@@ -67,6 +82,8 @@ type ImageTaskOwner struct {
 type ImageTaskStore interface {
 	Save(ctx context.Context, task *ImageTaskRecord, ttl time.Duration) error
 	Get(ctx context.Context, id string) (*ImageTaskRecord, error)
+	List(ctx context.Context, owner ImageTaskOwner, limit int) ([]*ImageTaskRecord, error)
+	Clear(ctx context.Context, owner ImageTaskOwner) error
 }
 
 // ImageStorageResolver reports the currently effective object-storage binding.
@@ -81,6 +98,7 @@ type ImageTaskService struct {
 	enabled          bool
 	resolve          ImageStorageResolver
 	ttl              time.Duration
+	ttlResolver      func() time.Duration
 	executionTimeout time.Duration
 }
 
@@ -113,6 +131,34 @@ func NewImageTaskServiceWithResolver(store ImageTaskStore, resolve ImageStorageR
 	s := NewImageTaskServiceWithOptions(store, ttl, executionTimeout)
 	s.resolve = resolve
 	return s
+}
+
+func (s *ImageTaskService) WithTTLResolver(resolve func() time.Duration) *ImageTaskService {
+	if s != nil {
+		s.ttlResolver = resolve
+	}
+	return s
+}
+
+func (s *ImageTaskService) taskTTL() time.Duration {
+	if s != nil && s.ttlResolver != nil {
+		if ttl := s.ttlResolver(); ttl > 0 {
+			return ttl
+		}
+	}
+	if s == nil || s.ttl <= 0 {
+		return defaultImageTaskTTL
+	}
+	return s.ttl
+}
+
+func (s *ImageTaskService) RetentionDays() int {
+	const day = 24 * time.Hour
+	ttl := s.taskTTL()
+	if ttl <= 0 {
+		return 1
+	}
+	return int((ttl + day - 1) / day)
 }
 
 // current 返回当前生效的 uploader 与启用状态。
@@ -151,19 +197,25 @@ func (s *ImageTaskService) ExecutionTimeout() time.Duration {
 }
 
 func (s *ImageTaskService) Create(ctx context.Context, owner ImageTaskOwner) (*ImageTask, error) {
+	return s.CreateWithMetadata(ctx, owner, ImageTaskMetadata{})
+}
+
+func (s *ImageTaskService) CreateWithMetadata(ctx context.Context, owner ImageTaskOwner, metadata ImageTaskMetadata) (*ImageTask, error) {
 	if s == nil || s.store == nil {
 		return nil, ErrImageTaskUnavailable
 	}
 	now := time.Now().UTC()
+	ttl := s.taskTTL()
 	task := &ImageTaskRecord{
 		ID:        "imgtask_" + strings.ReplaceAll(uuid.NewString(), "-", ""),
 		UserID:    owner.UserID,
 		APIKeyID:  owner.APIKeyID,
 		Status:    ImageTaskStatusProcessing,
 		CreatedAt: now.Unix(),
-		ExpiresAt: now.Add(s.ttl).Unix(),
+		ExpiresAt: now.Add(ttl).Unix(),
+		Metadata:  metadata,
 	}
-	if err := s.store.Save(ctx, task, s.ttl); err != nil {
+	if err := s.store.Save(ctx, task, ttl); err != nil {
 		return nil, ErrImageTaskUnavailable.WithCause(err)
 	}
 	return imageTaskToPublic(task), nil
@@ -185,6 +237,40 @@ func (s *ImageTaskService) Get(ctx context.Context, owner ImageTaskOwner, id str
 		return nil, ErrImageTaskNotFound
 	}
 	return imageTaskToPublic(task), nil
+}
+
+func (s *ImageTaskService) List(ctx context.Context, owner ImageTaskOwner, limit int) ([]*ImageTask, error) {
+	if s == nil || s.store == nil {
+		return nil, ErrImageTaskUnavailable
+	}
+	if limit <= 0 {
+		limit = 10
+	}
+	if limit > 50 {
+		limit = 50
+	}
+	records, err := s.store.List(ctx, owner, limit)
+	if err != nil {
+		return nil, ErrImageTaskUnavailable.WithCause(err)
+	}
+	tasks := make([]*ImageTask, 0, len(records))
+	for _, task := range records {
+		if task == nil || task.UserID != owner.UserID || task.APIKeyID != owner.APIKeyID {
+			continue
+		}
+		tasks = append(tasks, imageTaskToPublic(task))
+	}
+	return tasks, nil
+}
+
+func (s *ImageTaskService) Clear(ctx context.Context, owner ImageTaskOwner) error {
+	if s == nil || s.store == nil {
+		return ErrImageTaskUnavailable
+	}
+	if err := s.store.Clear(ctx, owner); err != nil {
+		return ErrImageTaskUnavailable.WithCause(err)
+	}
+	return nil
 }
 
 func (s *ImageTaskService) Complete(ctx context.Context, id string, statusCode int, result json.RawMessage) error {
@@ -228,8 +314,9 @@ func (s *ImageTaskService) finish(ctx context.Context, id, status string, status
 	task.Result = result
 	task.Error = taskErr
 	task.CompletedAt = &completedAt
-	task.ExpiresAt = now.Add(s.ttl).Unix()
-	if err := s.store.Save(ctx, task, s.ttl); err != nil {
+	ttl := s.taskTTL()
+	task.ExpiresAt = now.Add(ttl).Unix()
+	if err := s.store.Save(ctx, task, ttl); err != nil {
 		return ErrImageTaskUnavailable.WithCause(err)
 	}
 	return nil
@@ -239,10 +326,14 @@ func imageTaskToPublic(task *ImageTaskRecord) *ImageTask {
 	if task == nil {
 		return nil
 	}
+	object := "image.generation.task"
+	if task.Metadata.Operation == "edit" {
+		object = "image.edit.task"
+	}
 	return &ImageTask{
 		ID:          task.ID,
 		TaskID:      task.ID,
-		Object:      "image.generation.task",
+		Object:      object,
 		Status:      task.Status,
 		HTTPStatus:  task.HTTPStatus,
 		ImageURL:    firstImageTaskURL(task.Result),
@@ -251,6 +342,7 @@ func imageTaskToPublic(task *ImageTaskRecord) *ImageTask {
 		CreatedAt:   task.CreatedAt,
 		CompletedAt: task.CompletedAt,
 		ExpiresAt:   task.ExpiresAt,
+		Metadata:    task.Metadata,
 	}
 }
 

@@ -855,8 +855,8 @@ func TestComputeTokenBreakdown_GptImage2ImageEditIssue4386(t *testing.T) {
 
 	cost := svc.computeTokenBreakdown(pricing, tokens, 1.0, "", false)
 
-	wantTextInput := float64(19) * 5e-6    // 0.000095
-	wantImageInput := float64(352) * 8e-6  // 0.002816
+	wantTextInput := float64(19) * 5e-6     // 0.000095
+	wantImageInput := float64(352) * 8e-6   // 0.002816
 	wantImageOutput := float64(439) * 30e-6 // 0.013170
 	require.InDelta(t, wantTextInput, cost.InputCost, 1e-15, "InputCost 仅含文本输入")
 	require.InDelta(t, wantImageInput, cost.ImageInputCost, 1e-15, "图片输入按 $8/1M 独立计费")
@@ -1006,10 +1006,10 @@ func TestCalculateVideoCostBillsPerSecond(t *testing.T) {
 	defaultDuration := svc.CalculateVideoCost("grok-imagine-video", "720p", 1, 0, nil, 1.0)
 	clampedDuration := svc.CalculateVideoCost("grok-imagine-video", "720p", 1, 999, nil, 1.0)
 
-	require.InDelta(t, 0.07, oneSecond.TotalCost, 1e-10)
-	require.InDelta(t, 0.07*15, fifteenSeconds.TotalCost, 1e-10)
-	require.InDelta(t, 0.07*8, defaultDuration.TotalCost, 1e-10)
-	require.InDelta(t, 0.07*15, clampedDuration.TotalCost, 1e-10)
+	require.InDelta(t, 0.05, oneSecond.TotalCost, 1e-10)
+	require.InDelta(t, 0.05*15, fifteenSeconds.TotalCost, 1e-10)
+	require.InDelta(t, 0.05*8, defaultDuration.TotalCost, 1e-10)
+	require.InDelta(t, 0.05*15, clampedDuration.TotalCost, 1e-10)
 }
 
 func TestCalculateGrokImagineImageCostUsesDefaultRateCard(t *testing.T) {
@@ -1020,10 +1020,31 @@ func TestCalculateGrokImagineImageCostUsesDefaultRateCard(t *testing.T) {
 	quality1K := svc.CalculateImageCost("grok-imagine-image-quality", "1K", 1, nil, 1.0)
 	quality2K := svc.CalculateImageCost("grok-imagine-image-quality", "2K", 1, nil, 1.0)
 
-	require.InDelta(t, 0.02, standard1K.TotalCost, 1e-10)
-	require.InDelta(t, 0.02, standard2K.TotalCost, 1e-10)
-	require.InDelta(t, 0.05, quality1K.TotalCost, 1e-10)
-	require.InDelta(t, 0.07, quality2K.TotalCost, 1e-10)
+	require.InDelta(t, 0.005, standard1K.TotalCost, 1e-10)
+	require.InDelta(t, 0.005, standard2K.TotalCost, 1e-10)
+	require.InDelta(t, 0.01, quality1K.TotalCost, 1e-10)
+	require.InDelta(t, 0.01, quality2K.TotalCost, 1e-10)
+}
+
+func TestCalculateGrokMediaCostUsesModelSpecificGroupPrices(t *testing.T) {
+	svc := newTestBillingService()
+
+	standardImagePrice := 0.006
+	qualityImagePrice := 0.012
+	imageConfig := &ImagePriceConfig{Price1K: &standardImagePrice, Price2K: &qualityImagePrice}
+	standardImage := svc.CalculateImageCost("grok-imagine-image", "2K", 1, imageConfig, 1.0)
+	qualityImage := svc.CalculateImageCost("grok-imagine-image-quality", "1K", 1, imageConfig, 1.0)
+
+	standardVideoPrice := 0.06
+	previewVideoPrice := 0.18
+	videoConfig := &VideoPriceConfig{Price480P: &standardVideoPrice, Price720P: &previewVideoPrice}
+	standardVideo := svc.CalculateVideoCost("grok-imagine-video", "1080p", 1, 2, videoConfig, 1.0)
+	previewVideo := svc.CalculateVideoCost("grok-imagine-video-1.5-preview", "480p", 1, 2, videoConfig, 1.0)
+
+	require.InDelta(t, 0.006, standardImage.TotalCost, 1e-10)
+	require.InDelta(t, 0.012, qualityImage.TotalCost, 1e-10)
+	require.InDelta(t, 0.12, standardVideo.TotalCost, 1e-10)
+	require.InDelta(t, 0.36, previewVideo.TotalCost, 1e-10)
 }
 
 func TestCalculateGrokImagineVideoCostUsesDefaultRateCard(t *testing.T) {
@@ -1032,15 +1053,15 @@ func TestCalculateGrokImagineVideoCostUsesDefaultRateCard(t *testing.T) {
 	// 默认价目为 xAI 官方每秒价格，按 1 秒时长验证每秒单价。
 	standard480P := svc.CalculateVideoCost("grok-imagine-video", "480p", 1, 1, nil, 1.0)
 	standard720P := svc.CalculateVideoCost("grok-imagine-video", "720p", 1, 1, nil, 1.0)
-	video15_480P := svc.CalculateVideoCost("grok-imagine-video-1.5", "480p", 1, 1, nil, 1.0)
-	video15_720P := svc.CalculateVideoCost("grok-imagine-video-1.5", "720p", 1, 1, nil, 1.0)
-	video15_1080P := svc.CalculateVideoCost("grok-imagine-video-1.5", "1080p", 1, 1, nil, 1.0)
+	video15_480P := svc.CalculateVideoCost("grok-imagine-video-1.5-preview", "480p", 1, 1, nil, 1.0)
+	video15_720P := svc.CalculateVideoCost("grok-imagine-video-1.5-preview", "720p", 1, 1, nil, 1.0)
+	video15_1080P := svc.CalculateVideoCost("grok-imagine-video-1.5-preview", "1080p", 1, 1, nil, 1.0)
 
 	require.InDelta(t, 0.05, standard480P.TotalCost, 1e-10)
-	require.InDelta(t, 0.07, standard720P.TotalCost, 1e-10)
-	require.InDelta(t, 0.08, video15_480P.TotalCost, 1e-10)
-	require.InDelta(t, 0.14, video15_720P.TotalCost, 1e-10)
-	require.InDelta(t, 0.25, video15_1080P.TotalCost, 1e-10)
+	require.InDelta(t, 0.05, standard720P.TotalCost, 1e-10)
+	require.InDelta(t, 0.15, video15_480P.TotalCost, 1e-10)
+	require.InDelta(t, 0.15, video15_720P.TotalCost, 1e-10)
+	require.InDelta(t, 0.15, video15_1080P.TotalCost, 1e-10)
 }
 
 func TestIsModelSupported(t *testing.T) {

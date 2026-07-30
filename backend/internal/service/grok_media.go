@@ -765,19 +765,8 @@ func (r GrokMediaRequestInfo) HasInputImage() bool {
 
 // NormalizeGrokMediaModelForEndpoint resolves the built-in upstream model alias
 // for a media endpoint before account-level model mapping and scheduling.
-func NormalizeGrokMediaModelForEndpoint(endpoint GrokMediaEndpoint, model string, hasInputImage bool) string {
-	model = strings.TrimSpace(model)
-	switch endpoint {
-	case GrokMediaEndpointImagesGenerations, GrokMediaEndpointImagesEdits:
-		if model == "grok-imagine" {
-			return "grok-imagine-image-quality"
-		}
-	case GrokMediaEndpointVideosGenerations:
-		if model == "grok-imagine-video-1.5" && !hasInputImage {
-			return "grok-imagine-video"
-		}
-	}
-	return model
+func NormalizeGrokMediaModelForEndpoint(_ GrokMediaEndpoint, model string, _ bool) string {
+	return strings.TrimSpace(model)
 }
 
 type grokMediaUsageMetadata struct {

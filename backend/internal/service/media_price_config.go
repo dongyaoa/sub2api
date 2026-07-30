@@ -11,8 +11,9 @@ func imagePriceConfigFromAPIKey(apiKey *APIKey) *ImagePriceConfig {
 	}
 }
 
-func apiKeyHasConfiguredImagePrice(apiKey *APIKey, imageSize string) bool {
-	return apiKey != nil && apiKey.Group != nil && apiKey.Group.GetImagePrice(imageSize) != nil
+func apiKeyHasConfiguredImagePrice(apiKey *APIKey, model string, imageSize string) bool {
+	config := imagePriceConfigFromAPIKey(apiKey)
+	return config != nil && config.priceFor(model, imageSize) != nil
 }
 
 func videoPriceConfigFromAPIKey(apiKey *APIKey) *VideoPriceConfig {
@@ -26,8 +27,9 @@ func videoPriceConfigFromAPIKey(apiKey *APIKey) *VideoPriceConfig {
 	}
 }
 
-func apiKeyHasConfiguredVideoPrice(apiKey *APIKey, resolution string) bool {
-	return apiKey != nil && apiKey.Group != nil && apiKey.Group.GetVideoPrice(resolution) != nil
+func apiKeyHasConfiguredVideoPrice(apiKey *APIKey, model string, resolution string) bool {
+	config := videoPriceConfigFromAPIKey(apiKey)
+	return config != nil && config.priceFor(model, resolution) != nil
 }
 
 func webSearchPricePerCallFromAPIKey(apiKey *APIKey) *float64 {

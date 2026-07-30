@@ -1,6 +1,6 @@
 import type { GroupPlatform } from '@/types'
 
-export type ImageStudioPlatform = Extract<GroupPlatform, 'openai' | 'grok'>
+export type ImageStudioPlatform = Extract<GroupPlatform, 'openai' | 'gemini' | 'grok'>
 export type StudioOperation = 'generate' | 'edit'
 export type ImageResolutionTier = '1K' | '2K' | '4K'
 export type ImageQuality = 'auto' | 'low' | 'medium' | 'high'
@@ -41,6 +41,17 @@ export interface ImageGenerationResult {
 
 export type ImageTaskStatus = 'processing' | 'completed' | 'failed'
 
+export interface ImageTaskMetadata {
+  operation?: StudioOperation
+  model?: string
+  prompt?: string
+  quantity?: number
+  size?: string
+  quality?: string
+  aspect_ratio?: ImageAspectRatio
+  resolution?: ImageResolutionTier
+}
+
 export interface ImageTask {
   id: string
   task_id: string
@@ -53,6 +64,7 @@ export interface ImageTask {
   created_at: number
   completed_at?: number
   expires_at: number
+  metadata?: ImageTaskMetadata
 }
 
 export interface ImageStudioError extends Error {

@@ -880,7 +880,7 @@ func (s *GatewayService) calculateImageCost(
 ) *CostBreakdown {
 	sizeTier := NormalizeImageBillingTierOrDefault(result.ImageSize)
 	groupConfig := imagePriceConfigFromAPIKey(apiKey)
-	if apiKeyHasConfiguredImagePrice(apiKey, sizeTier) {
+	if apiKeyHasConfiguredImagePrice(apiKey, billingModel, sizeTier) {
 		return s.billingService.CalculateImageCost(billingModel, sizeTier, result.ImageCount, groupConfig, multiplier)
 	}
 	if resolved := s.resolveChannelPricing(ctx, billingModel, apiKey); resolved != nil {

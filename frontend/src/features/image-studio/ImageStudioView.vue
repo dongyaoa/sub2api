@@ -1,60 +1,22 @@
 <template>
   <AppLayout>
     <div class="mx-auto w-full max-w-[1920px]">
-      <header class="mb-3 flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 pb-3 dark:border-dark-700">
-        <div class="flex min-w-0 items-center gap-3">
-          <h1 class="truncate text-xl font-semibold text-gray-950 dark:text-white">{{ t('imageStudio.title') }}</h1>
-          <span class="inline-flex shrink-0 items-center gap-1.5 rounded-md bg-primary-50 px-2 py-1 text-xs font-medium text-primary-700 dark:bg-primary-950/30 dark:text-primary-300">
-            <Icon name="sparkles" size="xs" />
-            {{ t('imageStudio.eyebrow') }}
-          </span>
-        </div>
-        <div class="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-          <Icon :name="connectionMode === 'external' ? 'globe' : 'cloud'" size="sm" />
-          <span>{{ storageStatusLabel }}</span>
-        </div>
-      </header>
+      <MediaStudioHeader active="image" />
 
-      <div class="grid grid-cols-1 items-start gap-4 xl:grid-cols-[380px_minmax(0,1fr)] 2xl:grid-cols-[380px_minmax(0,1fr)_260px]">
-        <aside class="image-studio-panel rounded-lg border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-900">
-          <div class="mb-3 flex items-center justify-between gap-3">
+      <div class="studio-workspace grid grid-cols-1 items-stretch gap-4 xl:grid-cols-[380px_minmax(0,1fr)] 2xl:grid-cols-[380px_minmax(0,1fr)_260px]">
+        <aside class="flex min-w-0 flex-col">
+          <div class="mb-2 flex min-h-8 items-center justify-between gap-3">
             <h2 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('imageStudio.settings') }}</h2>
             <span
-              v-if="connectionMode === 'group' && selectedGroup"
+              v-if="selectedGroup"
               class="rounded-md bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
             >
               {{ t('imageStudio.estimate', { amount: formatUSD(estimatedCost) }) }}
             </span>
           </div>
 
-          <div class="mb-3 grid grid-cols-2 gap-2">
-            <div class="grid grid-cols-2 gap-1 rounded-lg bg-gray-100 p-1 dark:bg-dark-800" role="tablist" :aria-label="t('imageStudio.connectionMode')">
-            <button
-              type="button"
-              class="flex h-8 items-center justify-center gap-1.5 rounded-md px-2 text-xs font-medium transition-colors"
-              :class="connectionMode === 'group' ? 'bg-white text-gray-900 shadow-sm dark:bg-dark-700 dark:text-white' : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'"
-              :disabled="isWorking"
-              :aria-selected="connectionMode === 'group'"
-              role="tab"
-              @click="switchConnectionMode('group')"
-            >
-              <Icon name="server" size="xs" />
-              {{ t('imageStudio.groupMode') }}
-            </button>
-            <button
-              type="button"
-              class="flex h-8 items-center justify-center gap-1.5 rounded-md px-2 text-xs font-medium transition-colors"
-              :class="connectionMode === 'external' ? 'bg-white text-gray-900 shadow-sm dark:bg-dark-700 dark:text-white' : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'"
-              :disabled="isWorking"
-              :aria-selected="connectionMode === 'external'"
-              role="tab"
-              @click="switchConnectionMode('external')"
-            >
-              <Icon name="externalLink" size="xs" />
-              {{ t('imageStudio.externalMode') }}
-            </button>
-          </div>
-
+          <section class="studio-settings-panel image-studio-panel flex-1 rounded-lg border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-900">
+            <div class="mb-3">
             <div class="grid grid-cols-2 gap-1 rounded-lg bg-gray-100 p-1 dark:bg-dark-800" role="tablist" :aria-label="t('imageStudio.operationMode')">
             <button
               type="button"
@@ -72,9 +34,9 @@
               type="button"
               class="flex h-8 items-center justify-center gap-1.5 rounded-md px-2 text-xs font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-45"
               :class="operation === 'edit' ? 'bg-white text-gray-900 shadow-sm dark:bg-dark-700 dark:text-white' : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'"
-              :disabled="isWorking || platform !== 'openai'"
+              :disabled="isWorking || !supportsImageEditing(platform)"
               :aria-selected="operation === 'edit'"
-              :title="platform !== 'openai' ? t('imageStudio.editOpenAIOnly') : t('imageStudio.editMode')"
+              :title="t('imageStudio.editMode')"
               role="tab"
               @click="switchOperation('edit')"
             >
@@ -85,7 +47,7 @@
           </div>
 
           <form class="space-y-3" @submit.prevent="generateImages">
-            <template v-if="connectionMode === 'group'">
+
               <div v-if="loadingKeys" class="flex h-10 items-center justify-center rounded-lg border border-gray-200 text-xs text-gray-500 dark:border-dark-700 dark:text-gray-400">
                 <Icon name="refresh" size="sm" class="mr-2 animate-spin" />
                 {{ t('imageStudio.loadingKeys') }}
@@ -122,13 +84,6 @@
                 </Select>
               </div>
 
-              <div>
-                <label class="input-label" for="image-studio-base-url">{{ t('imageStudio.baseUrl') }}</label>
-                <div class="relative">
-                  <Icon name="lock" size="sm" class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                  <input id="image-studio-base-url" :value="groupBaseUrl" type="text" readonly class="input cursor-not-allowed pl-9 pr-3 text-gray-500 dark:text-gray-400" />
-                </div>
-              </div>
 
               <div>
                 <div class="mb-1 flex items-center justify-between gap-2">
@@ -147,67 +102,6 @@
                   :empty-text="t('imageStudio.noModels')"
                 />
               </div>
-            </template>
-
-            <template v-else>
-              <div>
-                <label class="input-label" for="image-studio-external-base-url">{{ t('imageStudio.baseUrl') }}</label>
-                <div class="relative">
-                  <Icon name="globe" size="sm" class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                  <input
-                    id="image-studio-external-base-url"
-                    v-model.trim="externalBaseUrl"
-                    type="url"
-                    class="input pl-9"
-                    :disabled="isWorking"
-                    :placeholder="t('imageStudio.externalBasePlaceholder')"
-                    autocomplete="url"
-                    spellcheck="false"
-                  />
-                </div>
-              </div>
-
-              <div>
-                <label class="input-label" for="image-studio-external-key">{{ t('imageStudio.externalApiKey') }}</label>
-                <div class="relative">
-                  <Icon name="key" size="sm" class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-                  <input
-                    id="image-studio-external-key"
-                    v-model="externalApiKey"
-                    :type="externalKeyVisible ? 'text' : 'password'"
-                    class="input pl-9 pr-10"
-                    :disabled="isWorking"
-                    :placeholder="t('imageStudio.externalKeyPlaceholder')"
-                    autocomplete="new-password"
-                    spellcheck="false"
-                  />
-                  <button
-                    type="button"
-                    class="absolute right-1 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-md text-gray-400 hover:bg-gray-100 hover:text-gray-600 dark:hover:bg-dark-700 dark:hover:text-gray-200"
-                    :title="t(externalKeyVisible ? 'imageStudio.hideKey' : 'imageStudio.showKey')"
-                    :aria-label="t(externalKeyVisible ? 'imageStudio.hideKey' : 'imageStudio.showKey')"
-                    @click="externalKeyVisible = !externalKeyVisible"
-                  >
-                    <Icon :name="externalKeyVisible ? 'eyeOff' : 'eye'" size="sm" />
-                  </button>
-                </div>
-              </div>
-
-              <div>
-                <label class="input-label" for="image-studio-external-model">{{ t('imageStudio.model') }}</label>
-                <input
-                  id="image-studio-external-model"
-                  v-model.trim="externalModel"
-                  type="text"
-                  class="input"
-                  :disabled="isWorking"
-                  :placeholder="t('imageStudio.externalModelPlaceholder')"
-                  autocomplete="off"
-                  spellcheck="false"
-                />
-              </div>
-            </template>
-
             <div v-if="operation === 'edit'">
               <div class="mb-1 flex items-center justify-between gap-2">
                 <span class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('imageStudio.sourceImage') }}</span>
@@ -271,8 +165,8 @@
                 v-model="prompt"
                 :disabled="isWorking"
                 :placeholder="promptPlaceholder"
-                rows="3"
-                class="input min-h-[76px] resize-none"
+                rows="4"
+                class="input min-h-[92px] resize-none"
               />
             </div>
 
@@ -294,43 +188,41 @@
               </div>
             </div>
 
-            <div class="grid grid-cols-2 gap-3">
-              <div class="min-w-0">
-                <span class="input-label">{{ t('imageStudio.resolution') }}</span>
-                <div class="grid grid-cols-3 gap-1.5">
-                  <button
-                    v-for="tier in allResolutionTiers"
-                    :key="tier"
-                    type="button"
-                    class="h-8 rounded-md border text-xs font-semibold transition-colors"
-                    :class="resolution === tier ? 'border-primary-500 bg-primary-50 text-primary-700 dark:bg-primary-950/30 dark:text-primary-300' : 'border-gray-200 text-gray-600 hover:border-gray-300 dark:border-dark-600 dark:text-gray-300 dark:hover:border-dark-500'"
-                    :disabled="isWorking || !resolutionOptions.includes(tier)"
-                    @click="selectResolution(tier)"
-                  >
-                    {{ tier }}
-                  </button>
-                </div>
-              </div>
-
-              <div class="min-w-0">
-                <span class="input-label">{{ t('imageStudio.aspectRatio') }}</span>
-                <div class="grid grid-cols-4 gap-1.5">
-                  <button
-                    v-for="option in ratioOptions"
-                    :key="option.value"
-                    type="button"
-                    class="flex h-8 items-center justify-center rounded-md border px-0.5 text-[11px] font-medium transition-colors"
-                    :class="ratio === option.value ? 'border-primary-500 bg-primary-50 text-primary-700 dark:bg-primary-950/30 dark:text-primary-300' : 'border-gray-200 text-gray-600 hover:border-gray-300 dark:border-dark-600 dark:text-gray-300 dark:hover:border-dark-500'"
-                    :disabled="isWorking"
-                    @click="selectRatio(option.value)"
-                  >
-                    {{ option.label }}
-                  </button>
-                </div>
+            <div class="min-w-0">
+              <span class="input-label">{{ t('imageStudio.resolution') }}</span>
+              <div class="grid grid-cols-3 gap-2">
+                <button
+                  v-for="tier in allResolutionTiers"
+                  :key="tier"
+                  type="button"
+                  class="h-9 rounded-md border text-xs font-semibold transition-colors"
+                  :class="resolution === tier ? 'border-primary-500 bg-primary-50 text-primary-700 dark:bg-primary-950/30 dark:text-primary-300' : 'border-gray-200 text-gray-600 hover:border-gray-300 dark:border-dark-600 dark:text-gray-300 dark:hover:border-dark-500'"
+                  :disabled="isWorking || !resolutionOptions.includes(tier)"
+                  @click="selectResolution(tier)"
+                >
+                  {{ tier }}
+                </button>
               </div>
             </div>
 
-            <div class="grid grid-cols-2 gap-3">
+            <div class="min-w-0">
+              <span class="input-label">{{ t('imageStudio.aspectRatio') }}</span>
+              <div class="grid grid-flow-col auto-cols-fr gap-1.5">
+                <button
+                  v-for="option in ratioOptions"
+                  :key="option.value"
+                  type="button"
+                  class="flex h-9 min-w-0 items-center justify-center rounded-md border px-0.5 text-[11px] font-medium transition-colors"
+                  :class="ratio === option.value ? 'border-primary-500 bg-primary-50 text-primary-700 dark:bg-primary-950/30 dark:text-primary-300' : 'border-gray-200 text-gray-600 hover:border-gray-300 dark:border-dark-600 dark:text-gray-300 dark:hover:border-dark-500'"
+                  :disabled="isWorking"
+                  @click="selectRatio(option.value)"
+                >
+                  {{ option.label }}
+                </button>
+              </div>
+            </div>
+
+            <div class="grid grid-cols-[minmax(0,1fr)_132px] items-end gap-4">
               <div class="min-w-0">
                 <label class="input-label" for="image-studio-output-size">{{ t('imageStudio.outputSize') }}</label>
                 <input
@@ -343,21 +235,21 @@
               </div>
 
               <div class="min-w-0">
-                <div class="mb-1 flex items-center justify-between gap-1">
+                <div class="mb-1 flex items-center justify-between gap-2 whitespace-nowrap">
                   <span class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('imageStudio.quantity') }}</span>
-                  <span class="text-[11px] text-gray-400">{{ t('imageStudio.quantityLimit') }}</span>
+                  <span class="text-[11px] text-gray-400">{{ t('imageStudio.quantityLimit', { max: maxQuantity }) }}</span>
                 </div>
-                <div class="grid h-10 grid-cols-[1fr_2.5rem_1fr] overflow-hidden rounded-lg border border-gray-200 dark:border-dark-600">
+                <div class="grid h-10 grid-cols-[2.25rem_minmax(2.5rem,1fr)_2.25rem] overflow-hidden rounded-lg border border-gray-200 dark:border-dark-600">
                   <button type="button" class="flex h-full items-center justify-center text-lg text-gray-500 hover:bg-gray-50 disabled:opacity-40 dark:text-gray-300 dark:hover:bg-dark-800" :disabled="isWorking || quantity <= 1" :title="t('imageStudio.decrease')" @click="quantity--">-</button>
                   <span class="flex items-center justify-center border-x border-gray-200 text-sm font-semibold tabular-nums text-gray-900 dark:border-dark-600 dark:text-white">{{ quantity }}</span>
-                  <button type="button" class="flex h-full items-center justify-center text-gray-500 hover:bg-gray-50 disabled:opacity-40 dark:text-gray-300 dark:hover:bg-dark-800" :disabled="isWorking || quantity >= 4" :title="t('imageStudio.increase')" @click="quantity++">
+                  <button type="button" class="flex h-full items-center justify-center text-gray-500 hover:bg-gray-50 disabled:opacity-40 dark:text-gray-300 dark:hover:bg-dark-800" :disabled="isWorking || quantity >= maxQuantity" :title="t('imageStudio.increase')" @click="quantity++">
                     <Icon name="plus" size="sm" />
                   </button>
                 </div>
               </div>
             </div>
 
-            <section v-if="connectionMode === 'group' && selectedGroup" class="border-y border-gray-200 py-2.5 dark:border-dark-700" :aria-label="t('imageStudio.pricing')">
+            <section v-if="selectedGroup" class="border-y border-gray-200 py-2.5 dark:border-dark-700" :aria-label="t('imageStudio.pricing')">
               <div class="mb-2 flex items-center justify-between gap-2">
                 <span class="text-xs font-medium text-gray-700 dark:text-gray-300">{{ t('imageStudio.pricing') }}</span>
                 <span class="max-w-[150px] truncate text-[11px] text-gray-400">{{ selectedGroup.name }}</span>
@@ -378,11 +270,6 @@
               </div>
             </section>
 
-            <div v-else-if="connectionMode === 'external'" class="flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] leading-4 text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-300">
-              <Icon name="exclamationTriangle" size="xs" class="mt-0.5 shrink-0" />
-              <span>{{ t('imageStudio.externalNoPricing') }}</span>
-            </div>
-
             <button
               type="submit"
               class="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-primary-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500/40 focus:ring-offset-2 disabled:cursor-not-allowed disabled:bg-gray-300 dark:disabled:bg-dark-700"
@@ -390,12 +277,13 @@
             >
               <Icon :name="isWorking ? 'refresh' : (operation === 'edit' ? 'edit' : 'sparkles')" size="md" :class="isWorking ? 'animate-spin' : ''" />
               <span>{{ actionButtonLabel }}</span>
-              <span v-if="!isWorking && connectionMode === 'group' && selectedGroup" class="text-white/75">{{ formatUSD(estimatedCost) }}</span>
+              <span v-if="!isWorking && selectedGroup" class="text-white/75">{{ formatUSD(estimatedCost) }}</span>
             </button>
           </form>
+          </section>
         </aside>
 
-        <main class="min-w-0">
+        <main class="flex min-w-0 flex-col">
           <div class="mb-2 flex min-h-8 flex-wrap items-center justify-between gap-3">
             <div class="flex min-w-0 items-center gap-3">
               <h2 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('imageStudio.canvas') }}</h2>
@@ -408,7 +296,7 @@
             </div>
           </div>
 
-          <section class="studio-canvas relative min-h-[600px] overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-dark-700 dark:bg-dark-900">
+          <section class="studio-canvas relative min-h-[600px] flex-1 overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-dark-700 dark:bg-dark-900">
             <div v-if="viewState === 'idle'" class="flex min-h-[600px] flex-col items-center justify-center px-6 text-center">
               <div class="mb-4 flex h-14 w-14 items-center justify-center rounded-lg border border-gray-200 bg-gray-50 dark:border-dark-700 dark:bg-dark-800">
                 <Icon :name="operation === 'edit' ? 'edit' : 'sparkles'" size="xl" class="text-gray-400 dark:text-gray-500" />
@@ -479,6 +367,9 @@
                       </button>
                     </div>
                     <div v-if="!imageLoadErrors[index]" class="absolute right-3 top-3 flex gap-2 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
+                      <button type="button" class="flex h-9 w-9 items-center justify-center rounded-md bg-black/65 text-white hover:bg-black/80" :title="t('imageStudio.createVideo')" @click="createVideoFromImage(image.url)">
+                        <Icon name="play" size="sm" />
+                      </button>
                       <button type="button" class="flex h-9 w-9 items-center justify-center rounded-md bg-black/65 text-white hover:bg-black/80" :title="t('imageStudio.preview')" @click="openPreview(index)">
                         <Icon name="eye" size="sm" />
                       </button>
@@ -497,26 +388,31 @@
           </section>
         </main>
 
-        <aside class="studio-history xl:col-span-2 2xl:col-span-1">
+        <aside class="studio-history flex min-w-0 flex-col xl:col-span-2 2xl:col-span-1">
           <div class="mb-2 flex min-h-8 items-center justify-between gap-2">
             <div class="flex items-center gap-2">
               <h2 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('imageStudio.history') }}</h2>
               <span class="text-xs tabular-nums text-gray-400">{{ history.length }}</span>
+              <span class="text-[11px] text-gray-400">{{ t('imageStudio.historyRetention', { days: historyRetentionDays }) }}</span>
             </div>
             <button
               type="button"
               class="flex h-8 w-8 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-30 dark:hover:bg-dark-800 dark:hover:text-gray-200"
-              :disabled="history.length === 0 || isWorking"
+              :disabled="history.length === 0 || isWorking || loadingHistory || clearingHistory"
               :title="t('imageStudio.clearHistory')"
               :aria-label="t('imageStudio.clearHistory')"
               @click="clearHistory"
             >
-              <Icon name="trash" size="sm" />
+              <Icon :name="clearingHistory ? 'refresh' : 'trash'" size="sm" :class="clearingHistory ? 'animate-spin' : ''" />
             </button>
           </div>
 
-          <section class="studio-history-panel overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-dark-700 dark:bg-dark-900">
-            <div v-if="history.length === 0" class="flex min-h-40 flex-col items-center justify-center px-4 text-center text-gray-400">
+          <section class="studio-history-panel flex-1 overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-dark-700 dark:bg-dark-900">
+            <div v-if="loadingHistory" class="flex min-h-40 items-center justify-center text-gray-400">
+              <Icon name="refresh" size="md" class="animate-spin" />
+            </div>
+
+            <div v-else-if="history.length === 0" class="flex min-h-40 flex-col items-center justify-center px-4 text-center text-gray-400">
               <Icon name="clock" size="lg" class="mb-2" />
               <p class="text-xs font-medium">{{ t('imageStudio.historyEmpty') }}</p>
               <p class="mt-1 text-[11px]">{{ t('imageStudio.historyHint') }}</p>
@@ -580,22 +476,23 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useRouter } from 'vue-router'
 import { userGroupsAPI } from '@/api/groups'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
 import AppLayout from '@/components/layout/AppLayout.vue'
+import MediaStudioHeader from '@/features/media-studio/MediaStudioHeader.vue'
+import { saveVideoStudioImageDraft } from '@/features/video-studio/draft'
 import { useAppStore } from '@/stores/app'
 import type { ApiKey } from '@/types'
 import { listEligibleImageKeys } from './access'
 import {
-  classifyExternalRequestFailure,
+  clearImageTasks,
   extractTaskImageData,
-  generateExternalImageEdit,
-  generateExternalImages,
   getImageTask,
   listImageModels,
-  normalizeExternalBaseUrl,
+  listImageTasks,
   submitImageEditTask,
   submitImageTask,
 } from './api'
@@ -603,10 +500,14 @@ import {
   buildGenerateImageRequest,
   filterImageModels,
   getAspectRatioOptions,
+  getMaxImageQuantity,
   getOpenAIImageSize,
+  getPreferredImageModel,
   getPreviewAspectRatio,
   getResolutionOptions,
+  isImageStudioPlatform,
   normalizeStudioSelection,
+  supportsImageEditing,
 } from './capabilities'
 import { estimateImageCost, formatUSD, getImagePriceTiers } from './pricing'
 import type {
@@ -621,12 +522,10 @@ import type {
   StudioOperation,
 } from './types'
 
-type ConnectionMode = 'group' | 'external'
 type HistoryStatus = 'processing' | 'completed' | 'failed'
 
 interface StudioHistoryItem {
   id: string
-  mode: ConnectionMode
   operation: StudioOperation
   prompt: string
   model: string
@@ -646,11 +545,15 @@ const POLL_INTERVAL_MS = 3000
 const MAX_HISTORY_ITEMS = 10
 const MAX_SOURCE_IMAGE_BYTES = 20 * 1024 * 1024
 const SOURCE_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp'])
+const GEMINI_IMAGE_MODEL_NAMES: Record<string, string> = {
+  'gemini-3-pro-image-preview': 'Nano banana Pro',
+  'gemini-3.1-flash-image': 'Nano banana 2',
+}
 
 const { t } = useI18n()
+const router = useRouter()
 const appStore = useAppStore()
 
-const connectionMode = ref<ConnectionMode>('group')
 const operation = ref<StudioOperation>('generate')
 const sourceImageFile = ref<File | null>(null)
 const sourcePreviewUrl = ref('')
@@ -660,11 +563,7 @@ const apiKeys = ref<ApiKey[]>([])
 const userRates = ref<Record<number, number>>({})
 const selectedKeyId = ref<number | null>(null)
 const models = ref<Array<{ id: string; display_name?: string }>>([])
-const internalModel = ref('')
-const externalModel = ref('gpt-image-2')
-const externalBaseUrl = ref(window.location.origin + '/v1')
-const externalApiKey = ref('')
-const externalKeyVisible = ref(false)
+const model = ref('')
 const prompt = ref('')
 const quality = ref<ImageQuality>('auto')
 const resolution = ref<ImageResolutionTier>('1K')
@@ -684,33 +583,24 @@ const imageLoadErrors = ref<Record<number, boolean>>({})
 const imageReloadTokens = ref<Record<number, number>>({})
 const history = ref<StudioHistoryItem[]>([])
 const activeHistoryId = ref('')
-const successfulExternalBaseUrls = new Set<string>()
+const historyRetentionDays = ref(7)
+const loadingHistory = ref(false)
+const clearingHistory = ref(false)
 
 let historySequence = 0
 let modelController: AbortController | null = null
+let historyController: AbortController | null = null
 let taskController: AbortController | null = null
 let pollTimer: ReturnType<typeof setTimeout> | null = null
 let elapsedTimer: ReturnType<typeof setInterval> | null = null
 
 const selectedKey = computed(() => apiKeys.value.find((key) => key.id === selectedKeyId.value) || null)
-const selectedGroup = computed(() => connectionMode.value === 'group' ? selectedKey.value?.group || null : null)
+const selectedGroup = computed(() => selectedKey.value?.group || null)
 const platform = computed<ImageStudioPlatform>(() => {
-  if (connectionMode.value === 'external') return 'openai'
-  return selectedGroup.value?.platform === 'grok' ? 'grok' : 'openai'
+  const value = selectedGroup.value?.platform
+  return isImageStudioPlatform(value) ? value : 'openai'
 })
-const groupBaseUrl = computed(() => window.location.origin + '/v1')
-const storageStatusLabel = computed(() => t(
-  connectionMode.value === 'external'
-    ? 'imageStudio.externalStorageStatus'
-    : 'imageStudio.storageStatus',
-))
-const model = computed({
-  get: () => connectionMode.value === 'external' ? externalModel.value : internalModel.value,
-  set: (value: string) => {
-    if (connectionMode.value === 'external') externalModel.value = value
-    else internalModel.value = value
-  },
-})
+
 const keyOptions = computed(() => apiKeys.value.map((key) => ({
   value: key.id,
   label: key.name + ' · ' + (key.group?.name || '-'),
@@ -720,9 +610,11 @@ const keyOptions = computed(() => apiKeys.value.map((key) => ({
 })))
 const modelOptions = computed(() => models.value.map((item) => ({
   value: item.id,
-  label: item.display_name && item.display_name !== item.id
-    ? item.display_name + ' (' + item.id + ')'
-    : item.id,
+  label: platform.value === 'gemini' && GEMINI_IMAGE_MODEL_NAMES[item.id]
+    ? GEMINI_IMAGE_MODEL_NAMES[item.id] + ' (' + item.id + ')'
+    : item.display_name && item.display_name !== item.id
+      ? item.display_name + ' (' + item.id + ')'
+      : item.id,
 })))
 const qualityOptions = computed<Array<{ value: ImageQuality; label: string }>>(() => [
   { value: 'auto', label: t('imageStudio.qualityAuto') },
@@ -731,6 +623,7 @@ const qualityOptions = computed<Array<{ value: ImageQuality; label: string }>>((
   { value: 'high', label: t('imageStudio.qualityHigh') },
 ])
 const allResolutionTiers: ImageResolutionTier[] = ['1K', '2K', '4K']
+const maxQuantity = computed(() => getMaxImageQuantity(platform.value))
 const resolutionOptions = computed(() => getResolutionOptions(platform.value))
 const ratioOptions = computed(() => getAspectRatioOptions(platform.value))
 const outputSizeLabel = computed(() => platform.value === 'openai'
@@ -750,10 +643,7 @@ const taskId = computed(() => task.value?.task_id || task.value?.id || '')
 const isWorking = computed(() => submitting.value || viewState.value === 'processing')
 const canGenerate = computed(() => {
   if (isWorking.value || !model.value.trim() || !prompt.value.trim()) return false
-  if (operation.value === 'edit' && (platform.value !== 'openai' || !sourceImageFile.value)) return false
-  if (connectionMode.value === 'external') {
-    return !!externalBaseUrl.value.trim() && !!externalApiKey.value.trim()
-  }
+  if (operation.value === 'edit' && (!supportsImageEditing(platform.value) || !sourceImageFile.value)) return false
   return !!selectedKey.value
 })
 const statusOperation = computed<StudioOperation>(() => (
@@ -789,7 +679,7 @@ const displayPreviewAspectRatio = computed(() => getPreviewAspectRatio(displayRa
 
 function switchOperation(nextOperation: StudioOperation) {
   if (isWorking.value || operation.value === nextOperation) return
-  if (nextOperation === 'edit' && platform.value !== 'openai') return
+  if (nextOperation === 'edit' && !supportsImageEditing(platform.value)) return
   operation.value = nextOperation
   task.value = null
   activeHistoryId.value = ''
@@ -798,27 +688,6 @@ function switchOperation(nextOperation: StudioOperation) {
   previewIndex.value = null
   imageLoadErrors.value = {}
   imageReloadTokens.value = {}
-}
-
-function switchConnectionMode(nextMode: ConnectionMode) {
-  if (isWorking.value || connectionMode.value === nextMode) return
-  modelController?.abort()
-  connectionMode.value = nextMode
-  if (operation.value === 'edit' && platform.value !== 'openai') operation.value = 'generate'
-  task.value = null
-  activeHistoryId.value = ''
-  viewState.value = 'idle'
-  errorMessage.value = ''
-  previewIndex.value = null
-  imageLoadErrors.value = {}
-  imageReloadTokens.value = {}
-  quality.value = 'auto'
-  const normalized = normalizeStudioSelection(platform.value, ratio.value, resolution.value)
-  ratio.value = normalized.ratio
-  resolution.value = normalized.resolution
-  if (nextMode === 'group' && selectedKey.value && models.value.length === 0) {
-    void loadModels()
-  }
 }
 
 function selectResolution(tier: ImageResolutionTier) {
@@ -835,13 +704,24 @@ function selectRatio(nextRatio: ImageAspectRatio) {
 }
 
 async function handleKeySelection() {
-  if (connectionMode.value !== 'group' || !selectedKey.value || isWorking.value) return
-  if (operation.value === 'edit' && platform.value !== 'openai') operation.value = 'generate'
+  if (!selectedKey.value || isWorking.value) return
+  if (operation.value === 'edit' && !supportsImageEditing(platform.value)) operation.value = 'generate'
+  task.value = null
+  activeHistoryId.value = ''
+  viewState.value = 'idle'
+  errorMessage.value = ''
+  previewIndex.value = null
+  imageLoadErrors.value = {}
+  imageReloadTokens.value = {}
   const normalized = normalizeStudioSelection(platform.value, ratio.value, resolution.value)
   ratio.value = normalized.ratio
   resolution.value = normalized.resolution
   quality.value = 'auto'
-  await loadModels()
+  quantity.value = Math.min(quantity.value, maxQuantity.value)
+  await Promise.all([
+    loadModels(getPreferredImageModel(platform.value)),
+    loadHistory(),
+  ])
 }
 
 function openSourcePicker() {
@@ -905,9 +785,9 @@ function operationLabel(value: StudioOperation): string {
 async function loadModels(preferredModel = '') {
   modelController?.abort()
   models.value = []
-  internalModel.value = preferredModel
+  model.value = preferredModel
   const key = selectedKey.value
-  if (!key || connectionMode.value !== 'group') return
+  if (!key) return
   const controller = new AbortController()
   modelController = controller
   loadingModels.value = true
@@ -916,11 +796,11 @@ async function loadModels(preferredModel = '') {
     const filtered = filterImageModels(platform.value, response.data || [])
     models.value = filtered
     if (!filtered.some((item) => item.id === preferredModel)) {
-      internalModel.value = filtered[0]?.id || ''
+      model.value = filtered[0]?.id || ''
     }
   } catch (error) {
     if ((error as Error).name !== 'AbortError') {
-      internalModel.value = ''
+      model.value = ''
       appStore.showError(errorText(error, t('imageStudio.modelsFailed')))
     }
   } finally {
@@ -962,7 +842,6 @@ function readPersistedTask(): StoredImageTask | null {
 function beginHistoryItem(request: GenerateImageRequest): StudioHistoryItem {
   const item: StudioHistoryItem = {
     id: String(Date.now()) + '-' + String(++historySequence),
-    mode: connectionMode.value,
     operation: operation.value,
     prompt: request.prompt,
     model: request.model,
@@ -1015,13 +894,88 @@ function selectHistoryItem(item: StudioHistoryItem) {
   imageReloadTokens.value = {}
 }
 
-function clearHistory() {
-  if (isWorking.value) return
-  history.value.forEach((item) => {
-    if (item.sourceThumbnail) URL.revokeObjectURL(item.sourceThumbnail)
-  })
-  history.value = []
-  activeHistoryId.value = ''
+function imageTaskResolution(item: ImageTask): ImageResolutionTier {
+  const value = item.metadata?.resolution?.toUpperCase()
+  if (value === '1K' || value === '2K' || value === '4K') return value
+  const size = item.metadata?.size?.toLowerCase() || ''
+  if (size === '1536x1024' || size === '1024x1536' || size === '2k') return '2K'
+  if (size === '4k') return '4K'
+  return '1K'
+}
+
+function imageTaskRatio(item: ImageTask): ImageAspectRatio {
+  const value = item.metadata?.aspect_ratio
+  if (value && ['1:1', '3:2', '2:3', '16:9', '9:16', '4:3', '3:4'].includes(value)) return value
+  const size = item.metadata?.size?.toLowerCase()
+  if (size === '1536x1024') return '3:2'
+  if (size === '1024x1536') return '2:3'
+  return '1:1'
+}
+
+function imageTaskToHistoryItem(item: ImageTask): StudioHistoryItem {
+  const taskImages = extractTaskImageData(item)
+  return {
+    id: item.task_id || item.id,
+    operation: item.metadata?.operation === 'edit' ? 'edit' : 'generate',
+    prompt: item.metadata?.prompt || item.task_id || item.id,
+    model: item.metadata?.model || '',
+    resolution: imageTaskResolution(item),
+    ratio: imageTaskRatio(item),
+    quantity: Math.max(1, item.metadata?.quantity || taskImages.length || 1),
+    createdAt: item.created_at * 1000,
+    status: item.status,
+    task: item,
+    thumbnail: taskImages[0]?.url,
+    errorMessage: taskErrorText(item.error),
+  }
+}
+
+async function loadHistory() {
+  historyController?.abort()
+  const key = selectedKey.value
+  if (!key) {
+    history.value = []
+    return
+  }
+  const controller = new AbortController()
+  historyController = controller
+  loadingHistory.value = true
+  try {
+    const result = await listImageTasks(key.key, MAX_HISTORY_ITEMS, controller.signal)
+    history.value = result.tasks.map(imageTaskToHistoryItem)
+    historyRetentionDays.value = result.retentionDays
+  } catch (error) {
+    if ((error as Error).name !== 'AbortError') {
+      history.value = []
+      appStore.showError(errorText(error, t('imageStudio.historyLoadFailed')))
+    }
+  } finally {
+    if (historyController === controller) {
+      loadingHistory.value = false
+      historyController = null
+    }
+  }
+}
+
+async function clearHistory() {
+  const key = selectedKey.value
+  if (isWorking.value || !key || clearingHistory.value) return
+  clearingHistory.value = true
+  try {
+    await clearImageTasks(key.key)
+    history.value.forEach((item) => {
+      if (item.sourceThumbnail) URL.revokeObjectURL(item.sourceThumbnail)
+    })
+    history.value = []
+    activeHistoryId.value = ''
+    task.value = null
+    viewState.value = 'idle'
+    clearPersistedTask()
+  } catch (error) {
+    appStore.showError(errorText(error, t('imageStudio.historyClearFailed')))
+  } finally {
+    clearingHistory.value = false
+  }
 }
 
 function historyThumbnail(item: StudioHistoryItem): string {
@@ -1065,11 +1019,10 @@ function currentRequest(): GenerateImageRequest {
 
 async function generateImages() {
   if (!canGenerate.value) return
-  const external = connectionMode.value === 'external'
   const editing = operation.value === 'edit'
   const sourceFile = sourceImageFile.value
   const key = selectedKey.value
-  if (!external && !key) return
+  if (!key) return
   if (editing && !sourceFile) return
 
   stopPolling()
@@ -1089,46 +1042,6 @@ async function generateImages() {
   taskController = controller
 
   try {
-    if (external) {
-      const result = editing
-        ? await generateExternalImageEdit(
-            externalBaseUrl.value,
-            externalApiKey.value,
-            sourceFile as File,
-            request,
-            controller.signal,
-          )
-        : await generateExternalImages(
-            externalBaseUrl.value,
-            externalApiKey.value,
-            request,
-            controller.signal,
-          )
-      const completedAt = Math.floor(Date.now() / 1000)
-      const completedTask: ImageTask = {
-        id: '',
-        task_id: '',
-        object: editing ? 'image.edit' : 'image.generation',
-        status: 'completed',
-        result,
-        created_at: Math.floor(startedAt.value / 1000),
-        completed_at: completedAt,
-        expires_at: 0,
-      }
-      successfulExternalBaseUrls.add(normalizedExternalBaseUrl())
-      if (extractTaskImageData(completedTask).length === 0) {
-        failTask(t('imageStudio.emptyResult'))
-        return
-      }
-      task.value = completedTask
-      viewState.value = 'completed'
-      completeHistoryItem(historyItem.id, completedTask)
-      taskController = null
-      appStore.showSuccess(t(editing ? 'imageStudio.editSuccess' : 'imageStudio.generateSuccess'))
-      return
-    }
-
-    if (!key) return
     const submitted = editing
       ? await submitImageEditTask(key.key, sourceFile as File, request, controller.signal)
       : await submitImageTask(key.key, request, controller.signal)
@@ -1148,9 +1061,7 @@ async function generateImages() {
     await pollTask(submitted.task_id || submitted.id, key)
   } catch (error) {
     if ((error as Error).name === 'AbortError') return
-    failTask(external
-      ? externalErrorText(error)
-      : errorText(error, t(editing ? 'imageStudio.editSubmitFailed' : 'imageStudio.submitFailed')))
+    failTask(errorText(error, t(editing ? 'imageStudio.editSubmitFailed' : 'imageStudio.submitFailed')))
   } finally {
     submitting.value = false
   }
@@ -1210,26 +1121,6 @@ function taskErrorText(error: unknown): string {
   return ''
 }
 
-function normalizedExternalBaseUrl(): string {
-  try {
-    return normalizeExternalBaseUrl(externalBaseUrl.value)
-  } catch {
-    return externalBaseUrl.value.trim()
-  }
-}
-
-function externalErrorText(error: unknown): string {
-  const failureKind = classifyExternalRequestFailure(
-    error,
-    Date.now() - startedAt.value,
-    successfulExternalBaseUrls.has(normalizedExternalBaseUrl()),
-  )
-  if (failureKind === 'invalid-url') return t('imageStudio.externalInvalidUrl')
-  if (failureKind === 'connection-interrupted') return t('imageStudio.externalConnectionInterrupted')
-  if (failureKind === 'network') return t('imageStudio.externalCorsError')
-  return errorText(error, t('imageStudio.externalRequestFailed'))
-}
-
 function errorText(error: unknown, fallback: string): string {
   const value = error as ImageStudioError
   const message = value?.message || fallback
@@ -1245,6 +1136,14 @@ function formatElapsed(seconds: number): string {
 
 function openPreview(index: number) {
   previewIndex.value = index
+}
+
+function createVideoFromImage(url: string) {
+  if (!saveVideoStudioImageDraft(url)) {
+    appStore.showError(t('imageStudio.createVideoFailed'))
+    return
+  }
+  void router.push('/video-studio')
 }
 
 function markImageError(index: number) {
@@ -1300,12 +1199,11 @@ async function restoreTask(stored: StoredImageTask) {
     clearPersistedTask()
     return false
   }
-  connectionMode.value = 'group'
   operation.value = stored.operation || 'generate'
   selectedKeyId.value = key.id
   prompt.value = stored.request.prompt || ''
-  internalModel.value = stored.request.model || ''
-  quantity.value = Math.min(4, Math.max(1, stored.request.n || 1))
+  model.value = stored.request.model || ''
+  quantity.value = Math.min(maxQuantity.value, Math.max(1, stored.request.n || 1))
   quality.value = stored.request.quality || 'auto'
   ratio.value = stored.ratio || '1:1'
   resolution.value = stored.resolution || '1K'
@@ -1320,11 +1218,14 @@ async function restoreTask(stored: StoredImageTask) {
     created_at: Math.floor(startedAt.value / 1000),
     expires_at: 0,
   }
-  const restoredHistoryItem = beginHistoryItem(stored.request)
-  updateHistoryItem(restoredHistoryItem.id, {
-    createdAt: startedAt.value,
-    task: task.value,
-  })
+  const restoredHistoryItem = history.value.find((item) => item.id === stored.taskId)
+  if (restoredHistoryItem) {
+    activeHistoryId.value = restoredHistoryItem.id
+    updateHistoryItem(restoredHistoryItem.id, { task: task.value, status: 'processing' })
+  } else {
+    const localHistoryItem = beginHistoryItem(stored.request)
+    updateHistoryItem(localHistoryItem.id, { createdAt: startedAt.value, task: task.value })
+  }
   await loadModels(stored.request.model)
   await pollTask(stored.taskId, key)
   return true
@@ -1340,9 +1241,20 @@ onMounted(async () => {
     apiKeys.value = keys
     userRates.value = rates
     const stored = readPersistedTask()
-    if (stored && await restoreTask(stored)) return
-    selectedKeyId.value = keys[0]?.id || null
-    await loadModels()
+    if (stored) {
+      const storedKey = keys.find((key) => key.id === stored.apiKeyId)
+      if (storedKey) {
+        selectedKeyId.value = storedKey.id
+        await loadHistory()
+        if (await restoreTask(stored)) return
+      }
+    }
+    const defaultKey = keys.find((key) => key.group?.platform === 'openai') || keys[0]
+    selectedKeyId.value = defaultKey?.id || null
+    await Promise.all([
+      loadModels(getPreferredImageModel(platform.value)),
+      loadHistory(),
+    ])
   } catch (error) {
     appStore.showError(errorText(error, t('imageStudio.keysFailed')))
   } finally {
@@ -1352,6 +1264,7 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   modelController?.abort()
+  historyController?.abort()
   stopPolling()
   if (elapsedTimer) clearInterval(elapsedTimer)
   if (sourcePreviewUrl.value) URL.revokeObjectURL(sourcePreviewUrl.value)
@@ -1390,20 +1303,24 @@ onBeforeUnmount(() => {
 }
 
 .studio-single-media {
-  height: clamp(520px, calc(100vh - 17rem), 900px);
+  height: clamp(520px, calc(100vh - 13.5rem), 900px);
   flex: none;
 }
 
 @media (min-width: 1280px) {
   .studio-canvas,
   .studio-canvas > div {
-    min-height: max(600px, calc(100vh - 13.5rem));
+    min-height: max(600px, calc(100vh - 10rem));
+  }
+
+  .studio-canvas > div {
+    height: 100%;
   }
 }
 
 @media (min-width: 1536px) {
   .studio-history-panel {
-    height: max(600px, calc(100vh - 13.5rem));
+    height: max(600px, calc(100vh - 10rem));
   }
 
   .studio-history-panel > div {

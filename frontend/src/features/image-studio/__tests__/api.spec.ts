@@ -4,6 +4,8 @@ import {
   generateExternalImageEdit,
   generateExternalImages,
   normalizeExternalBaseUrl,
+  clearImageTasks,
+  listImageTasks,
   submitImageEditTask,
 } from '../api'
 
@@ -117,5 +119,44 @@ describe('image studio external API', () => {
     expect(classifyExternalRequestFailure(networkError, 20_000, false)).toBe('connection-interrupted')
     expect(classifyExternalRequestFailure(networkError, 500, true)).toBe('connection-interrupted')
     expect(classifyExternalRequestFailure(new Error('upstream rejected prompt'), 30_000, true)).toBe('api')
+  })
+})
+
+describe('image studio history API', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('lists and clears server-side image history for the selected key', async () => {
+    const tasks = [{
+      id: 'imgtask_1',
+      task_id: 'imgtask_1',
+      object: 'image.generation.task',
+      status: 'completed',
+      created_at: 1,
+      expires_at: 2,
+    }]
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: vi.fn().mockResolvedValue({ object: 'list', data: tasks, retention_days: 7 }),
+      })
+      .mockResolvedValueOnce({ ok: true })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(listImageTasks('site-key', 10)).resolves.toEqual({
+      tasks,
+      retentionDays: 7,
+    })
+    await expect(clearImageTasks('site-key')).resolves.toBeUndefined()
+
+    const [listUrl, listInit] = fetchMock.mock.calls[0] as [string, RequestInit]
+    expect(listUrl).toMatch(/[/]v1[/]images[/]tasks[?]limit=10$/)
+    expect(listInit.headers).toEqual({ Authorization: 'Bearer site-key' })
+
+    const [clearUrl, clearInit] = fetchMock.mock.calls[1] as [string, RequestInit]
+    expect(clearUrl).toMatch(/[/]v1[/]images[/]tasks$/)
+    expect(clearInit.method).toBe('DELETE')
+    expect(clearInit.headers).toEqual({ Authorization: 'Bearer site-key' })
   })
 })

@@ -2,8 +2,11 @@ import { describe, expect, it } from 'vitest'
 import {
   buildGenerateImageRequest,
   filterImageModels,
+  getMaxImageQuantity,
   getOpenAIImageSize,
+  getPreferredImageModel,
   normalizeStudioSelection,
+  supportsImageEditing,
 } from '../capabilities'
 
 describe('image studio capabilities', () => {
@@ -20,6 +23,16 @@ describe('image studio capabilities', () => {
       { id: 'grok-imagine-edit' },
       { id: 'grok-imagine-video' },
     ])).toEqual([{ id: 'grok-imagine-image' }])
+
+    expect(filterImageModels('gemini', [
+      { id: 'gemini-2.5-flash-image' },
+      { id: 'gemini-3.1-flash-image' },
+      { id: 'gemini-3-pro-image-preview' },
+      { id: 'gemini-3-pro-preview' },
+    ])).toEqual([
+      { id: 'gemini-3.1-flash-image' },
+      { id: 'gemini-3-pro-image-preview' },
+    ])
   })
 
   it('maps OpenAI ratio and tier to supported image sizes', () => {
@@ -51,6 +64,32 @@ describe('image studio capabilities', () => {
       size: '2K',
       aspect_ratio: '16:9',
       resolution: '2k',
+    })
+  })
+
+  it('enables image editing for Grok and Gemini and limits Gemini to one image', () => {
+    expect(supportsImageEditing('grok')).toBe(true)
+    expect(supportsImageEditing('gemini')).toBe(true)
+    expect(getMaxImageQuantity('gemini')).toBe(1)
+    expect(getPreferredImageModel('gemini')).toBe('gemini-3.1-flash-image')
+  })
+
+  it('builds Gemini native image controls through the common task request', () => {
+    expect(buildGenerateImageRequest({
+      platform: 'gemini',
+      model: 'gemini-3-pro-image-preview',
+      prompt: ' edit this ',
+      quantity: 4,
+      ratio: '3:2',
+      resolution: '4K',
+      quality: 'auto',
+    })).toEqual({
+      model: 'gemini-3-pro-image-preview',
+      prompt: 'edit this',
+      n: 1,
+      size: '4K',
+      aspect_ratio: '3:2',
+      resolution: '4k',
     })
   })
 })

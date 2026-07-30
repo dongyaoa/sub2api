@@ -337,7 +337,10 @@ func isAsyncImageTaskRead(method, path string) bool {
 	if method != http.MethodGet {
 		return false
 	}
-	return strings.HasPrefix(path, "/v1/images/tasks/") || strings.HasPrefix(path, "/images/tasks/")
+	return path == "/v1/images/tasks" ||
+		path == "/images/tasks" ||
+		strings.HasPrefix(path, "/v1/images/tasks/") ||
+		strings.HasPrefix(path, "/images/tasks/")
 }
 
 // GetAPIKeyFromContext 从上下文中获取API key

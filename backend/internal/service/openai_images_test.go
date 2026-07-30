@@ -337,7 +337,7 @@ func TestOpenAIGatewayServiceParseOpenAIImagesRequest_RejectsNonImageModel(t *te
 func TestOpenAIGatewayServiceParseOpenAIImagesRequest_AllowsGrokImageModels(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	for _, model := range []string{"grok-imagine", "grok-imagine-image", "grok-imagine-image-quality", "grok-imagine-edit"} {
+	for _, model := range []string{"grok-imagine-image", "grok-imagine-image-quality"} {
 		t.Run(model, func(t *testing.T) {
 			body := []byte(fmt.Sprintf(`{"model":%q,"prompt":"draw a cat","response_format":"b64_json"}`, model))
 			req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
@@ -352,6 +352,26 @@ func TestOpenAIGatewayServiceParseOpenAIImagesRequest_AllowsGrokImageModels(t *t
 			require.NotNil(t, parsed)
 			require.Equal(t, model, parsed.Model)
 			require.Equal(t, OpenAIImagesCapabilityNative, parsed.RequiredCapability)
+		})
+	}
+}
+
+func TestOpenAIGatewayServiceParseOpenAIImagesRequestRejectsRemovedGrokImageModels(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	for _, model := range []string{"grok-imagine", "grok-imagine-edit", "grok-imagine-image-hd"} {
+		t.Run(model, func(t *testing.T) {
+			body := []byte(fmt.Sprintf(`{"model":%q,"prompt":"draw a cat"}`, model))
+			req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))
+			req.Header.Set("Content-Type", "application/json")
+			rec := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(rec)
+			c.Request = req
+
+			svc := &OpenAIGatewayService{}
+			parsed, err := svc.ParseOpenAIImagesRequest(c, body)
+			require.Nil(t, parsed)
+			require.ErrorContains(t, err, "images endpoint requires an image model")
 		})
 	}
 }

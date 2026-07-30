@@ -8,6 +8,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"sort"
 	"strings"
 	"sync"
 	"testing"
@@ -45,6 +46,37 @@ func (s *asyncImageMemoryStore) Get(_ context.Context, id string) (*service.Imag
 	copy.Result = append(json.RawMessage(nil), task.Result...)
 	copy.Error = append(json.RawMessage(nil), task.Error...)
 	return &copy, nil
+}
+
+func (s *asyncImageMemoryStore) List(_ context.Context, owner service.ImageTaskOwner, limit int) ([]*service.ImageTaskRecord, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	tasks := make([]*service.ImageTaskRecord, 0, len(s.tasks))
+	for _, task := range s.tasks {
+		if task.UserID != owner.UserID || task.APIKeyID != owner.APIKeyID {
+			continue
+		}
+		copy := *task
+		copy.Result = append(json.RawMessage(nil), task.Result...)
+		copy.Error = append(json.RawMessage(nil), task.Error...)
+		tasks = append(tasks, &copy)
+	}
+	sort.Slice(tasks, func(i, j int) bool { return tasks[i].CreatedAt > tasks[j].CreatedAt })
+	if limit > 0 && len(tasks) > limit {
+		tasks = tasks[:limit]
+	}
+	return tasks, nil
+}
+
+func (s *asyncImageMemoryStore) Clear(_ context.Context, owner service.ImageTaskOwner) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	for id, task := range s.tasks {
+		if task.UserID == owner.UserID && task.APIKeyID == owner.APIKeyID {
+			delete(s.tasks, id)
+		}
+	}
+	return nil
 }
 
 func TestAsyncImageHandlerSubmitAndPoll(t *testing.T) {
@@ -173,6 +205,163 @@ func TestAsyncImageHandlerSubmitMultipartEdit(t *testing.T) {
 	case <-time.After(time.Second):
 		t.Fatal("timed out waiting for asynchronous edit request")
 	}
+}
+
+func TestAsyncImageHandlerSubmitGeminiAndNormalizeResult(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	store := &asyncImageMemoryStore{tasks: make(map[string]*service.ImageTaskRecord)}
+	tasks := service.NewImageTaskServiceWithUploader(store, nil, time.Hour, time.Minute)
+	executed := make(chan struct{}, 1)
+	h := &AsyncImageHandler{tasks: tasks}
+	h.execute = func(platform string, c *gin.Context) {
+		require.Equal(t, service.PlatformGemini, platform)
+		executed <- struct{}{}
+		c.JSON(http.StatusOK, gin.H{
+			"candidates": []gin.H{{
+				"content": gin.H{"parts": []gin.H{{
+					"inlineData": gin.H{"mimeType": "image/png", "data": "aW1hZ2U="},
+				}}},
+			}},
+		})
+	}
+
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		groupID := int64(3)
+		c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{
+			ID:      9,
+			UserID:  7,
+			GroupID: &groupID,
+			Group:   &service.Group{ID: groupID, Platform: service.PlatformGemini, AllowImageGeneration: true},
+		})
+		c.Next()
+	})
+	router.POST("/v1/images/generations/async", h.Submit)
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/v1/images/generations/async",
+		strings.NewReader(`{"model":"gemini-3.1-flash-image","prompt":"cat","n":1,"aspect_ratio":"1:1","resolution":"1K"}`),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusAccepted, rec.Code)
+
+	var accepted struct {
+		TaskID string `json:"task_id"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &accepted))
+	require.NotEmpty(t, accepted.TaskID)
+	require.Eventually(t, func() bool {
+		got, err := tasks.Get(context.Background(), service.ImageTaskOwner{UserID: 7, APIKeyID: 9}, accepted.TaskID)
+		if err != nil || got.Status != service.ImageTaskStatusCompleted {
+			return false
+		}
+		return strings.Contains(string(got.Result), `"b64_json":"aW1hZ2U="`)
+	}, time.Second, 10*time.Millisecond)
+	select {
+	case <-executed:
+	default:
+		t.Fatal("Gemini image request was not executed")
+	}
+}
+
+func TestParseAsyncImageTaskMetadata(t *testing.T) {
+	jsonMetadata := parseAsyncImageTaskMetadata(
+		"/v1/images/generations/async",
+		"application/json",
+		[]byte(`{"model":"gpt-image-2","prompt":"city at night","n":3,"size":"1536x1024","quality":"high","aspect_ratio":"3:2","resolution":"2K"}`),
+	)
+	require.Equal(t, service.ImageTaskMetadata{
+		Operation:   "generate",
+		Model:       "gpt-image-2",
+		Prompt:      "city at night",
+		Quantity:    3,
+		Size:        "1536x1024",
+		Quality:     "high",
+		AspectRatio: "3:2",
+		Resolution:  "2K",
+	}, jsonMetadata)
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	require.NoError(t, writer.WriteField("model", "gpt-image-2"))
+	require.NoError(t, writer.WriteField("prompt", "remove the sign"))
+	require.NoError(t, writer.WriteField("n", "2"))
+	require.NoError(t, writer.WriteField("size", "1024x1536"))
+	require.NoError(t, writer.WriteField("quality", "medium"))
+	require.NoError(t, writer.Close())
+
+	editMetadata := parseAsyncImageTaskMetadata(
+		"/v1/images/edits/async",
+		writer.FormDataContentType(),
+		body.Bytes(),
+	)
+	require.Equal(t, service.ImageTaskMetadata{
+		Operation: "edit",
+		Model:     "gpt-image-2",
+		Prompt:    "remove the sign",
+		Quantity:  2,
+		Size:      "1024x1536",
+		Quality:   "medium",
+	}, editMetadata)
+}
+
+func TestAsyncImageHandlerListAndClear(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	store := &asyncImageMemoryStore{tasks: make(map[string]*service.ImageTaskRecord)}
+	tasks := service.NewImageTaskServiceWithUploader(store, nil, 7*24*time.Hour, time.Minute)
+	owner := service.ImageTaskOwner{UserID: 7, APIKeyID: 9}
+	created, err := tasks.CreateWithMetadata(context.Background(), owner, service.ImageTaskMetadata{
+		Operation:  "generate",
+		Model:      "gpt-image-2",
+		Prompt:     "a glass city",
+		Quantity:   1,
+		Resolution: "1K",
+	})
+	require.NoError(t, err)
+	other, err := tasks.CreateWithMetadata(context.Background(), service.ImageTaskOwner{UserID: 7, APIKeyID: 10}, service.ImageTaskMetadata{
+		Prompt: "private task",
+	})
+	require.NoError(t, err)
+
+	h := &AsyncImageHandler{tasks: tasks}
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{ID: 9, UserID: 7})
+		c.Next()
+	})
+	router.GET("/v1/images/tasks", h.List)
+	router.DELETE("/v1/images/tasks", h.Clear)
+
+	listReq := httptest.NewRequest(http.MethodGet, "/v1/images/tasks?limit=10", nil)
+	listWriter := httptest.NewRecorder()
+	router.ServeHTTP(listWriter, listReq)
+	require.Equal(t, http.StatusOK, listWriter.Code)
+	var response struct {
+		Data          []service.ImageTask `json:"data"`
+		RetentionDays int                 `json:"retention_days"`
+	}
+	require.NoError(t, json.Unmarshal(listWriter.Body.Bytes(), &response))
+	require.Len(t, response.Data, 1)
+	require.Equal(t, 7, response.RetentionDays)
+	require.Equal(t, created.ID, response.Data[0].ID)
+	require.Equal(t, "a glass city", response.Data[0].Metadata.Prompt)
+
+	clearReq := httptest.NewRequest(http.MethodDelete, "/v1/images/tasks", nil)
+	clearWriter := httptest.NewRecorder()
+	router.ServeHTTP(clearWriter, clearReq)
+	require.Equal(t, http.StatusNoContent, clearWriter.Code)
+
+	listWriter = httptest.NewRecorder()
+	router.ServeHTTP(listWriter, listReq)
+	require.Equal(t, http.StatusOK, listWriter.Code)
+	require.NoError(t, json.Unmarshal(listWriter.Body.Bytes(), &response))
+	require.Empty(t, response.Data)
+
+	_, err = tasks.Get(context.Background(), service.ImageTaskOwner{UserID: 7, APIKeyID: 10}, other.ID)
+	require.NoError(t, err)
 }
 
 // When object storage is not configured the feature is fully disabled: the

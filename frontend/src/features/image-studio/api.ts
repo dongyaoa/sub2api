@@ -163,6 +163,33 @@ export async function getImageTask(
   return response.json()
 }
 
+export async function listImageTasks(
+  apiKey: string,
+  limit = 10,
+  signal?: AbortSignal,
+): Promise<{ tasks: ImageTask[]; retentionDays: number }> {
+  const params = new URLSearchParams({ limit: String(limit) })
+  const response = await fetch(buildGatewayUrl(`/v1/images/tasks?${params.toString()}`), {
+    headers: authHeaders(apiKey),
+    signal,
+  })
+  if (!response.ok) throw await parseImageStudioError(response)
+  const body = await response.json() as { data?: ImageTask[]; retention_days?: number }
+  return {
+    tasks: Array.isArray(body.data) ? body.data : [],
+    retentionDays: Math.max(1, Number(body.retention_days) || 7),
+  }
+}
+
+export async function clearImageTasks(apiKey: string, signal?: AbortSignal): Promise<void> {
+  const response = await fetch(buildGatewayUrl('/v1/images/tasks'), {
+    method: 'DELETE',
+    headers: authHeaders(apiKey),
+    signal,
+  })
+  if (!response.ok) throw await parseImageStudioError(response)
+}
+
 export function extractTaskImageData(task: ImageTask): Array<{ url: string; revisedPrompt?: string }> {
   const result = task.result
   const data = Array.isArray(result?.data) ? result.data : []

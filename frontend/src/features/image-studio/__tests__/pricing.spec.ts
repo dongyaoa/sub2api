@@ -46,14 +46,16 @@ function group(overrides: Partial<Group> = {}): Group {
 }
 
 describe('image studio pricing', () => {
-  it('shows all three group tiers with the image multiplier', () => {
+  it('uses the standard-model group price for every resolution', () => {
     expect(getImagePriceTiers(group(), 'grok-imagine-image').map((item) => item.unitPrice))
-      .toEqual([0.03, 0.045, 0.06])
+      .toEqual([0.03, 0.03, 0.03])
+    expect(getImagePriceTiers(group(), 'grok-imagine-image-quality').map((item) => item.unitPrice))
+      .toEqual([0.045, 0.045, 0.045])
   })
 
   it('uses the user rate when image billing is not independent', () => {
     const target = group({ image_rate_independent: false, image_rate_multiplier: 9 })
-    expect(estimateImageCost(target, 'grok-imagine-image', '2K', 3, 0.5)).toBeCloseTo(0.045)
+    expect(estimateImageCost(target, 'grok-imagine-image', '2K', 3, 0.5)).toBeCloseTo(0.03)
   })
 
   it('uses model defaults for missing prices', () => {
@@ -65,6 +67,6 @@ describe('image studio pricing', () => {
       image_price_4k: null,
     })
     expect(getImagePriceTiers(target, 'grok-imagine-image-quality').map((item) => item.unitPrice))
-      .toEqual([0.05, 0.07, 0.07])
+      .toEqual([0.01, 0.01, 0.01])
   })
 })

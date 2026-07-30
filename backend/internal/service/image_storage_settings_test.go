@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/stretchr/testify/require"
@@ -155,6 +156,27 @@ func TestImageStorageSettingsReuseBackupCredentials(t *testing.T) {
 	require.NoError(t, err)
 	require.NotContains(t, raw, "backup-sk")
 	require.NotContains(t, raw, "enc:")
+}
+
+func TestImageStorageSettingsHistoryRetentionNormalizesPrivatePresign(t *testing.T) {
+	svc, _, _ := newImageStorageFixture(t, config.ImageStorageConfig{})
+	ctx := context.Background()
+
+	saved, err := svc.Update(ctx, ImageStorageSettings{})
+	require.NoError(t, err)
+	require.Equal(t, 7, saved.HistoryRetentionDays)
+	require.Equal(t, 168, saved.PresignExpiry)
+	require.Equal(t, 7*24*time.Hour, svc.HistoryTTL())
+
+	saved, err = svc.Update(ctx, ImageStorageSettings{
+		PublicBaseURL:        "https://images.example.com",
+		PresignExpiry:        999,
+		HistoryRetentionDays: 999,
+	})
+	require.NoError(t, err)
+	require.Equal(t, 365, saved.HistoryRetentionDays)
+	require.Equal(t, 168, saved.PresignExpiry)
+	require.Equal(t, 365*24*time.Hour, svc.HistoryTTL())
 }
 
 func TestImageStorageSettingsOwnCredentialsAreEncryptedAndMasked(t *testing.T) {

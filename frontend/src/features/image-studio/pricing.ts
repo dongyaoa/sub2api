@@ -17,23 +17,27 @@ const DEFAULT_OPENAI_PRICES: Record<ImageResolutionTier, number> = {
 }
 
 const DEFAULT_GROK_PRICES: Record<ImageResolutionTier, number> = {
-  '1K': 0.02,
-  '2K': 0.02,
-  '4K': 0.02,
+  '1K': 0.005,
+  '2K': 0.005,
+  '4K': 0.005,
 }
 
 const DEFAULT_GROK_QUALITY_PRICES: Record<ImageResolutionTier, number> = {
-  '1K': 0.05,
-  '2K': 0.07,
-  '4K': 0.07,
+  '1K': 0.01,
+  '2K': 0.01,
+  '4K': 0.01,
 }
 
-function configuredPrice(group: Group, tier: ImageResolutionTier): number | null {
-  const value = tier === '1K'
-    ? group.image_price_1k
-    : tier === '2K'
+function configuredPrice(group: Group, model: string, tier: ImageResolutionTier): number | null {
+  const value = group.platform === 'grok'
+    ? model.trim().toLowerCase() === 'grok-imagine-image-quality'
       ? group.image_price_2k
-      : group.image_price_4k
+      : group.image_price_1k
+    : tier === '1K'
+      ? group.image_price_1k
+      : tier === '2K'
+        ? group.image_price_2k
+        : group.image_price_4k
   return value == null || !Number.isFinite(Number(value)) ? null : Math.max(0, Number(value))
 }
 
@@ -58,7 +62,7 @@ export function getImagePriceTiers(
   const platform = group.platform === 'grok' ? 'grok' : 'openai'
   const multiplier = resolveEffectiveMultiplier(group, userRate, BILLING_MODE_IMAGE).value
   return (['1K', '2K', '4K'] as ImageResolutionTier[]).map((tier) => {
-    const custom = configuredPrice(group, tier)
+    const custom = configuredPrice(group, model, tier)
     const basePrice = custom ?? getDefaultImagePrice(platform, model, tier)
     return {
       tier,

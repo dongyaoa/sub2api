@@ -43,6 +43,7 @@ const geminiModels = [
   // Keep in sync with backend curated Gemini lists.
   // This list is intentionally conservative (models commonly available across OAuth/API key).
   'gemini-3.1-flash-image',
+  'gemini-3-pro-image-preview',
   'gemini-2.5-flash-image',
   'gemini-2.0-flash',
   'gemini-2.5-flash',
@@ -152,12 +153,10 @@ const xaiModels = [
   'composer-2.5',
   'grok-4.20-reasoning',
   'grok-4.20-non-reasoning',
-  'grok-imagine',
   'grok-imagine-image-quality',
   'grok-imagine-image',
-  'grok-imagine-edit',
   'grok-imagine-video',
-  'grok-imagine-video-1.5'
+  'grok-imagine-video-1.5-preview'
 ]
 
 // Cohere
@@ -299,7 +298,8 @@ const geminiPresetMappings = [
   { label: '2.5 Image', from: 'gemini-2.5-flash-image', to: 'gemini-2.5-flash-image', color: 'bg-sky-100 text-sky-700 hover:bg-sky-200 dark:bg-sky-900/30 dark:text-sky-400' },
   { label: '2.5 Pro', from: 'gemini-2.5-pro', to: 'gemini-2.5-pro', color: 'bg-purple-100 text-purple-700 hover:bg-purple-200 dark:bg-purple-900/30 dark:text-purple-400' },
   { label: '3.5 Flash', from: 'gemini-3.5-flash', to: 'gemini-3.5-flash', color: 'bg-violet-100 text-violet-700 hover:bg-violet-200 dark:bg-violet-900/30 dark:text-violet-400' },
-  { label: '3.1 Image', from: 'gemini-3.1-flash-image', to: 'gemini-3.1-flash-image', color: 'bg-sky-100 text-sky-700 hover:bg-sky-200 dark:bg-sky-900/30 dark:text-sky-400' }
+  { label: '3.1 Image', from: 'gemini-3.1-flash-image', to: 'gemini-3.1-flash-image', color: 'bg-sky-100 text-sky-700 hover:bg-sky-200 dark:bg-sky-900/30 dark:text-sky-400' },
+  { label: '3 Pro Image', from: 'gemini-3-pro-image-preview', to: 'gemini-3-pro-image-preview', color: 'bg-cyan-100 text-cyan-700 hover:bg-cyan-200 dark:bg-cyan-900/30 dark:text-cyan-400' }
 ]
 
 const grokPresetMappings = [
@@ -313,9 +313,10 @@ const grokPresetMappings = [
   { label: 'Composer legacy', from: 'composer-2.5', to: 'grok-composer-2.5-fast', color: 'bg-teal-100 text-teal-700 hover:bg-teal-200 dark:bg-teal-900/30 dark:text-teal-400' },
   { label: '4.20 Reasoning', from: 'grok-4.20-reasoning', to: 'grok-4.20-0309-reasoning', color: 'bg-indigo-100 text-indigo-700 hover:bg-indigo-200 dark:bg-indigo-900/30 dark:text-indigo-400' },
   { label: '4.20 Non Reasoning', from: 'grok-4.20-non-reasoning', to: 'grok-4.20-0309-non-reasoning', color: 'bg-violet-100 text-violet-700 hover:bg-violet-200 dark:bg-violet-900/30 dark:text-violet-400' },
-  { label: 'Imagine Image', from: 'grok-imagine', to: 'grok-imagine-image-quality', color: 'bg-sky-100 text-sky-700 hover:bg-sky-200 dark:bg-sky-900/30 dark:text-sky-400' },
-  { label: 'Imagine Edit', from: 'grok-imagine-edit', to: 'grok-imagine-edit', color: 'bg-rose-100 text-rose-700 hover:bg-rose-200 dark:bg-rose-900/30 dark:text-rose-400' },
-  { label: 'Imagine Video', from: 'grok-imagine-video-1.5', to: 'grok-imagine-video-1.5', color: 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400' }
+  { label: 'Imagine Image', from: 'grok-imagine-image', to: 'grok-imagine-image', color: 'bg-sky-100 text-sky-700 hover:bg-sky-200 dark:bg-sky-900/30 dark:text-sky-400' },
+  { label: 'Imagine Image Quality', from: 'grok-imagine-image-quality', to: 'grok-imagine-image-quality', color: 'bg-cyan-100 text-cyan-700 hover:bg-cyan-200 dark:bg-cyan-900/30 dark:text-cyan-400' },
+  { label: 'Imagine Video', from: 'grok-imagine-video', to: 'grok-imagine-video', color: 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400' },
+  { label: 'Imagine Video 1.5 Preview', from: 'grok-imagine-video-1.5-preview', to: 'grok-imagine-video-1.5-preview', color: 'bg-orange-100 text-orange-700 hover:bg-orange-200 dark:bg-orange-900/30 dark:text-orange-400' }
 ]
 
 // Antigravity 预设映射（支持通配符）

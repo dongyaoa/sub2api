@@ -1394,32 +1394,27 @@ func (s *BillingService) ForceUpdatePricing() error {
 
 // ImagePriceConfig 图片计费配置
 type ImagePriceConfig struct {
-	Price1K *float64 // 1K 尺寸价格（nil 表示使用默认值）
-	Price2K *float64 // 2K 尺寸价格（nil 表示使用默认值）
+	Price1K *float64 // Grok: grok-imagine-image 按张价格；其他平台: 1K 尺寸价格
+	Price2K *float64 // Grok: grok-imagine-image-quality 按张价格；其他平台: 2K 尺寸价格
 	Price4K *float64 // 4K 尺寸价格（nil 表示使用默认值）
 }
 
 // VideoPriceConfig 视频生成计费配置。所有价格均为**每秒**单价（USD/s），与 xAI 官方计费口径一致。
 type VideoPriceConfig struct {
-	Price480P  *float64 // 480p 每秒价格（nil 表示使用默认值）
-	Price720P  *float64 // 720p 每秒价格（nil 表示使用默认值）
-	Price1080P *float64 // 1080p 每秒价格（nil 表示使用默认值）
+	Price480P  *float64 // grok-imagine-video 每秒价格（nil 表示使用默认值）
+	Price720P  *float64 // grok-imagine-video-1.5-preview 每秒价格（nil 表示使用默认值）
+	Price1080P *float64 // 1080p 每秒价格（保留用于旧配置兼容）
 }
 
 const (
 	defaultImageGenerationPrice = 0.134
 
-	defaultGrokImagineImagePrice1K        = 0.02
-	defaultGrokImagineImagePrice2K        = 0.02
-	defaultGrokImagineImageQualityPrice1K = 0.05
-	defaultGrokImagineImageQualityPrice2K = 0.07
+	defaultGrokImagineImagePrice        = 0.005
+	defaultGrokImagineImageQualityPrice = 0.01
 
 	// 视频默认价为 xAI 官方**每秒**输出价格（USD/s），总价 = 每秒价 × 时长（秒）。
-	defaultGrokImagineVideoPrice480P    = 0.05
-	defaultGrokImagineVideoPrice720P    = 0.07
-	defaultGrokImagineVideo15Price480P  = 0.08
-	defaultGrokImagineVideo15Price720P  = 0.14
-	defaultGrokImagineVideo15Price1080P = 0.25
+	defaultGrokImagineVideoPrice          = 0.05
+	defaultGrokImagineVideo15PreviewPrice = 0.15
 
 	// Codex alpha/search 网页搜索单次默认价：OpenAI 官方 web search 定价 $10/1000 次。
 	defaultWebSearchPricePerCall = 0.01
@@ -1512,47 +1507,65 @@ func (s *BillingService) CalculateVideoCost(model string, resolution string, vid
 
 // getImageUnitPrice 获取图片单价
 func (s *BillingService) getImageUnitPrice(model string, imageSize string, groupConfig *ImagePriceConfig) float64 {
-	// 优先使用分组配置的价格
 	if groupConfig != nil {
-		switch imageSize {
-		case "1K":
-			if groupConfig.Price1K != nil {
-				return *groupConfig.Price1K
-			}
-		case "2K":
-			if groupConfig.Price2K != nil {
-				return *groupConfig.Price2K
-			}
-		case "4K":
-			if groupConfig.Price4K != nil {
-				return *groupConfig.Price4K
-			}
+		if price := groupConfig.priceFor(model, imageSize); price != nil {
+			return *price
 		}
 	}
-
-	// 回退到 LiteLLM 默认价格
 	return s.getDefaultImagePrice(model, imageSize)
 }
 
 func (s *BillingService) getVideoUnitPrice(model string, resolution string, groupConfig *VideoPriceConfig) float64 {
 	if groupConfig != nil {
-		switch resolution {
-		case VideoBillingResolution480P:
-			if groupConfig.Price480P != nil {
-				return *groupConfig.Price480P
-			}
-		case VideoBillingResolution720P:
-			if groupConfig.Price720P != nil {
-				return *groupConfig.Price720P
-			}
-		case VideoBillingResolution1080P:
-			if groupConfig.Price1080P != nil {
-				return *groupConfig.Price1080P
-			}
+		if price := groupConfig.priceFor(model, resolution); price != nil {
+			return *price
 		}
 	}
-
 	return s.getDefaultVideoPrice(model, resolution)
+}
+
+func (c *ImagePriceConfig) priceFor(model string, imageSize string) *float64 {
+	if c == nil {
+		return nil
+	}
+	switch strings.ToLower(strings.TrimSpace(model)) {
+	case "grok-imagine-image":
+		return c.Price1K
+	case "grok-imagine-image-quality":
+		return c.Price2K
+	}
+	switch NormalizeImageBillingTierOrDefault(imageSize) {
+	case ImageBillingSize1K:
+		return c.Price1K
+	case ImageBillingSize2K:
+		return c.Price2K
+	case ImageBillingSize4K:
+		return c.Price4K
+	default:
+		return c.Price2K
+	}
+}
+
+func (c *VideoPriceConfig) priceFor(model string, resolution string) *float64 {
+	if c == nil {
+		return nil
+	}
+	switch strings.ToLower(strings.TrimSpace(model)) {
+	case "grok-imagine-video":
+		return c.Price480P
+	case "grok-imagine-video-1.5-preview", "grok-imagine-video-1.5":
+		return c.Price720P
+	}
+	switch NormalizeVideoBillingResolutionOrDefault(resolution) {
+	case VideoBillingResolution480P:
+		return c.Price480P
+	case VideoBillingResolution720P:
+		return c.Price720P
+	case VideoBillingResolution1080P:
+		return c.Price1080P
+	default:
+		return c.Price480P
+	}
 }
 
 // getDefaultImagePrice 获取 LiteLLM 默认图片价格
@@ -1603,56 +1616,21 @@ func getDefaultGrokImagineImagePrice(model string, imageSize string) (float64, b
 	model = strings.ToLower(strings.TrimSpace(model))
 	switch model {
 	case "grok-imagine-image-quality":
-		return getGrokImagineImageTierPrice(
-			imageSize,
-			defaultGrokImagineImageQualityPrice1K,
-			defaultGrokImagineImageQualityPrice2K,
-		), true
-	case "grok-imagine", "grok-imagine-image", "grok-imagine-edit":
-		return getGrokImagineImageTierPrice(
-			imageSize,
-			defaultGrokImagineImagePrice1K,
-			defaultGrokImagineImagePrice2K,
-		), true
+		return defaultGrokImagineImageQualityPrice, true
+	case "grok-imagine-image":
+		return defaultGrokImagineImagePrice, true
 	default:
 		return 0, false
 	}
 }
 
-func getGrokImagineImageTierPrice(imageSize string, price1K float64, price2K float64) float64 {
-	switch NormalizeImageBillingTierOrDefault(imageSize) {
-	case ImageBillingSize1K:
-		return price1K
-	case ImageBillingSize2K, ImageBillingSize4K:
-		return price2K
-	default:
-		return price2K
-	}
-}
-
 func getDefaultGrokImagineVideoPrice(model string, resolution string) (float64, bool) {
 	model = strings.ToLower(strings.TrimSpace(model))
-	switch {
-	case strings.HasPrefix(model, "grok-imagine-video-1.5"):
-		switch NormalizeVideoBillingResolutionOrDefault(resolution) {
-		case VideoBillingResolution480P:
-			return defaultGrokImagineVideo15Price480P, true
-		case VideoBillingResolution720P:
-			return defaultGrokImagineVideo15Price720P, true
-		case VideoBillingResolution1080P:
-			return defaultGrokImagineVideo15Price1080P, true
-		default:
-			return defaultGrokImagineVideo15Price480P, true
-		}
-	case strings.HasPrefix(model, "grok-imagine-video"):
-		switch NormalizeVideoBillingResolutionOrDefault(resolution) {
-		case VideoBillingResolution480P:
-			return defaultGrokImagineVideoPrice480P, true
-		case VideoBillingResolution720P, VideoBillingResolution1080P:
-			return defaultGrokImagineVideoPrice720P, true
-		default:
-			return defaultGrokImagineVideoPrice480P, true
-		}
+	switch model {
+	case "grok-imagine-video-1.5-preview", "grok-imagine-video-1.5":
+		return defaultGrokImagineVideo15PreviewPrice, true
+	case "grok-imagine-video":
+		return defaultGrokImagineVideoPrice, true
 	default:
 		return 0, false
 	}

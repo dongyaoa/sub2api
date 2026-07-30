@@ -13,6 +13,7 @@ func TestDefaultModels_ContainsImageModels(t *testing.T) {
 	required := []string{
 		"gemini-2.5-flash-image",
 		"gemini-3.1-flash-image",
+		"gemini-3-pro-image-preview",
 	}
 
 	for _, id := range required {

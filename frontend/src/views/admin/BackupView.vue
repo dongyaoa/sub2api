@@ -115,7 +115,12 @@
           </div>
           <div>
             <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">{{ t('admin.backup.imageStorage.presignExpiryHours') }}</label>
-            <input v-model.number="imageStorageForm.presign_expiry_hours" type="number" min="1" class="input w-full" />
+            <input v-model.number="imageStorageForm.presign_expiry_hours" type="number" min="1" max="168" class="input w-full" />
+          </div>
+          <div>
+            <label class="mb-1 block text-xs font-medium text-gray-600 dark:text-gray-400">{{ t('admin.backup.imageStorage.historyRetentionDays') }}</label>
+            <input v-model.number="imageStorageForm.history_retention_days" type="number" min="1" max="365" class="input w-full" />
+            <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('admin.backup.imageStorage.historyRetentionHint') }}</p>
           </div>
         </div>
 
@@ -405,7 +410,8 @@ const imageStorageForm = ref<ImageStorageConfig>({
   bucket: '',
   prefix: 'images/',
   public_base_url: '',
-  presign_expiry_hours: 24,
+  presign_expiry_hours: 168,
+  history_retention_days: 7,
   max_download_bytes: 33554432,
   endpoint: '',
   region: 'auto',
@@ -592,6 +598,7 @@ async function loadImageStorageConfig() {
       ...config,
       prefix: config.prefix || 'images/',
       region: config.region || 'auto',
+      history_retention_days: config.history_retention_days || 7,
       secret_access_key: '',
     }
     imageStorageSecretConfigured.value = secret_configured
