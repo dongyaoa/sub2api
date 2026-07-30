@@ -61,6 +61,36 @@ func TestGrokAPIKeyURLPolicyFollowsGlobalSecurityConfig(t *testing.T) {
 	})
 }
 
+func TestBuildGrokMediaURLUses2KENVideoCreateEndpoint(t *testing.T) {
+	cfg := &config.Config{}
+	twoKEN := &Account{
+		Platform: PlatformGrok,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"base_url": "https://apis.2ken.com/v1",
+		},
+	}
+
+	createURL, err := buildGrokMediaURL(twoKEN, cfg, GrokMediaEndpointVideosGenerations, "")
+	require.NoError(t, err)
+	require.Equal(t, "https://apis.2ken.com/v1/videos", createURL)
+
+	statusURL, err := buildGrokMediaURL(twoKEN, cfg, GrokMediaEndpointVideoStatus, "task 123")
+	require.NoError(t, err)
+	require.Equal(t, "https://apis.2ken.com/v1/videos/task%20123", statusURL)
+
+	official := &Account{
+		Platform: PlatformGrok,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"base_url": xai.DefaultBaseURL,
+		},
+	}
+	officialCreateURL, err := buildGrokMediaURL(official, cfg, GrokMediaEndpointVideosGenerations, "")
+	require.NoError(t, err)
+	require.Equal(t, xai.DefaultBaseURL+"/videos/generations", officialCreateURL)
+}
+
 func TestGrokAPIKeyURLPolicyAppliesAllowlistAndPrivateHostControls(t *testing.T) {
 	account := &Account{
 		Platform: PlatformGrok,

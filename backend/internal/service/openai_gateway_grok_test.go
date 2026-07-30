@@ -775,6 +775,84 @@ func TestParseGrokMediaVideoRequestResolution(t *testing.T) {
 	require.Equal(t, "720p", info.Resolution)
 }
 
+func TestAdapt2KENVideoForwardBody(t *testing.T) {
+	account := &Account{
+		Platform: PlatformGrok,
+		Type:     AccountTypeAPIKey,
+		Credentials: map[string]any{
+			"base_url": "https://apis.2ken.com/v1",
+		},
+	}
+
+	t.Run("text to video uses legacy create fields", func(t *testing.T) {
+		body := []byte(`{"model":"grok-imagine-video","prompt":"waves","resolution":"1080p","duration":8}`)
+		adapted, contentType, err := adapt2KENVideoForwardBody(
+			account,
+			GrokMediaEndpointVideosGenerations,
+			body,
+			"application/json",
+		)
+
+		require.NoError(t, err)
+		require.Equal(t, "application/json", contentType)
+		require.JSONEq(t, `{
+			"model":"grok-imagine-video",
+			"prompt":"waves",
+			"seconds":"8",
+			"size":"1024x1792"
+		}`, string(adapted))
+	})
+
+	t.Run("image to video preserves new controls and flattens image URL", func(t *testing.T) {
+		body := []byte(`{
+			"model":"grok-imagine-video-1.5-preview",
+			"prompt":"animate",
+			"resolution":"2k",
+			"aspect_ratio":"16:9",
+			"duration":20,
+			"image":{"url":"https://example.com/source.png"}
+		}`)
+		adapted, _, err := adapt2KENVideoForwardBody(
+			account,
+			GrokMediaEndpointVideosGenerations,
+			body,
+			"application/json",
+		)
+
+		require.NoError(t, err)
+		require.JSONEq(t, `{
+			"model":"grok-imagine-video-1.5-preview",
+			"prompt":"animate",
+			"resolution":"2K",
+			"aspect_ratio":"16:9",
+			"seconds":"15",
+			"size":"1792x1024",
+			"image_url":"https://example.com/source.png"
+		}`, string(adapted))
+	})
+
+	t.Run("official xAI payload is unchanged", func(t *testing.T) {
+		official := &Account{
+			Platform: PlatformGrok,
+			Type:     AccountTypeAPIKey,
+			Credentials: map[string]any{
+				"base_url": xai.DefaultBaseURL,
+			},
+		}
+		body := []byte(`{"model":"grok-imagine-video","resolution":"720p","duration":8}`)
+		adapted, contentType, err := adapt2KENVideoForwardBody(
+			official,
+			GrokMediaEndpointVideosGenerations,
+			body,
+			"application/json",
+		)
+
+		require.NoError(t, err)
+		require.Equal(t, "application/json", contentType)
+		require.Equal(t, body, adapted)
+	})
+}
+
 func TestParseGrokMediaRequestAcceptsOfficialImageURLFields(t *testing.T) {
 	body := []byte(`{
 		"model":"grok-imagine-video-1.5-preview",

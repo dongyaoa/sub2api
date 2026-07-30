@@ -369,6 +369,10 @@ func (s *OpenAIGatewayService) ForwardGrokMedia(
 	if err != nil {
 		return nil, err
 	}
+	body, contentType, err = adapt2KENVideoForwardBody(account, endpoint, body, contentType)
+	if err != nil {
+		return nil, err
+	}
 
 	var bodyReader io.Reader
 	if endpoint.RequiresRequestBody() {
@@ -757,6 +761,125 @@ func sanitizeGrokMediaForwardBody(endpoint GrokMediaEndpoint, body []byte, conte
 	default:
 		return body, contentType, nil
 	}
+}
+
+func adapt2KENVideoForwardBody(
+	account *Account,
+	endpoint GrokMediaEndpoint,
+	body []byte,
+	contentType string,
+) ([]byte, string, error) {
+	if account == nil || endpoint != GrokMediaEndpointVideosGenerations ||
+		!is2KENVideoAPI(account.GetGrokMediaBaseURL()) || !gjson.ValidBytes(body) {
+		return body, contentType, nil
+	}
+
+	out := body
+	durationSeconds := 0
+	if seconds := gjson.GetBytes(out, "seconds"); seconds.Exists() {
+		durationSeconds, _ = strconv.Atoi(strings.TrimSpace(seconds.String()))
+	} else if duration := gjson.GetBytes(out, "duration"); duration.Exists() {
+		durationSeconds, _ = strconv.Atoi(strings.TrimSpace(duration.String()))
+	}
+	durationSeconds = NormalizeVideoBillingDurationSecondsOrDefault(durationSeconds)
+
+	var err error
+	out, err = sjson.SetBytes(out, "seconds", strconv.Itoa(durationSeconds))
+	if err != nil {
+		return nil, "", fmt.Errorf("adapt 2KEN video seconds: %w", err)
+	}
+	if gjson.GetBytes(out, "duration").Exists() {
+		out, err = sjson.DeleteBytes(out, "duration")
+		if err != nil {
+			return nil, "", fmt.Errorf("remove 2KEN-incompatible video duration: %w", err)
+		}
+	}
+
+	resolution := strings.TrimSpace(gjson.GetBytes(out, "resolution").String())
+	aspectRatio := strings.TrimSpace(gjson.GetBytes(out, "aspect_ratio").String())
+	if strings.TrimSpace(gjson.GetBytes(out, "size").String()) == "" {
+		out, err = sjson.SetBytes(out, "size", twoKENVideoSize(resolution, aspectRatio))
+		if err != nil {
+			return nil, "", fmt.Errorf("adapt 2KEN video size: %w", err)
+		}
+	}
+	if tier, ok := twoKENImageResolutionTier(resolution); ok {
+		out, err = sjson.SetBytes(out, "resolution", tier)
+		if err != nil {
+			return nil, "", fmt.Errorf("normalize 2KEN video resolution: %w", err)
+		}
+	} else if resolution != "" {
+		out, err = sjson.DeleteBytes(out, "resolution")
+		if err != nil {
+			return nil, "", fmt.Errorf("remove 2KEN-incompatible video resolution: %w", err)
+		}
+	}
+
+	if imageURL := first2KENVideoImageURL(out); imageURL != "" {
+		out, err = sjson.SetBytes(out, "image_url", imageURL)
+		if err != nil {
+			return nil, "", fmt.Errorf("adapt 2KEN video image URL: %w", err)
+		}
+	}
+	for _, field := range []string{"image", "images", "reference_images"} {
+		if !gjson.GetBytes(out, field).Exists() {
+			continue
+		}
+		out, err = sjson.DeleteBytes(out, field)
+		if err != nil {
+			return nil, "", fmt.Errorf("remove 2KEN-incompatible video image field %s: %w", field, err)
+		}
+	}
+	return out, "application/json", nil
+}
+
+func first2KENVideoImageURL(body []byte) string {
+	if imageURL := strings.TrimSpace(gjson.GetBytes(body, "image_url").String()); imageURL != "" {
+		return imageURL
+	}
+	for _, path := range []string{"image", "images.0", "reference_images.0"} {
+		value := gjson.GetBytes(body, path)
+		if imageURL := grokMediaJSONImageURL(value); imageURL != "" {
+			return imageURL
+		}
+		if value.Type == gjson.String {
+			if imageURL := strings.TrimSpace(value.String()); imageURL != "" {
+				return imageURL
+			}
+		}
+	}
+	return ""
+}
+
+func twoKENImageResolutionTier(resolution string) (string, bool) {
+	switch strings.ToLower(strings.TrimSpace(resolution)) {
+	case "1k":
+		return "1K", true
+	case "2k":
+		return "2K", true
+	default:
+		return "", false
+	}
+}
+
+func twoKENVideoSize(resolution, aspectRatio string) string {
+	highResolution := strings.EqualFold(strings.TrimSpace(resolution), "1080p") ||
+		strings.EqualFold(strings.TrimSpace(resolution), "2K")
+	landscape := false
+	switch strings.ToLower(strings.TrimSpace(aspectRatio)) {
+	case "16:9", "4:3", "3:2", "2:1", "19.5:9", "20:9":
+		landscape = true
+	}
+	if highResolution {
+		if landscape {
+			return "1792x1024"
+		}
+		return "1024x1792"
+	}
+	if landscape {
+		return "1280x720"
+	}
+	return "720x1280"
 }
 
 func (r GrokMediaRequestInfo) HasInputImage() bool {

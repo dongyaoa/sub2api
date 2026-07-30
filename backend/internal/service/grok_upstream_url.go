@@ -3,6 +3,8 @@ package service
 import (
 	"errors"
 	"fmt"
+	"net/url"
+	"strings"
 
 	"github.com/Wei-Shaw/sub2api/internal/config"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
@@ -105,7 +107,14 @@ func buildGrokMediaURL(account *Account, cfg *config.Config, endpoint GrokMediaE
 	case GrokMediaEndpointImagesEdits:
 		return xai.BuildImagesEditsURLWithValidator(baseURL, validator)
 	case GrokMediaEndpointVideosGenerations:
-		return xai.BuildVideosGenerationsURLWithValidator(baseURL, validator)
+		target, err := xai.BuildVideosGenerationsURLWithValidator(baseURL, validator)
+		if err != nil {
+			return "", err
+		}
+		if is2KENVideoAPI(baseURL) {
+			return strings.TrimSuffix(target, "/generations"), nil
+		}
+		return target, nil
 	case GrokMediaEndpointVideosEdits:
 		return xai.BuildVideosEditsURLWithValidator(baseURL, validator)
 	case GrokMediaEndpointVideosExtensions:
@@ -121,4 +130,13 @@ func buildGrokMediaURL(account *Account, cfg *config.Config, endpoint GrokMediaE
 	default:
 		return "", fmt.Errorf("unsupported grok media endpoint: %s", endpoint)
 	}
+}
+
+func is2KENVideoAPI(rawBaseURL string) bool {
+	parsed, err := url.Parse(strings.TrimSpace(rawBaseURL))
+	if err != nil {
+		return false
+	}
+	host := strings.ToLower(parsed.Hostname())
+	return host == "2ken.com" || strings.HasSuffix(host, ".2ken.com")
 }
