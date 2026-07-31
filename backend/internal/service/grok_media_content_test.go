@@ -75,6 +75,14 @@ func grokMediaContentMP4(payload string) string {
 	return "\x00\x00\x00\x18ftypisomavc1mp4a" + payload
 }
 
+func grokMediaContentTestTranscodeContext(ctx context.Context) context.Context {
+	return context.WithValue(ctx, browserVideoTranscoderContextKey{}, browserVideoTranscoder(
+		func(_ context.Context, _ string, data []byte) ([]byte, error) {
+			return append([]byte(nil), data...), nil
+		},
+	))
+}
+
 func TestForwardGrokMediaContentUsesUpstreamCredentialAndStreamsRange(t *testing.T) {
 	upstream := &grokMediaContentUpstreamStub{
 		responses: []*http.Response{grokMediaContentStatusResponse(`{"status":"completed"}`), {
@@ -134,7 +142,7 @@ func TestForwardGrokMediaContentStreamsFullResponseWithSafeDefaults(t *testing.T
 	c, recorder := grokMediaContentTestContext(http.MethodGet, "https://api.example/v1/videos/task-1/content", nil)
 
 	_, err := svc.ForwardGrokMedia(
-		context.Background(), c, grokMediaContentTestAccount(),
+		grokMediaContentTestTranscodeContext(context.Background()), c, grokMediaContentTestAccount(),
 		GrokMediaEndpointVideoContent, "task-1", nil, "",
 	)
 
@@ -247,7 +255,7 @@ func TestForwardGrokMediaContentFollowsAuthenticatedSub2APIRelay(t *testing.T) {
 			c, recorder := grokMediaContentTestContext(http.MethodGet, "https://api.example/v1/videos/task-1/content", nil)
 
 			_, err := svc.ForwardGrokMedia(
-				context.Background(), c, grokMediaContentTestAccount(),
+				grokMediaContentTestTranscodeContext(context.Background()), c, grokMediaContentTestAccount(),
 				GrokMediaEndpointVideoContent, "task-1", nil, "",
 			)
 
@@ -279,6 +287,7 @@ func TestForwardGrokMediaContentPersistsValidatedFullVideo(t *testing.T) {
 		persistedBody = string(data)
 		return nil
 	})
+	ctx = grokMediaContentTestTranscodeContext(ctx)
 
 	_, err := svc.ForwardGrokMedia(ctx, c, grokMediaContentTestAccount(), GrokMediaEndpointVideoContent, "task-1", nil, "")
 

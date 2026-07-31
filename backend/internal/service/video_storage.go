@@ -21,6 +21,7 @@ const (
 type browserVideoTranscoder func(ctx context.Context, contentType string, data []byte) ([]byte, error)
 
 type grokVideoContentPersisterContextKey struct{}
+type browserVideoTranscoderContextKey struct{}
 
 type GrokVideoContentPersister func(ctx context.Context, requestID, contentType string, data []byte) error
 
@@ -40,7 +41,13 @@ func grokVideoContentPersisterFromContext(ctx context.Context) GrokVideoContentP
 }
 
 func ensureBrowserPlayableVideo(ctx context.Context, declaredContentType string, data []byte) ([]byte, string, error) {
-	return prepareBrowserPlayableVideo(ctx, declaredContentType, data, transcodeVideoWithFFmpeg)
+	transcode := transcodeVideoWithFFmpeg
+	if ctx != nil {
+		if override, ok := ctx.Value(browserVideoTranscoderContextKey{}).(browserVideoTranscoder); ok && override != nil {
+			transcode = override
+		}
+	}
+	return prepareBrowserPlayableVideo(ctx, declaredContentType, data, transcode)
 }
 
 func prepareBrowserPlayableVideo(
