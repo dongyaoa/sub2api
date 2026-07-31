@@ -1002,13 +1002,13 @@ func TestCalculateVideoCostBillsPerSecond(t *testing.T) {
 
 	oneSecond := svc.CalculateVideoCost("grok-imagine-video", "720p", 1, 1, nil, 1.0)
 	fifteenSeconds := svc.CalculateVideoCost("grok-imagine-video", "720p", 1, 15, nil, 1.0)
-	// duration <=0 时按上游默认 8 秒计费，超出上限按 15 秒收敛。
+	// duration <=0 时按上游默认 4 秒计费，超出上限按 15 秒收敛。
 	defaultDuration := svc.CalculateVideoCost("grok-imagine-video", "720p", 1, 0, nil, 1.0)
 	clampedDuration := svc.CalculateVideoCost("grok-imagine-video", "720p", 1, 999, nil, 1.0)
 
 	require.InDelta(t, 0.05, oneSecond.TotalCost, 1e-10)
 	require.InDelta(t, 0.05*15, fifteenSeconds.TotalCost, 1e-10)
-	require.InDelta(t, 0.05*8, defaultDuration.TotalCost, 1e-10)
+	require.InDelta(t, 0.05*4, defaultDuration.TotalCost, 1e-10)
 	require.InDelta(t, 0.05*15, clampedDuration.TotalCost, 1e-10)
 }
 

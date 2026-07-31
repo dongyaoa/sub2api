@@ -150,8 +150,10 @@ func parseGrokMediaJSONRequest(body []byte, info *GrokMediaRequestInfo) {
 	info.Prompt = strings.TrimSpace(gjson.GetBytes(body, "prompt").String())
 	info.Size = strings.TrimSpace(gjson.GetBytes(body, "size").String())
 	info.Resolution = strings.TrimSpace(gjson.GetBytes(body, "resolution").String())
-	if duration := gjson.GetBytes(body, "duration"); duration.Exists() && duration.Type == gjson.Number {
-		info.DurationSeconds = int(duration.Int())
+	if seconds := gjson.GetBytes(body, "seconds"); seconds.Exists() {
+		info.DurationSeconds, _ = strconv.Atoi(strings.TrimSpace(seconds.String()))
+	} else if duration := gjson.GetBytes(body, "duration"); duration.Exists() {
+		info.DurationSeconds, _ = strconv.Atoi(strings.TrimSpace(duration.String()))
 	}
 	if n := gjson.GetBytes(body, "n"); n.Exists() && n.Type == gjson.Number {
 		info.N = int(n.Int())
@@ -262,9 +264,15 @@ func parseGrokMediaMultipartRequest(contentType string, body []byte, info *GrokM
 			info.Size = value
 		case "resolution":
 			info.Resolution = value
+		case "seconds":
+			if seconds, err := strconv.Atoi(value); err == nil {
+				info.DurationSeconds = seconds
+			}
 		case "duration":
 			if duration, err := strconv.Atoi(value); err == nil {
-				info.DurationSeconds = duration
+				if info.DurationSeconds == 0 {
+					info.DurationSeconds = duration
+				}
 			}
 		case "n":
 			if n, err := strconv.Atoi(value); err == nil {
@@ -836,16 +844,15 @@ func adapt2KENVideoForwardBody(
 		}
 	}
 
-	resolution := strings.TrimSpace(gjson.GetBytes(out, "resolution").String())
-	aspectRatio := strings.TrimSpace(gjson.GetBytes(out, "aspect_ratio").String())
-	if strings.TrimSpace(gjson.GetBytes(out, "size").String()) == "" {
-		out, err = sjson.SetBytes(out, "size", twoKENVideoSize(resolution, aspectRatio))
+	if gjson.GetBytes(out, "size").Exists() {
+		out, err = sjson.DeleteBytes(out, "size")
 		if err != nil {
-			return nil, "", fmt.Errorf("adapt 2KEN video size: %w", err)
+			return nil, "", fmt.Errorf("remove 2KEN video size: %w", err)
 		}
 	}
-	if tier, ok := twoKENImageResolutionTier(resolution); ok {
-		out, err = sjson.SetBytes(out, "resolution", tier)
+	resolution := strings.TrimSpace(gjson.GetBytes(out, "resolution").String())
+	if normalized, ok := twoKENVideoResolution(resolution); ok {
+		out, err = sjson.SetBytes(out, "resolution", normalized)
 		if err != nil {
 			return nil, "", fmt.Errorf("normalize 2KEN video resolution: %w", err)
 		}
@@ -892,35 +899,17 @@ func first2KENVideoImageURL(body []byte) string {
 	return ""
 }
 
-func twoKENImageResolutionTier(resolution string) (string, bool) {
+func twoKENVideoResolution(resolution string) (string, bool) {
 	switch strings.ToLower(strings.TrimSpace(resolution)) {
-	case "1k":
-		return "1K", true
-	case "2k":
-		return "2K", true
+	case "480", "480p", "sd":
+		return VideoBillingResolution480P, true
+	case "720", "720p", "hd":
+		return VideoBillingResolution720P, true
+	case "1080", "1080p", "full_hd", "full-hd", "fhd":
+		return VideoBillingResolution1080P, true
 	default:
 		return "", false
 	}
-}
-
-func twoKENVideoSize(resolution, aspectRatio string) string {
-	highResolution := strings.EqualFold(strings.TrimSpace(resolution), "1080p") ||
-		strings.EqualFold(strings.TrimSpace(resolution), "2K")
-	landscape := false
-	switch strings.ToLower(strings.TrimSpace(aspectRatio)) {
-	case "16:9", "4:3", "3:2", "2:1", "19.5:9", "20:9":
-		landscape = true
-	}
-	if highResolution {
-		if landscape {
-			return "1792x1024"
-		}
-		return "1024x1792"
-	}
-	if landscape {
-		return "1280x720"
-	}
-	return "720x1280"
 }
 
 func (r GrokMediaRequestInfo) HasInputImage() bool {

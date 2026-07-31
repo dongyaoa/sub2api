@@ -445,7 +445,7 @@ const models = ref<VideoModel[]>([])
 const model = ref('')
 const prompt = ref('')
 const resolution = ref<VideoResolution>('480p')
-const duration = ref(8)
+const duration = ref(4)
 const loadingKeys = ref(true)
 const loadingModels = ref(false)
 const submitting = ref(false)
@@ -733,7 +733,7 @@ function backendTaskToHistory(taskItem: VideoTask, key: ApiKey): StoredVideoHist
       model: modelName,
       prompt: String(metadata?.prompt || ''),
       resolution: safeResolution,
-      duration: Math.max(1, Number(metadata?.duration) || 8),
+      duration: Math.max(1, Number(metadata?.duration) || 4),
     },
     startedAt: Number.isFinite(createdAt) && createdAt > 0 ? createdAt * 1000 : Date.now(),
     status: normalizedTaskState(taskItem.status),

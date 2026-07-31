@@ -768,11 +768,24 @@ func TestParseGrokMediaRequestBuildsMultipartModerationBody(t *testing.T) {
 	require.True(t, strings.HasPrefix(gjson.GetBytes(moderationBody, "images.0.image_url").String(), "data:image/"))
 }
 
-func TestParseGrokMediaVideoRequestResolution(t *testing.T) {
-	info := ParseGrokMediaRequest("application/json", []byte(`{"model":"grok-imagine-video","prompt":"waves","resolution":"720p"}`))
+func TestParseGrokMediaVideoRequestResolutionAndSeconds(t *testing.T) {
+	info := ParseGrokMediaRequest("application/json", []byte(`{"model":"grok-imagine-video","prompt":"waves","resolution":"720p","seconds":"10","duration":3}`))
 
 	require.Equal(t, "grok-imagine-video", info.Model)
 	require.Equal(t, "720p", info.Resolution)
+	require.Equal(t, 10, info.DurationSeconds)
+}
+
+func TestParseGrokMediaVideoRequestSecondsFromMultipart(t *testing.T) {
+	var buf bytes.Buffer
+	writer := multipart.NewWriter(&buf)
+	require.NoError(t, writer.WriteField("duration", "3"))
+	require.NoError(t, writer.WriteField("seconds", "12"))
+	require.NoError(t, writer.Close())
+
+	info := ParseGrokMediaRequest(writer.FormDataContentType(), buf.Bytes())
+
+	require.Equal(t, 12, info.DurationSeconds)
 }
 
 func TestAdapt2KENVideoForwardBody(t *testing.T) {
@@ -784,8 +797,8 @@ func TestAdapt2KENVideoForwardBody(t *testing.T) {
 		},
 	}
 
-	t.Run("text to video uses legacy create fields", func(t *testing.T) {
-		body := []byte(`{"model":"grok-imagine-video","prompt":"waves","resolution":"1080p","duration":8}`)
+	t.Run("text to video uses documented create fields", func(t *testing.T) {
+		body := []byte(`{"model":"grok-imagine-video","prompt":"waves","resolution":"1080p","duration":8,"size":"1792x1024"}`)
 		adapted, contentType, err := adapt2KENVideoForwardBody(
 			account,
 			GrokMediaEndpointVideosGenerations,
@@ -798,18 +811,20 @@ func TestAdapt2KENVideoForwardBody(t *testing.T) {
 		require.JSONEq(t, `{
 			"model":"grok-imagine-video",
 			"prompt":"waves",
-			"seconds":"8",
-			"size":"1024x1792"
+			"resolution":"1080p",
+			"seconds":"8"
 		}`, string(adapted))
+		require.False(t, gjson.GetBytes(adapted, "duration").Exists())
+		require.False(t, gjson.GetBytes(adapted, "size").Exists())
 	})
 
 	t.Run("image to video preserves new controls and flattens image URL", func(t *testing.T) {
 		body := []byte(`{
 			"model":"grok-imagine-video-1.5-preview",
 			"prompt":"animate",
-			"resolution":"2k",
+			"resolution":"720",
 			"aspect_ratio":"16:9",
-			"duration":20,
+			"seconds":"20",
 			"image":{"url":"https://example.com/source.png"}
 		}`)
 		adapted, _, err := adapt2KENVideoForwardBody(
@@ -823,12 +838,25 @@ func TestAdapt2KENVideoForwardBody(t *testing.T) {
 		require.JSONEq(t, `{
 			"model":"grok-imagine-video-1.5-preview",
 			"prompt":"animate",
-			"resolution":"2K",
+			"resolution":"720p",
 			"aspect_ratio":"16:9",
 			"seconds":"15",
-			"size":"1792x1024",
 			"image_url":"https://example.com/source.png"
 		}`, string(adapted))
+		require.False(t, gjson.GetBytes(adapted, "size").Exists())
+	})
+
+	t.Run("missing seconds uses upstream four second default", func(t *testing.T) {
+		adapted, _, err := adapt2KENVideoForwardBody(
+			account,
+			GrokMediaEndpointVideosGenerations,
+			[]byte(`{"model":"grok-imagine-video","prompt":"waves"}`),
+			"application/json",
+		)
+
+		require.NoError(t, err)
+		require.Equal(t, "4", gjson.GetBytes(adapted, "seconds").String())
+		require.False(t, gjson.GetBytes(adapted, "size").Exists())
 	})
 
 	t.Run("official xAI payload is unchanged", func(t *testing.T) {
@@ -1327,7 +1355,7 @@ func TestForwardGrokMediaVideoGenerationPreservesImageToVideoModel(t *testing.T)
 	require.JSONEq(t, `{"model":"grok-imagine-video-1.5-preview","prompt":"animate","image":{"url":"data:image/png;base64,aW1n"}}`, string(upstream.lastBody))
 	require.Equal(t, "video-request-456", result.ResponseID)
 	require.Equal(t, "grok-imagine-video-1.5-preview", result.BillingModel)
-	// 未指定 duration 时按上游默认 8 秒计费。
+	// 未指定 seconds 时按上游默认 4 秒计费。
 	require.Equal(t, VideoBillingDefaultDurationSeconds, result.VideoDurationSeconds)
 }
 

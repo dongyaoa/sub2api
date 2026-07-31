@@ -2111,9 +2111,9 @@ func TestOpenAIGatewayServiceRecordUsage_GrokVideoUsesDefaultRateCard(t *testing
 	require.NoError(t, err)
 	require.NotNil(t, usageRepo.lastLog)
 	require.Nil(t, usageRepo.lastLog.ImageSize)
-	// 结果未携带 duration 时按上游默认 8 秒计费：0.15 USD/s × 8s。
-	require.InDelta(t, 0.15*8, usageRepo.lastLog.TotalCost, 1e-12)
-	require.InDelta(t, 0.15*8, usageRepo.lastLog.ActualCost, 1e-12)
+	// 结果未携带 seconds 时按上游默认 4 秒计费：0.15 USD/s × 4s。
+	require.InDelta(t, 0.15*4, usageRepo.lastLog.TotalCost, 1e-12)
+	require.InDelta(t, 0.15*4, usageRepo.lastLog.ActualCost, 1e-12)
 	require.Equal(t, 1, usageRepo.lastLog.ImageCount)
 	require.NotNil(t, usageRepo.lastLog.BillingMode)
 	require.Equal(t, string(BillingModeVideo), *usageRepo.lastLog.BillingMode)
