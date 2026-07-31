@@ -25,6 +25,7 @@ describe('video studio API', () => {
       model: 'grok-imagine-video',
       prompt: 'camera pushes through the rain',
       resolution: '720p',
+      aspect_ratio: '3:2',
       duration: 8,
     })).resolves.toEqual(accepted)
 
@@ -40,6 +41,7 @@ describe('video studio API', () => {
       model: 'grok-imagine-video',
       prompt: 'camera pushes through the rain',
       resolution: '720p',
+      aspect_ratio: '3:2',
       duration: 8,
     })
   })

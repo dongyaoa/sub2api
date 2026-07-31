@@ -3,6 +3,7 @@ import {
   buildGenerateVideoRequest,
   filterVideoModels,
   getVideoResolutionOptions,
+  normalizeVideoAspectRatio,
   selectPreferredVideoModel,
 } from '../capabilities'
 
@@ -35,14 +36,24 @@ describe('video studio capabilities', () => {
       model: 'grok-imagine-video-1.5-preview',
       prompt: ' animate ',
       resolution: '1080p',
+      aspectRatio: '3:2',
       duration: 99,
       imageUrl: ' data:image/png;base64,aW1n ',
     })).toEqual({
       model: 'grok-imagine-video-1.5-preview',
       prompt: 'animate',
       resolution: '1080p',
+      aspect_ratio: '3:2',
       duration: 15,
       image: { url: 'data:image/png;base64,aW1n' },
     })
+  })
+
+  it('supports every documented Grok video aspect ratio and defaults invalid values', () => {
+    for (const ratio of ['1:1', '16:9', '9:16', '4:3', '3:4', '3:2', '2:3']) {
+      expect(normalizeVideoAspectRatio(ratio)).toBe(ratio)
+    }
+    expect(normalizeVideoAspectRatio('auto')).toBe('16:9')
+    expect(normalizeVideoAspectRatio(undefined)).toBe('16:9')
   })
 })

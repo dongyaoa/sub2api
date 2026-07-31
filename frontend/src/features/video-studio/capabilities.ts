@@ -1,5 +1,6 @@
 import type {
   GenerateVideoRequest,
+  VideoAspectRatio,
   VideoModel,
   VideoResolution,
   VideoStudioOperation,
@@ -7,6 +8,8 @@ import type {
 
 export const STANDARD_VIDEO_MODEL = 'grok-imagine-video'
 export const IMAGE_VIDEO_MODEL = 'grok-imagine-video-1.5-preview'
+export const DEFAULT_VIDEO_ASPECT_RATIO: VideoAspectRatio = '16:9'
+export const VIDEO_ASPECT_RATIOS: VideoAspectRatio[] = ['16:9', '9:16', '1:1', '4:3', '3:4', '3:2', '2:3']
 
 export function isVideoGenerationModel(modelId: string): boolean {
   const id = modelId.trim().toLowerCase()
@@ -53,11 +56,18 @@ export function normalizeVideoResolution(modelId: string, resolution: VideoResol
   return options.includes(resolution) ? resolution : options[0]
 }
 
+export function normalizeVideoAspectRatio(aspectRatio: string | undefined): VideoAspectRatio {
+  return VIDEO_ASPECT_RATIOS.includes(aspectRatio as VideoAspectRatio)
+    ? aspectRatio as VideoAspectRatio
+    : DEFAULT_VIDEO_ASPECT_RATIO
+}
+
 export function buildGenerateVideoRequest(input: {
   operation: VideoStudioOperation
   model: string
   prompt: string
   resolution: VideoResolution
+  aspectRatio: VideoAspectRatio
   duration: number
   imageUrl?: string
 }): GenerateVideoRequest {
@@ -65,6 +75,7 @@ export function buildGenerateVideoRequest(input: {
     model: input.model.trim(),
     prompt: input.prompt.trim(),
     resolution: normalizeVideoResolution(input.model, input.resolution),
+    aspect_ratio: normalizeVideoAspectRatio(input.aspectRatio),
     duration: Math.min(15, Math.max(1, Math.round(input.duration))),
   }
   const imageUrl = input.imageUrl?.trim()

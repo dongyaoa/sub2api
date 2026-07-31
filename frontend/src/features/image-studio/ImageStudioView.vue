@@ -656,7 +656,12 @@ const qualityOptions = computed<Array<{ value: ImageQuality; label: string }>>((
 ])
 const allResolutionTiers: ImageResolutionTier[] = ['1K', '2K', '4K']
 const maxQuantity = computed(() => getMaxImageQuantity(platform.value))
-const resolutionOptions = computed(() => getResolutionOptions(platform.value))
+const openAI4KEnabled = computed(() => (
+  platform.value === 'openai' &&
+  selectedGroup.value?.image_price_4k != null &&
+  Number.isFinite(Number(selectedGroup.value.image_price_4k))
+))
+const resolutionOptions = computed(() => getResolutionOptions(platform.value, openAI4KEnabled.value))
 const ratioOptions = computed(() => getAspectRatioOptions(platform.value))
 const outputSizeLabel = computed(() => platform.value === 'openai'
   ? getOpenAIImageSize(ratio.value, resolution.value).replace('x', ' x ')
@@ -726,13 +731,16 @@ function selectResolution(tier: ImageResolutionTier) {
   if (!resolutionOptions.value.includes(tier)) return
   resolution.value = tier
   if (platform.value === 'openai') {
-    ratio.value = tier === '1K' ? '1:1' : (ratio.value === '1:1' ? '3:2' : ratio.value)
+    if (tier === '1K') ratio.value = '1:1'
+    if (tier === '2K' && ratio.value === '1:1') ratio.value = '3:2'
   }
 }
 
 function selectRatio(nextRatio: ImageAspectRatio) {
   ratio.value = nextRatio
-  if (platform.value === 'openai') resolution.value = nextRatio === '1:1' ? '1K' : '2K'
+  if (platform.value === 'openai' && resolution.value !== '4K') {
+    resolution.value = nextRatio === '1:1' ? '1K' : '2K'
+  }
 }
 
 async function handleKeySelection() {
@@ -746,7 +754,12 @@ async function handleKeySelection() {
   activeImageIndex.value = 0
   imageLoadErrors.value = {}
   imageReloadTokens.value = {}
-  const normalized = normalizeStudioSelection(platform.value, ratio.value, resolution.value)
+  const normalized = normalizeStudioSelection(
+    platform.value,
+    ratio.value,
+    resolution.value,
+    openAI4KEnabled.value,
+  )
   ratio.value = normalized.ratio
   resolution.value = normalized.resolution
   quality.value = 'auto'
@@ -933,7 +946,7 @@ function imageTaskResolution(item: ImageTask): ImageResolutionTier {
   if (value === '1K' || value === '2K' || value === '4K') return value
   const size = item.metadata?.size?.toLowerCase() || ''
   if (size === '1536x1024' || size === '1024x1536' || size === '2k') return '2K'
-  if (size === '4k') return '4K'
+  if (size === '4k' || size === '4096x4096' || size === '4096x2731' || size === '2731x4096') return '4K'
   return '1K'
 }
 
@@ -941,8 +954,8 @@ function imageTaskRatio(item: ImageTask): ImageAspectRatio {
   const value = item.metadata?.aspect_ratio
   if (value && ['1:1', '3:2', '2:3', '16:9', '9:16', '4:3', '3:4'].includes(value)) return value
   const size = item.metadata?.size?.toLowerCase()
-  if (size === '1536x1024') return '3:2'
-  if (size === '1024x1536') return '2:3'
+  if (size === '1536x1024' || size === '4096x2731') return '3:2'
+  if (size === '1024x1536' || size === '2731x4096') return '2:3'
   return '1:1'
 }
 
@@ -1048,6 +1061,7 @@ function currentRequest(): GenerateImageRequest {
     ratio: ratio.value,
     resolution: resolution.value,
     quality: quality.value,
+    allowOpenAI4K: openAI4KEnabled.value,
   })
 }
 

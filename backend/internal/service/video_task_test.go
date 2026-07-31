@@ -78,7 +78,7 @@ func TestVideoTaskServicePersistsOwnershipStatusAndHistory(t *testing.T) {
 	svc := NewVideoTaskService(store, nil)
 	svc.ttl = 48 * time.Hour
 	owner := VideoTaskOwner{UserID: 7, APIKeyID: 9}
-	metadata := VideoTaskMetadata{Operation: "text", Model: "grok-imagine-video", Prompt: "move", Resolution: "720p", Duration: 8}
+	metadata := VideoTaskMetadata{Operation: "text", Model: "grok-imagine-video", Prompt: "move", Resolution: "720p", AspectRatio: "3:2", Duration: 8}
 
 	err := svc.RecordSubmission(context.Background(), owner, 3, 12, "task-1", metadata, []byte(`{"id":"task-1","status":"queued"}`))
 	require.NoError(t, err)
@@ -96,6 +96,7 @@ func TestVideoTaskServicePersistsOwnershipStatusAndHistory(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, tasks, 1)
 	require.Equal(t, VideoTaskStatusCompleted, tasks[0].Status)
+	require.Equal(t, "3:2", tasks[0].Metadata.AspectRatio)
 	require.Equal(t, 2, svc.RetentionDays())
 
 	require.NoError(t, svc.Clear(context.Background(), owner))
@@ -151,7 +152,7 @@ func TestPrepareBrowserPlayableVideoCanonicalizesTaggedH264MP4(t *testing.T) {
 }
 
 func TestVideoTaskRecordRequiresUpgradeForLegacyPlayableFlag(t *testing.T) {
-	legacy := &VideoTaskRecord{BrowserPlayable: true}
+	legacy := &VideoTaskRecord{BrowserPlayable: true, PlaybackFormatVersion: 1}
 	require.True(t, legacy.NeedsBrowserPlaybackUpgrade())
 
 	current := &VideoTaskRecord{

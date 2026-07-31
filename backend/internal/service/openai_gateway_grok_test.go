@@ -768,11 +768,12 @@ func TestParseGrokMediaRequestBuildsMultipartModerationBody(t *testing.T) {
 	require.True(t, strings.HasPrefix(gjson.GetBytes(moderationBody, "images.0.image_url").String(), "data:image/"))
 }
 
-func TestParseGrokMediaVideoRequestResolutionAndSeconds(t *testing.T) {
-	info := ParseGrokMediaRequest("application/json", []byte(`{"model":"grok-imagine-video","prompt":"waves","resolution":"720p","seconds":"10","duration":3}`))
+func TestParseGrokMediaVideoRequestResolutionAspectRatioAndSeconds(t *testing.T) {
+	info := ParseGrokMediaRequest("application/json", []byte(`{"model":"grok-imagine-video","prompt":"waves","resolution":"720p","aspect_ratio":"3:2","seconds":"10","duration":3}`))
 
 	require.Equal(t, "grok-imagine-video", info.Model)
 	require.Equal(t, "720p", info.Resolution)
+	require.Equal(t, "3:2", info.AspectRatio)
 	require.Equal(t, 10, info.DurationSeconds)
 }
 
@@ -798,7 +799,7 @@ func TestAdapt2KENVideoForwardBody(t *testing.T) {
 	}
 
 	t.Run("text to video uses documented create fields", func(t *testing.T) {
-		body := []byte(`{"model":"grok-imagine-video","prompt":"waves","resolution":"1080p","duration":8,"size":"1792x1024"}`)
+		body := []byte(`{"model":"grok-imagine-video","prompt":"waves","resolution":"1080p","aspect_ratio":"3:2","duration":8,"size":"1792x1024"}`)
 		adapted, contentType, err := adapt2KENVideoForwardBody(
 			account,
 			GrokMediaEndpointVideosGenerations,
@@ -812,6 +813,7 @@ func TestAdapt2KENVideoForwardBody(t *testing.T) {
 			"model":"grok-imagine-video",
 			"prompt":"waves",
 			"resolution":"1080p",
+			"aspect_ratio":"3:2",
 			"seconds":"8"
 		}`, string(adapted))
 		require.False(t, gjson.GetBytes(adapted, "duration").Exists())
@@ -844,6 +846,18 @@ func TestAdapt2KENVideoForwardBody(t *testing.T) {
 			"image_url":"https://example.com/source.png"
 		}`, string(adapted))
 		require.False(t, gjson.GetBytes(adapted, "size").Exists())
+	})
+
+	t.Run("unsupported aspect ratio is omitted", func(t *testing.T) {
+		adapted, _, err := adapt2KENVideoForwardBody(
+			account,
+			GrokMediaEndpointVideosGenerations,
+			[]byte(`{"model":"grok-imagine-video","prompt":"waves","aspect_ratio":"auto"}`),
+			"application/json",
+		)
+
+		require.NoError(t, err)
+		require.False(t, gjson.GetBytes(adapted, "aspect_ratio").Exists())
 	})
 
 	t.Run("missing seconds uses upstream four second default", func(t *testing.T) {

@@ -67,6 +67,7 @@ type GrokMediaRequestInfo struct {
 	Size            string
 	SizeTier        string
 	Resolution      string
+	AspectRatio     string
 	DurationSeconds int
 	InputImageURLs  []string
 	MaskImageURL    string
@@ -135,6 +136,7 @@ func ParseGrokMediaRequest(contentType string, body []byte) GrokMediaRequestInfo
 	info.Size = strings.TrimSpace(info.Size)
 	info.SizeTier = NormalizeImageBillingTierOrDefault(info.Size)
 	info.Resolution = NormalizeVideoBillingResolutionOrDefault(info.Resolution)
+	info.AspectRatio = strings.TrimSpace(info.AspectRatio)
 	info.DurationSeconds = NormalizeVideoBillingDurationSecondsOrDefault(info.DurationSeconds)
 	if info.N <= 0 {
 		info.N = 1
@@ -150,6 +152,7 @@ func parseGrokMediaJSONRequest(body []byte, info *GrokMediaRequestInfo) {
 	info.Prompt = strings.TrimSpace(gjson.GetBytes(body, "prompt").String())
 	info.Size = strings.TrimSpace(gjson.GetBytes(body, "size").String())
 	info.Resolution = strings.TrimSpace(gjson.GetBytes(body, "resolution").String())
+	info.AspectRatio = strings.TrimSpace(gjson.GetBytes(body, "aspect_ratio").String())
 	if seconds := gjson.GetBytes(body, "seconds"); seconds.Exists() {
 		info.DurationSeconds, _ = strconv.Atoi(strings.TrimSpace(seconds.String()))
 	} else if duration := gjson.GetBytes(body, "duration"); duration.Exists() {
@@ -264,6 +267,8 @@ func parseGrokMediaMultipartRequest(contentType string, body []byte, info *GrokM
 			info.Size = value
 		case "resolution":
 			info.Resolution = value
+		case "aspect_ratio":
+			info.AspectRatio = value
 		case "seconds":
 			if seconds, err := strconv.Atoi(value); err == nil {
 				info.DurationSeconds = seconds
@@ -862,6 +867,18 @@ func adapt2KENVideoForwardBody(
 			return nil, "", fmt.Errorf("remove 2KEN-incompatible video resolution: %w", err)
 		}
 	}
+	aspectRatio := strings.TrimSpace(gjson.GetBytes(out, "aspect_ratio").String())
+	if normalized, ok := twoKENVideoAspectRatio(aspectRatio); ok {
+		out, err = sjson.SetBytes(out, "aspect_ratio", normalized)
+		if err != nil {
+			return nil, "", fmt.Errorf("normalize 2KEN video aspect ratio: %w", err)
+		}
+	} else if aspectRatio != "" {
+		out, err = sjson.DeleteBytes(out, "aspect_ratio")
+		if err != nil {
+			return nil, "", fmt.Errorf("remove 2KEN-incompatible video aspect ratio: %w", err)
+		}
+	}
 
 	if imageURL := first2KENVideoImageURL(out); imageURL != "" {
 		out, err = sjson.SetBytes(out, "image_url", imageURL)
@@ -907,6 +924,15 @@ func twoKENVideoResolution(resolution string) (string, bool) {
 		return VideoBillingResolution720P, true
 	case "1080", "1080p", "full_hd", "full-hd", "fhd":
 		return VideoBillingResolution1080P, true
+	default:
+		return "", false
+	}
+}
+
+func twoKENVideoAspectRatio(aspectRatio string) (string, bool) {
+	switch strings.TrimSpace(aspectRatio) {
+	case "1:1", "16:9", "9:16", "4:3", "3:4", "3:2", "2:3":
+		return strings.TrimSpace(aspectRatio), true
 	default:
 		return "", false
 	}

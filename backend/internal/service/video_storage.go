@@ -129,12 +129,14 @@ func transcodeVideoWithFFmpeg(ctx context.Context, contentType string, data []by
 	defer cancel()
 	cmd := exec.CommandContext(runCtx, ffmpegPath,
 		"-hide_banner", "-loglevel", "error", "-y",
+		"-fflags", "+genpts",
 		"-i", inputPath,
 		"-map", "0:v:0", "-map", "0:a?", "-sn", "-dn",
 		"-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
-		"-pix_fmt", "yuv420p", "-profile:v", "high", "-tag:v", "avc1",
+		"-pix_fmt", "yuv420p", "-profile:v", "high", "-tag:v", "avc1", "-bf", "0",
 		"-c:a", "aac", "-b:a", "128k",
-		"-movflags", "+faststart", "-max_muxing_queue_size", "1024",
+		"-movflags", "+faststart", "-avoid_negative_ts", "make_zero",
+		"-max_muxing_queue_size", "1024",
 		outputPath,
 	)
 	output, err := cmd.CombinedOutput()

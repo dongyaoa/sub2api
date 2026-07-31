@@ -199,6 +199,23 @@
                 </div>
               </div>
 
+              <div>
+                <span class="input-label">{{ t('videoStudio.aspectRatio') }}</span>
+                <div class="grid grid-cols-4 gap-1.5">
+                  <button
+                    v-for="ratio in aspectRatioOptions"
+                    :key="ratio"
+                    type="button"
+                    class="h-8 rounded-md border text-xs font-semibold tabular-nums transition-colors"
+                    :class="aspectRatio === ratio ? 'border-primary-500 bg-primary-50 text-primary-700 dark:bg-primary-950/30 dark:text-primary-300' : 'border-gray-200 text-gray-600 hover:border-gray-300 dark:border-dark-600 dark:text-gray-300 dark:hover:border-dark-500'"
+                    :disabled="isWorking"
+                    @click="aspectRatio = ratio"
+                  >
+                    {{ ratio }}
+                  </button>
+                </div>
+              </div>
+
               <section v-if="selectedGroup" class="border-y border-gray-200 py-2.5 dark:border-dark-700" :aria-label="t('videoStudio.pricing')">
                 <div class="mb-2 flex items-center justify-between gap-2">
                   <span class="text-xs font-medium text-gray-700 dark:text-gray-300">{{ t('videoStudio.pricing') }}</span>
@@ -289,15 +306,43 @@
                   <Icon name="refresh" size="xl" class="mb-3 animate-spin" />
                   <span class="text-sm">{{ t('videoStudio.loadingVideo') }}</span>
                 </div>
-                <video
-                  v-else-if="videoObjectUrl"
-                  :src="videoObjectUrl"
-                  class="max-h-[70vh] max-w-full object-contain"
-                  controls
-                  playsinline
-                  preload="metadata"
-                  @error="handleVideoPlaybackError"
-                />
+                <template v-else-if="videoObjectUrl">
+                  <video
+                    ref="videoPlayer"
+                    :src="videoObjectUrl"
+                    class="max-h-[70vh] max-w-full object-contain"
+                    controls
+                    playsinline
+                    preload="auto"
+                    @canplay="handleVideoCanPlay"
+                    @canplaythrough="handleVideoCanPlay"
+                    @playing="handleVideoPlaying"
+                    @pause="videoBuffering = false"
+                    @waiting="handleVideoWaiting"
+                    @stalled="handleVideoWaiting"
+                    @error="handleVideoPlaybackError"
+                  />
+                  <div v-if="!videoReady" class="absolute inset-0 flex flex-col items-center justify-center bg-black/35 text-white/90">
+                    <Icon name="refresh" size="xl" class="mb-3 animate-spin" />
+                    <span class="text-sm">{{ t('videoStudio.preparingVideo') }}</span>
+                  </div>
+                  <button
+                    v-else-if="!videoStarted"
+                    type="button"
+                    class="absolute flex h-16 w-16 items-center justify-center rounded-full border border-white/40 bg-black/55 text-white shadow-lg transition-colors hover:bg-black/70 disabled:cursor-wait"
+                    :disabled="videoPlayPending"
+                    :title="t('videoStudio.playVideo')"
+                    :aria-label="t('videoStudio.playVideo')"
+                    @click="playVideo"
+                  >
+                    <Icon :name="videoPlayPending ? 'refresh' : 'play'" size="xl" :class="videoPlayPending ? 'animate-spin' : 'ml-0.5'" />
+                  </button>
+                  <div v-if="videoStarted && videoBuffering" class="pointer-events-none absolute inset-0 flex items-center justify-center bg-black/20 text-white">
+                    <span class="flex h-12 w-12 items-center justify-center rounded-full bg-black/55">
+                      <Icon name="refresh" size="lg" class="animate-spin" />
+                    </span>
+                  </div>
+                </template>
                 <div v-else class="flex max-w-lg flex-col items-center px-6 text-center text-white/80">
                   <Icon name="exclamationCircle" size="xl" class="mb-3" />
                   <p class="text-sm leading-6">{{ contentError || t('videoStudio.contentUnavailable') }}</p>
@@ -309,7 +354,7 @@
               </div>
               <div class="flex min-h-14 flex-wrap items-center justify-between gap-3 px-2 pt-3">
                 <div class="text-xs text-gray-400">
-                  {{ displayModel }} · {{ displayResolution }} · {{ t('videoStudio.seconds', { count: displayDuration }) }}
+                  {{ displayModel }} · {{ displayResolution }}<template v-if="displayAspectRatio"> · {{ displayAspectRatio }}</template> · {{ t('videoStudio.seconds', { count: displayDuration }) }}
                 </div>
                 <button type="button" class="inline-flex h-9 items-center gap-2 rounded-md border border-gray-200 px-3 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 dark:border-dark-600 dark:text-gray-200 dark:hover:bg-dark-800" :disabled="loadingContent" @click="downloadVideo">
                   <Icon name="download" size="sm" />
@@ -364,7 +409,7 @@
                 <div class="min-w-0 flex-1">
                   <p class="truncate text-xs font-medium text-gray-800 dark:text-gray-200">{{ item.request.prompt }}</p>
                   <div class="mt-1 flex items-center justify-between gap-2 text-[11px] text-gray-400">
-                    <span>{{ operationLabel(item.operation) }} · {{ item.request.resolution }} · {{ item.request.duration }}s</span>
+                    <span>{{ operationLabel(item.operation) }} · {{ item.request.resolution }}<template v-if="item.request.aspect_ratio"> · {{ item.request.aspect_ratio }}</template> · {{ item.request.duration }}s</span>
                     <span>{{ formatHistoryTime(item.startedAt) }}</span>
                   </div>
                   <div class="mt-1 flex items-center gap-1.5 text-[11px]" :class="historyStatusClass(item.status)">
@@ -403,10 +448,13 @@ import {
 } from './api'
 import {
   buildGenerateVideoRequest,
+  DEFAULT_VIDEO_ASPECT_RATIO,
   filterVideoModels,
   getVideoResolutionOptions,
+  normalizeVideoAspectRatio,
   normalizeVideoResolution,
   selectPreferredVideoModel,
+  VIDEO_ASPECT_RATIOS,
 } from './capabilities'
 import { consumeVideoStudioImageDraft } from './draft'
 import { estimateVideoCost, formatUSD, getVideoPriceTiers } from './pricing'
@@ -414,6 +462,7 @@ import type {
   GenerateVideoRequest,
   StoredVideoHistoryItem,
   StoredVideoTask,
+  VideoAspectRatio,
   VideoModel,
   VideoResolution,
   VideoStudioError,
@@ -445,6 +494,7 @@ const models = ref<VideoModel[]>([])
 const model = ref('')
 const prompt = ref('')
 const resolution = ref<VideoResolution>('480p')
+const aspectRatio = ref<VideoAspectRatio>(DEFAULT_VIDEO_ASPECT_RATIO)
 const duration = ref(4)
 const loadingKeys = ref(true)
 const loadingModels = ref(false)
@@ -456,6 +506,11 @@ const errorMessage = ref('')
 const contentError = ref('')
 const loadingContent = ref(false)
 const videoObjectUrl = ref('')
+const videoPlayer = ref<HTMLVideoElement | null>(null)
+const videoReady = ref(false)
+const videoStarted = ref(false)
+const videoBuffering = ref(false)
+const videoPlayPending = ref(false)
 const startedAt = ref(0)
 const now = ref(Date.now())
 const history = ref<StoredVideoHistoryItem[]>([])
@@ -480,6 +535,7 @@ const modelOptions = computed(() => models.value.map((item) => ({
     : item.id,
 })))
 const allResolutions: VideoResolution[] = ['480p', '720p', '1080p']
+const aspectRatioOptions = VIDEO_ASPECT_RATIOS
 const resolutionOptions = computed(() => getVideoResolutionOptions(model.value))
 const priceTiers = computed(() => {
   if (!selectedGroup.value) return []
@@ -524,6 +580,9 @@ const statusDotClass = computed(() => {
 const activeHistoryItem = computed(() => history.value.find((item) => item.requestId === activeHistoryId.value) || null)
 const displayModel = computed(() => activeHistoryItem.value?.request.model || model.value)
 const displayResolution = computed(() => activeHistoryItem.value?.request.resolution || resolution.value)
+const displayAspectRatio = computed(() => activeHistoryItem.value
+  ? activeHistoryItem.value.request.aspect_ratio || ''
+  : aspectRatio.value)
 const displayDuration = computed(() => activeHistoryItem.value?.request.duration || duration.value)
 
 function switchOperation(nextOperation: VideoStudioOperation) {
@@ -654,9 +713,18 @@ function stopPolling() {
   pollTimer = null
 }
 
+function resetVideoPlaybackState() {
+  videoPlayer.value = null
+  videoReady.value = false
+  videoStarted.value = false
+  videoBuffering.value = false
+  videoPlayPending.value = false
+}
+
 function releaseVideoObjectURL() {
   if (videoObjectUrl.value) URL.revokeObjectURL(videoObjectUrl.value)
   videoObjectUrl.value = ''
+  resetVideoPlaybackState()
 }
 
 function resetResult() {
@@ -689,6 +757,7 @@ function readActiveTask(): StoredVideoTask | null {
     if (!raw) return null
     const value = JSON.parse(raw) as StoredVideoTask
     if (!value.requestId || !Number.isFinite(value.apiKeyId) || !value.request?.model) return null
+    value.request.aspect_ratio = normalizeVideoAspectRatio(value.request.aspect_ratio)
     return value
   } catch {
     clearActiveTask()
@@ -724,6 +793,10 @@ function backendTaskToHistory(taskItem: VideoTask, key: ApiKey): StoredVideoHist
   const safeResolution = allResolutions.includes(taskResolution as VideoResolution)
     ? taskResolution as VideoResolution
     : '480p'
+  const taskAspectRatio = metadata?.aspect_ratio
+  const safeAspectRatio = VIDEO_ASPECT_RATIOS.includes(taskAspectRatio as VideoAspectRatio)
+    ? taskAspectRatio as VideoAspectRatio
+    : undefined
   const createdAt = Number(taskItem.created_at)
   return {
     requestId: id,
@@ -733,6 +806,7 @@ function backendTaskToHistory(taskItem: VideoTask, key: ApiKey): StoredVideoHist
       model: modelName,
       prompt: String(metadata?.prompt || ''),
       resolution: safeResolution,
+      aspect_ratio: safeAspectRatio,
       duration: Math.max(1, Number(metadata?.duration) || 4),
     },
     startedAt: Number.isFinite(createdAt) && createdAt > 0 ? createdAt * 1000 : Date.now(),
@@ -787,6 +861,7 @@ async function generateVideo() {
       model: model.value,
       prompt: prompt.value,
       resolution: resolution.value,
+      aspectRatio: aspectRatio.value,
       duration: duration.value,
       imageUrl,
     })
@@ -874,6 +949,35 @@ async function loadVideoContent(key: ApiKey, id: string) {
   }
 }
 
+function handleVideoCanPlay() {
+  videoReady.value = true
+  videoBuffering.value = false
+}
+
+function handleVideoPlaying() {
+  videoReady.value = true
+  videoStarted.value = true
+  videoBuffering.value = false
+  videoPlayPending.value = false
+}
+
+function handleVideoWaiting() {
+  if (videoStarted.value) videoBuffering.value = true
+}
+
+async function playVideo() {
+  const player = videoPlayer.value
+  if (!player || !videoReady.value || videoPlayPending.value) return
+  videoPlayPending.value = true
+  try {
+    await player.play()
+  } catch (error) {
+    appStore.showError(errorText(error, t('videoStudio.playbackStartFailed')))
+  } finally {
+    videoPlayPending.value = false
+  }
+}
+
 function handleVideoPlaybackError() {
   contentError.value = t('videoStudio.playbackFailed')
   releaseVideoObjectURL()
@@ -933,6 +1037,7 @@ async function selectHistoryItem(item: StoredVideoHistoryItem) {
   prompt.value = item.request.prompt
   duration.value = item.request.duration
   resolution.value = item.request.resolution
+  aspectRatio.value = normalizeVideoAspectRatio(item.request.aspect_ratio)
   startedAt.value = item.startedAt
   requestId.value = item.requestId
   activeHistoryId.value = item.requestId
@@ -1007,6 +1112,7 @@ async function restoreActiveTask(stored: StoredVideoTask): Promise<boolean> {
   prompt.value = stored.request.prompt
   duration.value = stored.request.duration
   resolution.value = stored.request.resolution
+  aspectRatio.value = normalizeVideoAspectRatio(stored.request.aspect_ratio)
   startedAt.value = stored.startedAt || Date.now()
   requestId.value = stored.requestId
   activeHistoryId.value = stored.requestId

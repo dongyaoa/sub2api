@@ -16,7 +16,7 @@ const (
 	VideoTaskStatusProcessing  = "processing"
 	VideoTaskStatusCompleted   = "completed"
 	VideoTaskStatusFailed      = "failed"
-	VideoPlaybackFormatVersion = 1
+	VideoPlaybackFormatVersion = 2
 
 	defaultVideoTaskTTL = 7 * 24 * time.Hour
 )
@@ -27,11 +27,12 @@ var (
 )
 
 type VideoTaskMetadata struct {
-	Operation  string `json:"operation,omitempty"`
-	Model      string `json:"model,omitempty"`
-	Prompt     string `json:"prompt,omitempty"`
-	Resolution string `json:"resolution,omitempty"`
-	Duration   int    `json:"duration,omitempty"`
+	Operation   string `json:"operation,omitempty"`
+	Model       string `json:"model,omitempty"`
+	Prompt      string `json:"prompt,omitempty"`
+	Resolution  string `json:"resolution,omitempty"`
+	AspectRatio string `json:"aspect_ratio,omitempty"`
+	Duration    int    `json:"duration,omitempty"`
 }
 
 // VideoTaskRecord is the private Redis representation. AccountID is retained

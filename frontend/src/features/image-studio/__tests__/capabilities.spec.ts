@@ -5,6 +5,7 @@ import {
   getMaxImageQuantity,
   getOpenAIImageSize,
   getPreferredImageModel,
+  getResolutionOptions,
   normalizeStudioSelection,
   supportsImageEditing,
 } from '../capabilities'
@@ -39,6 +40,18 @@ describe('image studio capabilities', () => {
     expect(getOpenAIImageSize('1:1', '2K')).toBe('1024x1024')
     expect(getOpenAIImageSize('3:2', '2K')).toBe('1536x1024')
     expect(getOpenAIImageSize('2:3', '2K')).toBe('1024x1536')
+    expect(getOpenAIImageSize('1:1', '4K')).toBe('4096x4096')
+    expect(getOpenAIImageSize('3:2', '4K')).toBe('4096x2731')
+    expect(getOpenAIImageSize('2:3', '4K')).toBe('2731x4096')
+  })
+
+  it('enables OpenAI 4K only for configured groups', () => {
+    expect(getResolutionOptions('openai')).toEqual(['1K', '2K'])
+    expect(getResolutionOptions('openai', true)).toEqual(['1K', '2K', '4K'])
+    expect(normalizeStudioSelection('openai', '1:1', '4K', true)).toEqual({
+      ratio: '1:1',
+      resolution: '4K',
+    })
   })
 
   it('normalizes unsupported options after platform changes', () => {
@@ -64,6 +77,25 @@ describe('image studio capabilities', () => {
       size: '2K',
       aspect_ratio: '16:9',
       resolution: '2k',
+    })
+  })
+
+  it('builds configured OpenAI 4K requests with the selected aspect ratio', () => {
+    expect(buildGenerateImageRequest({
+      platform: 'openai',
+      model: 'gpt-image-2',
+      prompt: ' detailed landscape ',
+      quantity: 1,
+      ratio: '3:2',
+      resolution: '4K',
+      quality: 'high',
+      allowOpenAI4K: true,
+    })).toEqual({
+      model: 'gpt-image-2',
+      prompt: 'detailed landscape',
+      n: 1,
+      size: '4096x2731',
+      quality: 'high',
     })
   })
 

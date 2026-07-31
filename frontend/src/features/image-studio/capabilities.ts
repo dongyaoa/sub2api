@@ -29,6 +29,7 @@ const GROK_RATIOS: StudioOption<ImageAspectRatio>[] = [
 ]
 
 const OPENAI_RESOLUTIONS: ImageResolutionTier[] = ['1K', '2K']
+const OPENAI_RESOLUTIONS_WITH_4K: ImageResolutionTier[] = ['1K', '2K', '4K']
 const GROK_RESOLUTIONS: ImageResolutionTier[] = ['1K', '2K']
 const GEMINI_RESOLUTIONS: ImageResolutionTier[] = ['1K', '2K', '4K']
 
@@ -62,8 +63,11 @@ export function getAspectRatioOptions(platform: ImageStudioPlatform): StudioOpti
   return platform === 'openai' ? OPENAI_RATIOS : GROK_RATIOS
 }
 
-export function getResolutionOptions(platform: ImageStudioPlatform): ImageResolutionTier[] {
-  if (platform === 'openai') return OPENAI_RESOLUTIONS
+export function getResolutionOptions(
+  platform: ImageStudioPlatform,
+  allowOpenAI4K = false,
+): ImageResolutionTier[] {
+  if (platform === 'openai') return allowOpenAI4K ? OPENAI_RESOLUTIONS_WITH_4K : OPENAI_RESOLUTIONS
   return platform === 'gemini' ? GEMINI_RESOLUTIONS : GROK_RESOLUTIONS
 }
 
@@ -85,13 +89,17 @@ export function normalizeStudioSelection(
   platform: ImageStudioPlatform,
   ratio: ImageAspectRatio,
   resolution: ImageResolutionTier,
+  allowOpenAI4K = false,
 ): { ratio: ImageAspectRatio; resolution: ImageResolutionTier } {
   const ratios = getAspectRatioOptions(platform).map((option) => option.value)
-  const resolutions = getResolutionOptions(platform)
+  const resolutions = getResolutionOptions(platform, allowOpenAI4K)
   const normalizedRatio = ratios.includes(ratio) ? ratio : '1:1'
   const normalizedResolution = resolutions.includes(resolution) ? resolution : resolutions[0]
   if (platform === 'openai') {
     if (normalizedResolution === '1K') return { ratio: '1:1', resolution: '1K' }
+    if (normalizedResolution === '4K') {
+      return { ratio: normalizedRatio, resolution: '4K' }
+    }
     return {
       ratio: normalizedRatio === '1:1' ? '3:2' : normalizedRatio,
       resolution: '2K',
@@ -104,6 +112,11 @@ export function getOpenAIImageSize(
   ratio: ImageAspectRatio,
   resolution: ImageResolutionTier,
 ): string {
+  if (resolution === '4K') {
+    if (ratio === '2:3') return '2731x4096'
+    if (ratio === '3:2') return '4096x2731'
+    return '4096x4096'
+  }
   if (resolution === '1K' || ratio === '1:1') return '1024x1024'
   if (ratio === '2:3') return '1024x1536'
   return '1536x1024'
@@ -121,8 +134,14 @@ export function buildGenerateImageRequest(input: {
   ratio: ImageAspectRatio
   resolution: ImageResolutionTier
   quality: ImageQuality
+  allowOpenAI4K?: boolean
 }): GenerateImageRequest {
-  const normalized = normalizeStudioSelection(input.platform, input.ratio, input.resolution)
+  const normalized = normalizeStudioSelection(
+    input.platform,
+    input.ratio,
+    input.resolution,
+    input.allowOpenAI4K,
+  )
   const base: GenerateImageRequest = {
     model: input.model.trim(),
     prompt: input.prompt.trim(),

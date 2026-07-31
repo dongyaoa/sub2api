@@ -441,11 +441,12 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 					account.ID,
 					result.ResponseID,
 					service.VideoTaskMetadata{
-						Operation:  operation,
-						Model:      requestModel,
-						Prompt:     requestInfo.Prompt,
-						Resolution: requestInfo.Resolution,
-						Duration:   requestInfo.DurationSeconds,
+						Operation:   operation,
+						Model:       requestModel,
+						Prompt:      requestInfo.Prompt,
+						Resolution:  requestInfo.Resolution,
+						AspectRatio: requestInfo.AspectRatio,
+						Duration:    requestInfo.DurationSeconds,
 					},
 					result.GrokMediaResponseBody,
 				)

@@ -1,5 +1,6 @@
 export type VideoStudioOperation = 'text' | 'image'
 export type VideoResolution = '480p' | '720p' | '1080p'
+export type VideoAspectRatio = '1:1' | '16:9' | '9:16' | '4:3' | '3:4' | '3:2' | '2:3'
 export type VideoViewState = 'idle' | 'processing' | 'completed' | 'failed'
 
 export interface VideoModel {
@@ -17,6 +18,7 @@ export interface GenerateVideoRequest {
   model: string
   prompt: string
   resolution: VideoResolution
+  aspect_ratio?: VideoAspectRatio
   duration: number
   image?: {
     url: string
@@ -50,6 +52,7 @@ export interface VideoTask {
     model?: string
     prompt?: string
     resolution?: VideoResolution
+    aspect_ratio?: VideoAspectRatio
     duration?: number
   }
 }
