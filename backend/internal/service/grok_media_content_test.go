@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -70,6 +71,10 @@ func grokMediaContentStatusResponse(body string) *http.Response {
 	}
 }
 
+func grokMediaContentMP4(payload string) string {
+	return "\x00\x00\x00\x18ftypisom" + payload
+}
+
 func TestForwardGrokMediaContentUsesUpstreamCredentialAndStreamsRange(t *testing.T) {
 	upstream := &grokMediaContentUpstreamStub{
 		responses: []*http.Response{grokMediaContentStatusResponse(`{"status":"completed"}`), {
@@ -116,11 +121,12 @@ func TestForwardGrokMediaContentUsesUpstreamCredentialAndStreamsRange(t *testing
 }
 
 func TestForwardGrokMediaContentStreamsFullResponseWithSafeDefaults(t *testing.T) {
+	mp4Payload := grokMediaContentMP4("full-video")
 	upstream := &grokMediaContentUpstreamStub{
 		responses: []*http.Response{grokMediaContentStatusResponse(`{"status":"completed"}`), {
 			StatusCode:    http.StatusOK,
 			Header:        http.Header{"Set-Cookie": []string{"secret=upstream"}, "X-Upstream-Secret": []string{"hidden"}},
-			Body:          io.NopCloser(strings.NewReader("full-video")),
+			Body:          io.NopCloser(strings.NewReader(mp4Payload)),
 			ContentLength: -1,
 		}},
 	}
@@ -134,11 +140,11 @@ func TestForwardGrokMediaContentStreamsFullResponseWithSafeDefaults(t *testing.T
 
 	require.NoError(t, err)
 	require.Equal(t, http.StatusOK, recorder.Code)
-	require.Equal(t, "full-video", recorder.Body.String())
+	require.Equal(t, mp4Payload, recorder.Body.String())
 	require.Len(t, upstream.requests, 2)
 	require.Empty(t, upstream.requests[1].Header.Get("Range"))
-	require.Equal(t, "application/octet-stream", recorder.Header().Get("Content-Type"))
-	require.Empty(t, recorder.Header().Get("Content-Length"))
+	require.Equal(t, "video/mp4", recorder.Header().Get("Content-Type"))
+	require.Equal(t, strconv.Itoa(len(mp4Payload)), recorder.Header().Get("Content-Length"))
 	require.Empty(t, recorder.Header().Get("Set-Cookie"))
 	require.Empty(t, recorder.Header().Get("X-Upstream-Secret"))
 	require.True(t, IsResponseCommitted(c))
@@ -221,6 +227,7 @@ func TestForwardGrokMediaContentFetchesValidatedSignedURLWithoutCredentials(t *t
 }
 
 func TestForwardGrokMediaContentFollowsAuthenticatedSub2APIRelay(t *testing.T) {
+	mp4Payload := grokMediaContentMP4("video-payload")
 	for _, statusURL := range []string{
 		`/v1/videos/task-1/content`,
 		`https://relay.example/v1/videos/task-1/content`,
@@ -232,7 +239,7 @@ func TestForwardGrokMediaContentFollowsAuthenticatedSub2APIRelay(t *testing.T) {
 					{
 						StatusCode: http.StatusOK,
 						Header:     http.Header{"Content-Type": []string{"video/mp4"}},
-						Body:       io.NopCloser(strings.NewReader("video-payload")),
+						Body:       io.NopCloser(strings.NewReader(mp4Payload)),
 					},
 				},
 			}
@@ -246,12 +253,57 @@ func TestForwardGrokMediaContentFollowsAuthenticatedSub2APIRelay(t *testing.T) {
 
 			require.NoError(t, err)
 			require.Equal(t, http.StatusOK, recorder.Code)
-			require.Equal(t, "video-payload", recorder.Body.String())
+			require.Equal(t, mp4Payload, recorder.Body.String())
 			require.Len(t, upstream.requests, 2)
 			require.Equal(t, "https://relay.example/v1/videos/task-1/content", upstream.requests[1].URL.String())
 			require.Equal(t, "Bearer upstream-key", upstream.requests[1].Header.Get("Authorization"))
 		})
 	}
+}
+
+func TestForwardGrokMediaContentPersistsValidatedFullVideo(t *testing.T) {
+	mp4Payload := grokMediaContentMP4("persist-me")
+	upstream := &grokMediaContentUpstreamStub{
+		responses: []*http.Response{grokMediaContentStatusResponse(`{"status":"completed"}`), {
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/octet-stream"}},
+			Body:       io.NopCloser(strings.NewReader(mp4Payload)),
+		}},
+	}
+	svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: upstream}
+	c, recorder := grokMediaContentTestContext(http.MethodGet, "https://api.example/v1/videos/task-1/content", nil)
+	var persistedID, persistedType, persistedBody string
+	ctx := WithGrokVideoContentPersister(context.Background(), func(_ context.Context, requestID, contentType string, data []byte) error {
+		persistedID = requestID
+		persistedType = contentType
+		persistedBody = string(data)
+		return nil
+	})
+
+	_, err := svc.ForwardGrokMedia(ctx, c, grokMediaContentTestAccount(), GrokMediaEndpointVideoContent, "task-1", nil, "")
+
+	require.NoError(t, err)
+	require.Equal(t, http.StatusOK, recorder.Code)
+	require.Equal(t, "task-1", persistedID)
+	require.Equal(t, "video/mp4", persistedType)
+	require.Equal(t, mp4Payload, persistedBody)
+}
+
+func TestForwardGrokMediaContentRejectsJSONSuccessBody(t *testing.T) {
+	upstream := &grokMediaContentUpstreamStub{
+		responses: []*http.Response{grokMediaContentStatusResponse(`{"status":"completed"}`), {
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"application/json"}},
+			Body:       io.NopCloser(strings.NewReader(`{"error":{"message":"expired"}}`)),
+		}},
+	}
+	svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: upstream}
+	c, recorder := grokMediaContentTestContext(http.MethodGet, "https://api.example/v1/videos/task-1/content", nil)
+
+	_, err := svc.ForwardGrokMedia(context.Background(), c, grokMediaContentTestAccount(), GrokMediaEndpointVideoContent, "task-1", nil, "")
+
+	require.ErrorContains(t, err, "unsupported video content")
+	require.Empty(t, recorder.Body.String())
 }
 
 func TestForwardGrokMediaContentRejectsUntrustedSignedURL(t *testing.T) {

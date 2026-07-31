@@ -551,6 +551,10 @@ func ProvideImageTaskService(store ImageTaskStore, settings *ImageStorageSetting
 	return NewImageTaskServiceWithResolver(store, settings.Resolver(), defaultImageTaskTTL, defaultImageTaskExecutionTimeout).WithTTLResolver(settings.HistoryTTL)
 }
 
+func ProvideVideoTaskService(store VideoTaskStore, settings *ImageStorageSettingService) *VideoTaskService {
+	return NewVideoTaskService(store, settings.Resolver()).WithTTLResolver(settings.HistoryTTL)
+}
+
 // ProvideBackupService creates and starts BackupService
 func ProvideBackupService(
 	settingRepo SettingRepository,
@@ -698,6 +702,7 @@ var ProviderSet = wire.NewSet(
 	NewOpenAIGatewayService,
 	ProvideImageStorageSettingService,
 	ProvideImageTaskService,
+	ProvideVideoTaskService,
 	ProvideBatchImageModelPricingResolver,
 	NewBatchImagePublicService,
 	NewBatchImageDownloadService,

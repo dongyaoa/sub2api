@@ -48,10 +48,10 @@ export default {
     reloadContent: '重新加载',
     download: '下载视频',
     history: '创作记录',
-    sessionOnly: '当前会话',
+    historyRetention: '保留 {count} 天',
     clearHistory: '清空视频记录',
     historyEmpty: '暂无视频记录',
-    historyHint: '本次会话生成的视频会显示在这里',
+    historyHint: '生成的视频会按当前 API Key 保存在这里',
     historyStatus: {
       processing: '生成中',
       completed: '已完成',
@@ -68,5 +68,7 @@ export default {
     missingTaskId: '接口没有返回视频任务 ID',
     timeout: '视频生成等待超过 5 分钟，可稍后重新查询或生成',
     historyKeyMissing: '找不到提交该任务时使用的 API Key',
+    historyLoadFailed: '加载视频记录失败',
+    historyClearFailed: '清空视频记录失败',
   },
 }

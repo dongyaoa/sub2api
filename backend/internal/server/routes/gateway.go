@@ -242,6 +242,8 @@ func RegisterGatewayRoutes(
 		gateway.POST("/videos/generations", videoGenerationHandler)
 		gateway.POST("/videos/edits", videoEditHandler)
 		gateway.POST("/videos/extensions", videoExtensionHandler)
+		gateway.GET("/videos/tasks", h.OpenAIGateway.GrokVideoTasks)
+		gateway.DELETE("/videos/tasks", h.OpenAIGateway.ClearGrokVideoTasks)
 		gateway.GET("/videos/:request_id", videoStatusHandler)
 		gateway.GET("/videos/:request_id/content", videoContentHandler)
 	}
@@ -322,6 +324,8 @@ func RegisterGatewayRoutes(
 	r.POST("/videos/generations", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), compositeTarget, requireGroupAnthropic, videoGenerationHandler)
 	r.POST("/videos/edits", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), compositeTarget, requireGroupAnthropic, videoEditHandler)
 	r.POST("/videos/extensions", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), compositeTarget, requireGroupAnthropic, videoExtensionHandler)
+	r.GET("/videos/tasks", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), compositeTarget, requireGroupAnthropic, h.OpenAIGateway.GrokVideoTasks)
+	r.DELETE("/videos/tasks", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), compositeTarget, requireGroupAnthropic, h.OpenAIGateway.ClearGrokVideoTasks)
 	r.GET("/videos/:request_id", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), compositeTarget, requireGroupAnthropic, videoStatusHandler)
 	r.GET("/videos/:request_id/content", bodyLimit, clientRequestID, opsErrorLogger, endpointNorm, gin.HandlerFunc(apiKeyAuth), compositeTarget, requireGroupAnthropic, videoContentHandler)
 

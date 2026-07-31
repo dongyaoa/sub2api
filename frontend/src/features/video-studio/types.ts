@@ -40,6 +40,23 @@ export interface VideoTask {
     url?: string
   }
   created_at?: number
+  completed_at?: number
+  expires_at?: number
+  content_available?: boolean
+  content_type?: string
+  byte_size?: number
+  metadata?: {
+    operation?: VideoStudioOperation
+    model?: string
+    prompt?: string
+    resolution?: VideoResolution
+    duration?: number
+  }
+}
+
+export interface VideoTaskListResult {
+  tasks: VideoTask[]
+  retentionDays: number
 }
 
 export interface VideoStudioError extends Error {

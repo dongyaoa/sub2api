@@ -48,10 +48,10 @@ export default {
     reloadContent: 'Reload',
     download: 'Download video',
     history: 'Creation history',
-    sessionOnly: 'This session',
+    historyRetention: 'Kept for {count} days',
     clearHistory: 'Clear video history',
     historyEmpty: 'No video history',
-    historyHint: 'Videos generated in this session will appear here',
+    historyHint: 'Generated videos are saved here for the current API key',
     historyStatus: {
       processing: 'Generating',
       completed: 'Completed',
@@ -68,5 +68,7 @@ export default {
     missingTaskId: 'The API did not return a video task ID',
     timeout: 'Video generation exceeded 5 minutes. Try checking again later or generate a new video.',
     historyKeyMissing: 'The API key used for this task is no longer available',
+    historyLoadFailed: 'Failed to load video history',
+    historyClearFailed: 'Failed to clear video history',
   },
 }

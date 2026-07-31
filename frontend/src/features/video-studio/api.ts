@@ -4,6 +4,7 @@ import type {
   VideoModelsResponse,
   VideoStudioError,
   VideoTask,
+  VideoTaskListResult,
 } from './types'
 
 function authHeaders(apiKey: string, extra?: HeadersInit): HeadersInit {
@@ -90,5 +91,53 @@ export async function downloadVideoContent(
     },
   )
   if (!response.ok) throw await parseVideoStudioError(response)
-  return response.blob()
+  const bytes = await response.arrayBuffer()
+  const data = new Uint8Array(bytes)
+  const declaredType = String(response.headers.get('Content-Type') || '').split(';')[0].trim().toLowerCase()
+  const isMP4 = data.length >= 12
+    && String.fromCharCode(data[4], data[5], data[6], data[7]) === 'ftyp'
+  const isWebM = data.length >= 4
+    && data[0] === 0x1a && data[1] === 0x45 && data[2] === 0xdf && data[3] === 0xa3
+  if (!isMP4 && !isWebM) {
+    let message = 'The video endpoint returned unsupported content'
+    try {
+      const body = JSON.parse(new TextDecoder().decode(data))
+      message = body?.error?.message || body?.message || message
+    } catch {
+      if (declaredType) message += ` (${declaredType})`
+    }
+    const error = new Error(message) as VideoStudioError
+    error.status = response.status
+    error.requestId = response.headers.get('X-Request-Id') || ''
+    throw error
+  }
+  const contentType = isMP4 ? 'video/mp4' : 'video/webm'
+  return new Blob([bytes], { type: contentType })
+}
+
+export async function listVideoTasks(
+  apiKey: string,
+  limit = 10,
+  signal?: AbortSignal,
+): Promise<VideoTaskListResult> {
+  const params = new URLSearchParams({ limit: String(limit) })
+  const response = await fetch(buildGatewayUrl(`/v1/videos/tasks?${params.toString()}`), {
+    headers: authHeaders(apiKey, { Accept: 'application/json' }),
+    signal,
+  })
+  if (!response.ok) throw await parseVideoStudioError(response)
+  const body = await response.json() as { data?: VideoTask[]; retention_days?: number }
+  return {
+    tasks: Array.isArray(body.data) ? body.data : [],
+    retentionDays: Math.max(1, Number(body.retention_days) || 7),
+  }
+}
+
+export async function clearVideoTasks(apiKey: string, signal?: AbortSignal): Promise<void> {
+  const response = await fetch(buildGatewayUrl('/v1/videos/tasks'), {
+    method: 'DELETE',
+    headers: authHeaders(apiKey),
+    signal,
+  })
+  if (!response.ok) throw await parseVideoStudioError(response)
 }

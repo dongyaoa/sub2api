@@ -14,10 +14,12 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/util/responseheaders"
 	"github.com/gin-gonic/gin"
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
+	"go.uber.org/zap"
 )
 
 type GrokMediaEndpoint string
@@ -43,6 +45,15 @@ func (e GrokMediaEndpoint) IsVideoLookupRequest() bool {
 func (e GrokMediaEndpoint) IsGenerationRequest() bool {
 	switch e {
 	case GrokMediaEndpointImagesGenerations, GrokMediaEndpointImagesEdits, GrokMediaEndpointVideosGenerations, GrokMediaEndpointVideosEdits, GrokMediaEndpointVideosExtensions:
+		return true
+	default:
+		return false
+	}
+}
+
+func (e GrokMediaEndpoint) IsVideoGenerationRequest() bool {
+	switch e {
+	case GrokMediaEndpointVideosGenerations, GrokMediaEndpointVideosEdits, GrokMediaEndpointVideosExtensions:
 		return true
 	default:
 		return false
@@ -441,22 +452,27 @@ func (s *OpenAIGatewayService) ForwardGrokMedia(
 	}
 	writeGrokMediaResponse(c, resp, respBody, s.responseHeaderFilter)
 	usage := grokMediaUsageFromResponse(endpoint, requestInfo, respBody)
+	var grokMediaResponseBody []byte
+	if endpoint.IsVideoGenerationRequest() || endpoint == GrokMediaEndpointVideoStatus {
+		grokMediaResponseBody = append([]byte(nil), respBody...)
+	}
 	return &OpenAIForwardResult{
-		RequestID:            requestIDHeader,
-		ResponseID:           usage.ResponseID,
-		Usage:                usage.Usage,
-		Model:                requestModel,
-		BillingModel:         requestModel,
-		UpstreamModel:        upstreamModel,
-		ResponseHeaders:      resp.Header.Clone(),
-		Duration:             time.Since(startTime),
-		ImageCount:           usage.ImageCount,
-		ImageSize:            usage.ImageSize,
-		ImageInputSize:       usage.ImageInputSize,
-		ImageOutputSizes:     usage.ImageOutputSizes,
-		VideoCount:           usage.VideoCount,
-		VideoResolution:      usage.VideoResolution,
-		VideoDurationSeconds: usage.VideoDurationSeconds,
+		RequestID:             requestIDHeader,
+		ResponseID:            usage.ResponseID,
+		Usage:                 usage.Usage,
+		Model:                 requestModel,
+		BillingModel:          requestModel,
+		UpstreamModel:         upstreamModel,
+		ResponseHeaders:       resp.Header.Clone(),
+		Duration:              time.Since(startTime),
+		ImageCount:            usage.ImageCount,
+		ImageSize:             usage.ImageSize,
+		ImageInputSize:        usage.ImageInputSize,
+		ImageOutputSizes:      usage.ImageOutputSizes,
+		VideoCount:            usage.VideoCount,
+		VideoResolution:       usage.VideoResolution,
+		VideoDurationSeconds:  usage.VideoDurationSeconds,
+		GrokMediaResponseBody: grokMediaResponseBody,
 	}, nil
 }
 
@@ -569,6 +585,30 @@ func (s *OpenAIGatewayService) forwardGrokMediaVideoContent(
 	}
 
 	s.updateGrokUsageFromResponse(ctx, account, contentResp.Header, contentResp.StatusCode)
+	if strings.TrimSpace(c.GetHeader("Range")) == "" && contentResp.StatusCode == http.StatusOK {
+		data, readErr := io.ReadAll(io.LimitReader(contentResp.Body, maxStoredVideoBytes+1))
+		if readErr != nil {
+			return nil, fmt.Errorf("read grok video content: %w", readErr)
+		}
+		if int64(len(data)) > maxStoredVideoBytes {
+			return nil, fmt.Errorf("grok video content exceeds %d bytes", maxStoredVideoBytes)
+		}
+		contentType, _, normalizeErr := normalizeGeneratedVideoContent(contentResp.Header.Get("Content-Type"), data)
+		if normalizeErr != nil {
+			return nil, normalizeErr
+		}
+		if persist := grokVideoContentPersisterFromContext(ctx); persist != nil {
+			if persistErr := persist(ctx, requestID, contentType, data); persistErr != nil {
+				// Object storage failure must not make an otherwise valid generated
+				// video unplayable; the task remains available through the upstream.
+				logger.L().Warn("grok_media.persist_video_content_failed", zap.String("request_id", requestID), zap.Error(persistErr))
+			}
+		}
+		contentResp.Header.Set("Content-Type", contentType)
+		contentResp.Header.Set("Content-Length", strconv.Itoa(len(data)))
+		contentResp.ContentLength = int64(len(data))
+		contentResp.Body = io.NopCloser(bytes.NewReader(data))
+	}
 	if err := writeGrokMediaContentResponse(c, contentResp); err != nil {
 		return nil, err
 	}
@@ -1094,7 +1134,7 @@ func writeGrokMediaContentResponse(c *gin.Context, resp *http.Response) error {
 		c.Header("Content-Length", strconv.FormatInt(resp.ContentLength, 10))
 	}
 	if strings.TrimSpace(c.Writer.Header().Get("Content-Type")) == "" {
-		c.Header("Content-Type", "application/octet-stream")
+		c.Header("Content-Type", "video/mp4")
 	}
 	c.Status(resp.StatusCode)
 	MarkResponseCommitted(c)

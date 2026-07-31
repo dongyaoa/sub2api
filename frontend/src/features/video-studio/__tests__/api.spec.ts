@@ -1,8 +1,10 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import {
+  clearVideoTasks,
   downloadVideoContent,
   getVideoRequestId,
   getVideoTask,
+  listVideoTasks,
   submitVideoTask,
 } from '../api'
 
@@ -43,17 +45,24 @@ describe('video studio API', () => {
   })
 
   it('uses the same key for status and authenticated content downloads', async () => {
-    const blob = new Blob(['video'], { type: 'video/mp4' })
+    const mp4 = new Uint8Array([0, 0, 0, 24, 0x66, 0x74, 0x79, 0x70, 0x69, 0x73, 0x6f, 0x6d])
     const fetchMock = vi.fn()
       .mockResolvedValueOnce({
         ok: true,
         json: vi.fn().mockResolvedValue({ id: 'video_123', status: 'completed' }),
       })
-      .mockResolvedValueOnce({ ok: true, blob: vi.fn().mockResolvedValue(blob) })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        headers: { get: vi.fn((name: string) => name === 'Content-Type' ? 'application/octet-stream' : '') },
+        arrayBuffer: vi.fn().mockResolvedValue(mp4.buffer),
+      })
     vi.stubGlobal('fetch', fetchMock)
 
     await expect(getVideoTask('same-key', 'video_123')).resolves.toMatchObject({ status: 'completed' })
-    await expect(downloadVideoContent('same-key', 'video_123')).resolves.toBe(blob)
+    const blob = await downloadVideoContent('same-key', 'video_123')
+    expect(blob.type).toBe('video/mp4')
+    expect(blob.size).toBe(mp4.byteLength)
 
     expect(fetchMock.mock.calls[0]?.[0]).toMatch(/[/]v1[/]videos[/]video_123$/)
     expect(fetchMock.mock.calls[0]?.[1]?.headers).toEqual({
@@ -64,6 +73,44 @@ describe('video studio API', () => {
     expect(fetchMock.mock.calls[1]?.[1]?.headers).toEqual({
       Authorization: 'Bearer same-key',
       Accept: 'video/mp4,video/*;q=0.9,*/*;q=0.8',
+    })
+  })
+
+  it('rejects a JSON success body instead of creating an unplayable blob', async () => {
+    const data = new TextEncoder().encode('{"error":{"message":"video expired"}}')
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      headers: { get: vi.fn((name: string) => name === 'Content-Type' ? 'application/json' : '') },
+      arrayBuffer: vi.fn().mockResolvedValue(data.buffer),
+    }))
+
+    await expect(downloadVideoContent('same-key', 'video_123')).rejects.toThrow('video expired')
+  })
+
+  it('lists and clears persisted video tasks with the same API key', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        json: vi.fn().mockResolvedValue({
+          data: [{ id: 'video_123', status: 'completed' }],
+          retention_days: 14,
+        }),
+      })
+      .mockResolvedValueOnce({ ok: true })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(listVideoTasks('history-key')).resolves.toEqual({
+      tasks: [{ id: 'video_123', status: 'completed' }],
+      retentionDays: 14,
+    })
+    await expect(clearVideoTasks('history-key')).resolves.toBeUndefined()
+
+    expect(fetchMock.mock.calls[0]?.[0]).toMatch(/[/]v1[/]videos[/]tasks[?]limit=10$/)
+    expect(fetchMock.mock.calls[1]?.[0]).toMatch(/[/]v1[/]videos[/]tasks$/)
+    expect(fetchMock.mock.calls[1]?.[1]).toMatchObject({
+      method: 'DELETE',
+      headers: { Authorization: 'Bearer history-key' },
     })
   })
 

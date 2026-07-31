@@ -40,6 +40,7 @@ type OpenAIGatewayHandler struct {
 	opsService                 *service.OpsService
 	concurrencyHelper          *ConcurrencyHelper
 	imageLimiter               *imageConcurrencyLimiter
+	videoTasks                 *service.VideoTaskService
 	maxAccountSwitches         int
 	cfg                        *config.Config
 }

@@ -324,7 +324,7 @@
             <div class="flex items-center gap-2">
               <h2 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('videoStudio.history') }}</h2>
               <span class="text-xs tabular-nums text-gray-400">{{ history.length }}</span>
-              <span class="text-[11px] text-gray-400">{{ t('videoStudio.sessionOnly') }}</span>
+              <span class="text-[11px] text-gray-400">{{ t('videoStudio.historyRetention', { count: retentionDays }) }}</span>
             </div>
             <button
               type="button"
@@ -392,10 +392,12 @@ import { useAppStore } from '@/stores/app'
 import type { ApiKey } from '@/types'
 import { listEligibleVideoKeys } from './access'
 import {
+  clearVideoTasks,
   downloadVideoContent,
   getVideoRequestId,
   getVideoTask,
   listVideoModels,
+  listVideoTasks,
   submitVideoTask,
 } from './api'
 import {
@@ -420,7 +422,6 @@ import type {
 } from './types'
 
 const ACTIVE_TASK_KEY = 'video_studio_active_task_v1'
-const HISTORY_KEY = 'video_studio_history_v1'
 const POLL_INTERVAL_MS = 5000
 const TASK_TIMEOUT_MS = 5 * 60 * 1000
 const MAX_HISTORY_ITEMS = 10
@@ -456,7 +457,8 @@ const loadingContent = ref(false)
 const videoObjectUrl = ref('')
 const startedAt = ref(0)
 const now = ref(Date.now())
-const history = ref<StoredVideoHistoryItem[]>(readHistory())
+const history = ref<StoredVideoHistoryItem[]>([])
+const retentionDays = ref(7)
 const activeHistoryId = ref('')
 
 let modelController: AbortController | null = null
@@ -537,7 +539,7 @@ function handleModelSelection() {
 
 async function handleKeySelection() {
   resetResult()
-  await loadModels()
+  await Promise.all([loadModels(), loadHistory()])
 }
 
 function openSourcePicker() {
@@ -697,22 +699,6 @@ function clearActiveTask() {
   sessionStorage.removeItem(ACTIVE_TASK_KEY)
 }
 
-function readHistory(): StoredVideoHistoryItem[] {
-  try {
-    const raw = sessionStorage.getItem(HISTORY_KEY)
-    if (!raw) return []
-    const parsed = JSON.parse(raw)
-    if (!Array.isArray(parsed)) return []
-    return parsed.filter((item) => item?.requestId && item?.request?.model).slice(0, MAX_HISTORY_ITEMS)
-  } catch {
-    return []
-  }
-}
-
-function persistHistory() {
-  sessionStorage.setItem(HISTORY_KEY, JSON.stringify(history.value.slice(0, MAX_HISTORY_ITEMS)))
-}
-
 function addHistoryItem(stored: StoredVideoTask) {
   const item: StoredVideoHistoryItem = {
     ...stored,
@@ -722,12 +708,53 @@ function addHistoryItem(stored: StoredVideoTask) {
   history.value = [item, ...history.value.filter((entry) => entry.requestId !== item.requestId)]
     .slice(0, MAX_HISTORY_ITEMS)
   activeHistoryId.value = item.requestId
-  persistHistory()
 }
 
 function updateHistoryItem(id: string, patch: Partial<StoredVideoHistoryItem>) {
   history.value = history.value.map((item) => item.requestId === id ? { ...item, ...patch } : item)
-  persistHistory()
+}
+
+function backendTaskToHistory(taskItem: VideoTask, key: ApiKey): StoredVideoHistoryItem | null {
+  const id = getVideoRequestId(taskItem)
+  const metadata = taskItem.metadata
+  const modelName = String(metadata?.model || '').trim()
+  if (!id || !modelName) return null
+  const taskResolution = metadata?.resolution
+  const safeResolution = allResolutions.includes(taskResolution as VideoResolution)
+    ? taskResolution as VideoResolution
+    : '480p'
+  const createdAt = Number(taskItem.created_at)
+  return {
+    requestId: id,
+    apiKeyId: key.id,
+    operation: metadata?.operation === 'image' ? 'image' : 'text',
+    request: {
+      model: modelName,
+      prompt: String(metadata?.prompt || ''),
+      resolution: safeResolution,
+      duration: Math.max(1, Number(metadata?.duration) || 8),
+    },
+    startedAt: Number.isFinite(createdAt) && createdAt > 0 ? createdAt * 1000 : Date.now(),
+    status: normalizedTaskState(taskItem.status),
+    errorMessage: taskErrorText(taskItem.error),
+  }
+}
+
+async function loadHistory() {
+  const key = selectedKey.value
+  if (!key) {
+    history.value = []
+    return
+  }
+  try {
+    const result = await listVideoTasks(key.key, MAX_HISTORY_ITEMS)
+    retentionDays.value = result.retentionDays
+    history.value = result.tasks
+      .map(item => backendTaskToHistory(item, key))
+      .filter((item): item is StoredVideoHistoryItem => item !== null)
+  } catch (error) {
+    appStore.showError(errorText(error, t('videoStudio.historyLoadFailed')))
+  }
 }
 
 async function generateVideo() {
@@ -918,11 +945,17 @@ async function selectHistoryItem(item: StoredVideoHistoryItem) {
   pollTimer = setTimeout(() => void pollTask(item.requestId, key), 0)
 }
 
-function clearHistory() {
+async function clearHistory() {
   if (isWorking.value) return
-  history.value = []
-  sessionStorage.removeItem(HISTORY_KEY)
-  resetResult()
+  const key = selectedKey.value
+  if (!key) return
+  try {
+    await clearVideoTasks(key.key)
+    history.value = []
+    resetResult()
+  } catch (error) {
+    appStore.showError(errorText(error, t('videoStudio.historyClearFailed')))
+  }
 }
 
 function operationLabel(value: VideoStudioOperation): string {
@@ -990,9 +1023,11 @@ onMounted(async () => {
     userRates.value = rates
 
     const stored = readActiveTask()
-    if (stored && await restoreActiveTask(stored)) return
+    const storedKey = stored ? keys.find(item => item.id === stored.apiKeyId) : null
+    selectedKeyId.value = storedKey?.id || keys[0]?.id || null
+    await loadHistory()
+    if (stored && storedKey && await restoreActiveTask(stored)) return
 
-    selectedKeyId.value = keys[0]?.id || null
     const draft = consumeVideoStudioImageDraft()
     if (draft) setSourceImageURL(draft.imageUrl)
     await loadModels()

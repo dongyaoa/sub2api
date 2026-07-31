@@ -1,0 +1,129 @@
+package service
+
+import (
+	"context"
+	"encoding/json"
+	"sort"
+	"testing"
+	"time"
+
+	"github.com/stretchr/testify/require"
+)
+
+type memoryVideoTaskStore struct {
+	tasks map[string]*VideoTaskRecord
+}
+
+func newMemoryVideoTaskStore() *memoryVideoTaskStore {
+	return &memoryVideoTaskStore{tasks: make(map[string]*VideoTaskRecord)}
+}
+
+func (s *memoryVideoTaskStore) Save(_ context.Context, task *VideoTaskRecord, _ time.Duration) error {
+	data, _ := json.Marshal(task)
+	var copied VideoTaskRecord
+	_ = json.Unmarshal(data, &copied)
+	s.tasks[task.ID] = &copied
+	return nil
+}
+
+func (s *memoryVideoTaskStore) Get(_ context.Context, id string) (*VideoTaskRecord, error) {
+	task, ok := s.tasks[id]
+	if !ok {
+		return nil, ErrVideoTaskNotFound
+	}
+	data, _ := json.Marshal(task)
+	var copied VideoTaskRecord
+	_ = json.Unmarshal(data, &copied)
+	return &copied, nil
+}
+
+func (s *memoryVideoTaskStore) List(_ context.Context, owner VideoTaskOwner, limit int) ([]*VideoTaskRecord, error) {
+	tasks := make([]*VideoTaskRecord, 0)
+	for _, task := range s.tasks {
+		if task.UserID == owner.UserID && task.APIKeyID == owner.APIKeyID {
+			tasks = append(tasks, task)
+		}
+	}
+	sort.Slice(tasks, func(i, j int) bool { return tasks[i].CreatedAt > tasks[j].CreatedAt })
+	if len(tasks) > limit {
+		tasks = tasks[:limit]
+	}
+	return tasks, nil
+}
+
+func (s *memoryVideoTaskStore) Clear(_ context.Context, owner VideoTaskOwner) error {
+	for id, task := range s.tasks {
+		if task.UserID == owner.UserID && task.APIKeyID == owner.APIKeyID {
+			delete(s.tasks, id)
+		}
+	}
+	return nil
+}
+
+type recordingVideoStorage struct {
+	key         string
+	contentType string
+	data        []byte
+}
+
+func (s *recordingVideoStorage) Save(_ context.Context, key, contentType string, data []byte) (string, error) {
+	s.key = key
+	s.contentType = contentType
+	s.data = append([]byte(nil), data...)
+	return "https://cdn.example/" + key, nil
+}
+
+func TestVideoTaskServicePersistsOwnershipStatusAndHistory(t *testing.T) {
+	store := newMemoryVideoTaskStore()
+	svc := NewVideoTaskService(store, nil)
+	svc.ttl = 48 * time.Hour
+	owner := VideoTaskOwner{UserID: 7, APIKeyID: 9}
+	metadata := VideoTaskMetadata{Operation: "text", Model: "grok-imagine-video", Prompt: "move", Resolution: "720p", Duration: 8}
+
+	err := svc.RecordSubmission(context.Background(), owner, 3, 12, "task-1", metadata, []byte(`{"id":"task-1","status":"queued"}`))
+	require.NoError(t, err)
+
+	record, err := svc.GetRecord(context.Background(), owner, "task-1")
+	require.NoError(t, err)
+	require.Equal(t, int64(12), record.AccountID)
+	require.Equal(t, VideoTaskStatusProcessing, record.Status)
+	_, err = svc.GetRecord(context.Background(), VideoTaskOwner{UserID: 7, APIKeyID: 10}, "task-1")
+	require.ErrorIs(t, err, ErrVideoTaskNotFound)
+
+	err = svc.UpdateStatus(context.Background(), owner, "task-1", 200, []byte(`{"status":"completed"}`))
+	require.NoError(t, err)
+	tasks, err := svc.List(context.Background(), owner, 10)
+	require.NoError(t, err)
+	require.Len(t, tasks, 1)
+	require.Equal(t, VideoTaskStatusCompleted, tasks[0].Status)
+	require.Equal(t, 2, svc.RetentionDays())
+
+	require.NoError(t, svc.Clear(context.Background(), owner))
+	tasks, err = svc.List(context.Background(), owner, 10)
+	require.NoError(t, err)
+	require.Empty(t, tasks)
+}
+
+func TestVideoTaskServiceStoresMP4UsingExistingObjectStoragePrefix(t *testing.T) {
+	store := newMemoryVideoTaskStore()
+	storage := &recordingVideoStorage{}
+	uploader := NewImageResultUploader(storage, "images/", 0, nil)
+	svc := NewVideoTaskService(store, func() (*ImageResultUploader, bool) { return uploader, true })
+	owner := VideoTaskOwner{UserID: 1, APIKeyID: 2}
+	require.NoError(t, svc.RecordSubmission(
+		context.Background(), owner, 3, 4, "task-video", VideoTaskMetadata{Model: "grok-imagine-video"}, nil,
+	))
+	mp4 := []byte("\x00\x00\x00\x18ftypisomvideo")
+
+	err := svc.StoreContent(context.Background(), owner, "task-video", "application/octet-stream", mp4)
+	require.NoError(t, err)
+	require.Equal(t, "images/videos/task-video.mp4", storage.key)
+	require.Equal(t, "video/mp4", storage.contentType)
+	require.Equal(t, mp4, storage.data)
+
+	record, err := svc.GetRecord(context.Background(), owner, "task-video")
+	require.NoError(t, err)
+	require.Equal(t, "https://cdn.example/images/videos/task-video.mp4", record.VideoURL)
+	require.Equal(t, VideoTaskStatusCompleted, record.Status)
+	require.Equal(t, int64(len(mp4)), record.ByteSize)
+}

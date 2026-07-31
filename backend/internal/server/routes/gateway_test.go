@@ -186,6 +186,23 @@ func TestGatewayRoutesGrokImagesAndVideosPathsAreRegistered(t *testing.T) {
 	}
 }
 
+func TestGatewayRoutesVideoTaskHistoryPathsAreRegistered(t *testing.T) {
+	router := newGatewayRoutesTestRouter(service.PlatformGrok)
+	registered := make(map[string]bool)
+	for _, route := range router.Routes() {
+		registered[route.Method+" "+route.Path] = true
+	}
+
+	for _, route := range []string{
+		"GET /v1/videos/tasks",
+		"DELETE /v1/videos/tasks",
+		"GET /videos/tasks",
+		"DELETE /videos/tasks",
+	} {
+		require.True(t, registered[route], "%s should be registered", route)
+	}
+}
+
 func TestGatewayRoutesCompositeVideoLookupsUseGrokHandler(t *testing.T) {
 	router := newGatewayRoutesTestRouter(service.PlatformComposite)
 
