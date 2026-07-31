@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -11,9 +12,11 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
@@ -141,6 +144,113 @@ func TestAsyncImageHandlerSubmitAndPoll(t *testing.T) {
 	require.Contains(t, pollWriter.Body.String(), "https://example.test/image.png")
 }
 
+func TestAsyncImageHandlerSubmitMultipleImagesFansOutAndMerges(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	store := &asyncImageMemoryStore{tasks: make(map[string]*service.ImageTaskRecord)}
+	tasks := service.NewImageTaskServiceWithUploader(store, nil, time.Hour, time.Minute)
+	type capturedCall struct {
+		quantity  int
+		requestID string
+		err       error
+	}
+	captured := make(chan capturedCall, 3)
+	var callSequence atomic.Int32
+	h := &AsyncImageHandler{tasks: tasks}
+	h.execute = func(_ string, c *gin.Context) {
+		body, err := io.ReadAll(c.Request.Body)
+		var payload struct {
+			Quantity int `json:"n"`
+		}
+		if err == nil {
+			err = json.Unmarshal(body, &payload)
+		}
+		requestID, _ := c.Request.Context().Value(ctxkey.RequestID).(string)
+		captured <- capturedCall{quantity: payload.Quantity, requestID: requestID, err: err}
+		index := callSequence.Add(1)
+		c.JSON(http.StatusOK, gin.H{
+			"created": 123,
+			"data":    []gin.H{{"url": fmt.Sprintf("https://example.test/image-%d.png", index)}},
+		})
+	}
+
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		groupID := int64(3)
+		c.Set(string(middleware2.ContextKeyAPIKey), &service.APIKey{
+			ID:      9,
+			UserID:  7,
+			GroupID: &groupID,
+			Group:   &service.Group{ID: groupID, Platform: service.PlatformOpenAI, AllowImageGeneration: true},
+		})
+		c.Next()
+	})
+	router.POST("/v1/images/generations/async", h.Submit)
+
+	req := httptest.NewRequest(
+		http.MethodPost,
+		"/v1/images/generations/async",
+		strings.NewReader("{\"model\":\"gpt-image-2\",\"prompt\":\"three cats\",\"n\":3}"),
+	)
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	router.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusAccepted, rec.Code)
+
+	var accepted struct {
+		TaskID string `json:"task_id"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &accepted))
+	var completed *service.ImageTask
+	require.Eventually(t, func() bool {
+		current, err := tasks.Get(context.Background(), service.ImageTaskOwner{UserID: 7, APIKeyID: 9}, accepted.TaskID)
+		if err != nil || current.Status != service.ImageTaskStatusCompleted {
+			return false
+		}
+		completed = current
+		return true
+	}, time.Second, 10*time.Millisecond)
+
+	var merged struct {
+		Data []struct {
+			URL string `json:"url"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(completed.Result, &merged))
+	require.Len(t, merged.Data, 3)
+
+	requestIDs := make(map[string]struct{}, 3)
+	for range 3 {
+		call := <-captured
+		require.NoError(t, call.err)
+		require.Equal(t, 1, call.quantity)
+		require.NotEmpty(t, call.requestID)
+		requestIDs[call.requestID] = struct{}{}
+	}
+	require.Len(t, requestIDs, 3, "each image call needs a unique billing request id")
+	require.Equal(t, int32(3), callSequence.Load())
+}
+
+func TestSetAsyncImageRequestQuantityRewritesMultipart(t *testing.T) {
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	require.NoError(t, writer.WriteField("model", "gpt-image-2"))
+	require.NoError(t, writer.WriteField("prompt", "replace the background"))
+	require.NoError(t, writer.WriteField("n", "3"))
+	part, err := writer.CreateFormFile("image", "source.png")
+	require.NoError(t, err)
+	_, err = part.Write([]byte("fake-png-content"))
+	require.NoError(t, err)
+	require.NoError(t, writer.Close())
+
+	rewritten, err := setAsyncImageRequestQuantity(writer.FormDataContentType(), body.Bytes(), 1)
+	require.NoError(t, err)
+	metadata := parseAsyncImageTaskMetadata("/v1/images/edits/async", writer.FormDataContentType(), rewritten)
+	require.Equal(t, 1, metadata.Quantity)
+	require.Equal(t, "gpt-image-2", metadata.Model)
+	require.Equal(t, "replace the background", metadata.Prompt)
+	require.Contains(t, string(rewritten), "source.png")
+	require.Contains(t, string(rewritten), "fake-png-content")
+}
 func TestAsyncImageHandlerSubmitMultipartEdit(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	store := &asyncImageMemoryStore{tasks: make(map[string]*service.ImageTaskRecord)}

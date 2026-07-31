@@ -12,8 +12,10 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/ctxkey"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
@@ -29,6 +31,8 @@ type AsyncImageHandler struct {
 	gemini  *GatewayHandler
 	execute func(platform string, c *gin.Context)
 }
+
+const maxAsyncImageQuantity = 4
 
 func NewAsyncImageHandler(tasks *service.ImageTaskService, openAI *OpenAIGatewayHandler) *AsyncImageHandler {
 	h := &AsyncImageHandler{tasks: tasks, openAI: openAI}
@@ -104,18 +108,26 @@ func (h *AsyncImageHandler) Submit(c *gin.Context) {
 		return
 	}
 
-	taskCtx, recorder, cancel := newAsyncImageContext(c, body, h.tasks.ExecutionTimeout())
 	metadata := parseAsyncImageTaskMetadata(c.Request.URL.Path, c.GetHeader("Content-Type"), body)
+	if metadata.Quantity > maxAsyncImageQuantity {
+		imageTaskJSONError(c, http.StatusBadRequest, "invalid_request_error", "n must be between 1 and 4 for asynchronous image tasks")
+		return
+	}
+	unitBody, err := setAsyncImageRequestQuantity(c.GetHeader("Content-Type"), body, 1)
+	if err != nil {
+		imageTaskJSONError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
+		return
+	}
 	task, err := h.tasks.CreateWithMetadata(
 		c.Request.Context(),
 		service.ImageTaskOwner{UserID: apiKey.UserID, APIKeyID: apiKey.ID},
 		metadata,
 	)
 	if err != nil {
-		cancel()
 		imageTaskError(c, err)
 		return
 	}
+	baseContext := c.Copy()
 
 	pollURL := imageTaskPollURL(c.Request.URL.Path, task.ID)
 	c.Header("Cache-Control", "no-store")
@@ -131,7 +143,7 @@ func (h *AsyncImageHandler) Submit(c *gin.Context) {
 		"poll_url":   pollURL,
 	})
 
-	go h.run(task.ID, platform, taskCtx, recorder, cancel)
+	go h.run(task.ID, platform, baseContext, unitBody, metadata.Quantity, h.tasks.ExecutionTimeout())
 }
 
 func (h *AsyncImageHandler) checkSecurityAuditBeforeSubmit(c *gin.Context, apiKey *service.APIKey, platform string, body []byte) bool {
@@ -326,6 +338,64 @@ func setAsyncImageMetadataField(metadata *service.ImageTaskMetadata, name, value
 	}
 }
 
+func setAsyncImageRequestQuantity(contentType string, body []byte, quantity int) ([]byte, error) {
+	if quantity <= 0 {
+		quantity = 1
+	}
+	if !isMultipartImagesContentType(contentType) {
+		var payload map[string]json.RawMessage
+		if err := json.Unmarshal(body, &payload); err != nil || payload == nil {
+			return nil, errors.New("failed to parse image request body")
+		}
+		payload["n"] = json.RawMessage(strconv.Itoa(quantity))
+		return json.Marshal(payload)
+	}
+
+	_, params, err := mime.ParseMediaType(contentType)
+	if err != nil || strings.TrimSpace(params["boundary"]) == "" {
+		return nil, errors.New("invalid multipart image request")
+	}
+	reader := multipart.NewReader(bytes.NewReader(body), params["boundary"])
+	var rewritten bytes.Buffer
+	writer := multipart.NewWriter(&rewritten)
+	if err := writer.SetBoundary(params["boundary"]); err != nil {
+		return nil, errors.New("invalid multipart image boundary")
+	}
+	sawQuantity := false
+	for {
+		part, readErr := reader.NextPart()
+		if errors.Is(readErr, io.EOF) {
+			break
+		}
+		if readErr != nil {
+			return nil, errors.New("failed to parse multipart image request")
+		}
+		destination, createErr := writer.CreatePart(part.Header)
+		if createErr != nil {
+			_ = part.Close()
+			return nil, errors.New("failed to rebuild multipart image request")
+		}
+		if part.FileName() == "" && part.FormName() == "n" {
+			sawQuantity = true
+			_, err = io.WriteString(destination, strconv.Itoa(quantity))
+		} else {
+			_, err = io.Copy(destination, part)
+		}
+		_ = part.Close()
+		if err != nil {
+			return nil, errors.New("failed to rebuild multipart image request")
+		}
+	}
+	if !sawQuantity {
+		if err := writer.WriteField("n", strconv.Itoa(quantity)); err != nil {
+			return nil, errors.New("failed to add image quantity")
+		}
+	}
+	if err := writer.Close(); err != nil {
+		return nil, errors.New("failed to finalize multipart image request")
+	}
+	return rewritten.Bytes(), nil
+}
 func (h *AsyncImageHandler) validateRequest(c *gin.Context, platform string, body []byte) error {
 	if platform == service.PlatformGemini {
 		_, _, err := buildGeminiStudioImageRequest(c.Request.URL.Path, c.GetHeader("Content-Type"), body)
@@ -367,44 +437,170 @@ func (h *AsyncImageHandler) executeWithGateway(platform string, c *gin.Context) 
 	h.openAI.Images(c)
 }
 
-func (h *AsyncImageHandler) run(taskID, platform string, taskCtx *gin.Context, recorder *httptest.ResponseRecorder, cancel context.CancelFunc) {
-	defer cancel()
+type asyncImageCallResult struct {
+	statusCode int
+	body       json.RawMessage
+	taskErr    json.RawMessage
+}
+
+func (h *AsyncImageHandler) run(
+	taskID, platform string,
+	baseContext *gin.Context,
+	body []byte,
+	quantity int,
+	executionTimeout time.Duration,
+) {
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			logger.L().Error("image_task.execution_panicked", zap.String("task_id", taskID), zap.Any("panic", recovered))
 			h.failTask(taskID, http.StatusInternalServerError, imageTaskErrorPayload("api_error", "image generation task panicked"))
 		}
 	}()
+	if quantity <= 0 {
+		quantity = 1
+	}
+
+	results := make([]asyncImageCallResult, quantity)
+	taskContexts := make([]*gin.Context, quantity)
+	recorders := make([]*httptest.ResponseRecorder, quantity)
+	cancels := make([]context.CancelFunc, quantity)
+	for index := 0; index < quantity; index++ {
+		taskContexts[index], recorders[index], cancels[index] = newAsyncImageContext(baseContext, body, executionTimeout)
+		childID := taskID + "-" + strconv.Itoa(index+1)
+		childContext := context.WithValue(taskContexts[index].Request.Context(), ctxkey.RequestID, childID)
+		childContext = context.WithValue(childContext, ctxkey.ClientRequestID, childID)
+		taskContexts[index].Request = taskContexts[index].Request.WithContext(childContext)
+	}
+
+	var waitGroup sync.WaitGroup
+	waitGroup.Add(quantity)
+	for index := 0; index < quantity; index++ {
+		go func(index int) {
+			defer waitGroup.Done()
+			results[index] = h.executeAsyncImageCall(taskID, platform, taskContexts[index], recorders[index], cancels[index])
+		}(index)
+	}
+	waitGroup.Wait()
+
+	completedBodies := make([]json.RawMessage, 0, quantity)
+	statusCode := http.StatusOK
+	for _, result := range results {
+		if len(result.taskErr) > 0 {
+			h.failTask(taskID, result.statusCode, result.taskErr)
+			return
+		}
+		statusCode = result.statusCode
+		completedBodies = append(completedBodies, result.body)
+	}
+	mergedBody, err := mergeAsyncImageTaskResults(completedBodies)
+	if err != nil {
+		h.failTask(taskID, http.StatusBadGateway, imageTaskErrorPayload("api_error", err.Error()))
+		return
+	}
+	if err := h.tasks.Complete(context.Background(), taskID, statusCode, mergedBody); err != nil {
+		logger.L().Error("image_task.complete_store_failed", zap.String("task_id", taskID), zap.Error(err))
+	}
+}
+
+func (h *AsyncImageHandler) executeAsyncImageCall(
+	taskID, platform string,
+	taskCtx *gin.Context,
+	recorder *httptest.ResponseRecorder,
+	cancel context.CancelFunc,
+) (result asyncImageCallResult) {
+	defer cancel()
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			logger.L().Error("image_task.execution_panicked", zap.String("task_id", taskID), zap.Any("panic", recovered))
+			result = asyncImageCallResult{
+				statusCode: http.StatusInternalServerError,
+				taskErr:    imageTaskErrorPayload("api_error", "image generation task panicked"),
+			}
+		}
+	}()
 
 	h.execute(platform, taskCtx)
-	body := bytes.TrimSpace(recorder.Body.Bytes())
-	if err := taskCtx.Request.Context().Err(); err != nil && len(body) == 0 {
-		h.failTask(taskID, http.StatusGatewayTimeout, imageTaskErrorPayload("timeout_error", "image generation task timed out"))
-		return
+	responseBody := bytes.TrimSpace(recorder.Body.Bytes())
+	if err := taskCtx.Request.Context().Err(); err != nil && len(responseBody) == 0 {
+		return asyncImageCallResult{
+			statusCode: http.StatusGatewayTimeout,
+			taskErr:    imageTaskErrorPayload("timeout_error", "image generation task timed out"),
+		}
 	}
 	statusCode := recorder.Code
 	if statusCode == 0 {
 		statusCode = http.StatusOK
 	}
 	if statusCode >= http.StatusOK && statusCode < http.StatusMultipleChoices {
-		if len(body) == 0 || !json.Valid(body) {
-			h.failTask(taskID, http.StatusBadGateway, imageTaskErrorPayload("api_error", "upstream returned an invalid image response"))
-			return
+		if len(responseBody) == 0 || !json.Valid(responseBody) {
+			return asyncImageCallResult{
+				statusCode: http.StatusBadGateway,
+				taskErr:    imageTaskErrorPayload("api_error", "upstream returned an invalid image response"),
+			}
 		}
-		normalizedBody, err := normalizeGeminiImageTaskBody(platform, body)
+		normalizedBody, err := normalizeGeminiImageTaskBody(platform, responseBody)
 		if err != nil {
-			h.failTask(taskID, http.StatusBadGateway, imageTaskErrorPayload("api_error", err.Error()))
-			return
+			return asyncImageCallResult{
+				statusCode: http.StatusBadGateway,
+				taskErr:    imageTaskErrorPayload("api_error", err.Error()),
+			}
 		}
-		body = normalizedBody
-		if err := h.tasks.Complete(context.Background(), taskID, statusCode, json.RawMessage(body)); err != nil {
-			logger.L().Error("image_task.complete_store_failed", zap.String("task_id", taskID), zap.Error(err))
-		}
-		return
+		return asyncImageCallResult{statusCode: statusCode, body: json.RawMessage(normalizedBody)}
 	}
-	h.failTask(taskID, statusCode, extractImageTaskError(body))
+	return asyncImageCallResult{statusCode: statusCode, taskErr: extractImageTaskError(responseBody)}
 }
 
+func mergeAsyncImageTaskResults(results []json.RawMessage) (json.RawMessage, error) {
+	if len(results) == 0 {
+		return nil, errors.New("image generation completed without results")
+	}
+	if len(results) == 1 {
+		return results[0], nil
+	}
+
+	var merged map[string]json.RawMessage
+	items := make([]json.RawMessage, 0, len(results))
+	for _, result := range results {
+		var envelope map[string]json.RawMessage
+		if err := json.Unmarshal(result, &envelope); err != nil {
+			return nil, errors.New("upstream returned an invalid image response")
+		}
+		if merged == nil {
+			merged = envelope
+		}
+		var resultItems []json.RawMessage
+		if rawData := envelope["data"]; len(rawData) > 0 {
+			if err := json.Unmarshal(rawData, &resultItems); err != nil {
+				return nil, errors.New("upstream returned invalid image data")
+			}
+		}
+		if len(resultItems) == 0 {
+			var imageURL string
+			if rawURL := envelope["image_url"]; len(rawURL) > 0 {
+				_ = json.Unmarshal(rawURL, &imageURL)
+			}
+			if strings.TrimSpace(imageURL) != "" {
+				item, _ := json.Marshal(map[string]string{"url": strings.TrimSpace(imageURL)})
+				resultItems = append(resultItems, item)
+			}
+		}
+		if len(resultItems) == 0 {
+			return nil, errors.New("upstream completed without returning an image")
+		}
+		items = append(items, resultItems...)
+	}
+	encodedItems, err := json.Marshal(items)
+	if err != nil {
+		return nil, errors.New("failed to combine generated images")
+	}
+	merged["data"] = encodedItems
+	delete(merged, "image_url")
+	combined, err := json.Marshal(merged)
+	if err != nil {
+		return nil, errors.New("failed to combine image response")
+	}
+	return combined, nil
+}
 func (h *AsyncImageHandler) failTask(taskID string, statusCode int, taskErr json.RawMessage) {
 	if err := h.tasks.Fail(context.Background(), taskID, statusCode, taskErr); err != nil {
 		logger.L().Error("image_task.failure_store_failed", zap.String("task_id", taskID), zap.Error(err))

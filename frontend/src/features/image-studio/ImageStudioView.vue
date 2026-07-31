@@ -305,26 +305,23 @@
               <p class="mt-1 text-sm text-gray-400">{{ emptyStateHint }}</p>
             </div>
 
-            <div v-else-if="isWorking" class="flex p-3">
-              <div class="w-full gap-3" :class="quantity > 1 ? 'grid grid-cols-1 md:grid-cols-2' : 'flex'">
+            <div v-else-if="isWorking" class="flex min-h-[600px] min-w-0 p-3">
+              <div class="grid min-h-0 min-w-0 flex-1 grid-cols-1 gap-3" :class="quantity > 1 ? 'sm:grid-cols-2' : ''">
                 <div
                   v-for="index in quantity"
                   :key="index"
-                  class="studio-generating-frame relative flex items-center justify-center overflow-hidden rounded-lg border border-gray-200 bg-gray-50 dark:border-dark-700 dark:bg-dark-800"
-                  :class="quantity === 1 ? 'min-h-[520px] flex-1' : 'min-h-[280px]'"
-                  :style="quantity > 1 ? { aspectRatio: previewAspectRatio } : undefined"
+                  class="studio-generating-frame relative flex min-h-[160px] min-w-0 items-center justify-center overflow-hidden rounded-lg border border-gray-200 bg-gray-50 dark:border-dark-700 dark:bg-dark-800"
                 >
-                  <div class="relative z-10 flex flex-col items-center px-4 text-center">
-                    <span class="studio-spinner mb-4 flex h-12 w-12 items-center justify-center rounded-lg border border-primary-200 bg-white text-primary-600 dark:border-primary-900 dark:bg-dark-900 dark:text-primary-400">
+                  <div class="relative z-10 flex min-w-0 flex-col items-center px-4 text-center">
+                    <span class="studio-spinner mb-4 flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-primary-200 bg-white text-primary-600 dark:border-primary-900 dark:bg-dark-900 dark:text-primary-400">
                       <Icon :name="operation === 'edit' ? 'edit' : 'sparkles'" size="lg" />
                     </span>
-                    <span class="text-sm font-medium text-gray-700 dark:text-gray-200">{{ processingItemLabel(index) }}</span>
+                    <span class="max-w-full text-sm font-medium text-gray-700 dark:text-gray-200">{{ processingItemLabel(index) }}</span>
                     <span class="mt-1 text-xs text-gray-400">{{ statusLabel }}</span>
                   </div>
                 </div>
               </div>
             </div>
-
             <div v-else-if="viewState === 'failed'" class="flex min-h-[600px] flex-col items-center justify-center px-6 text-center">
               <div class="mb-4 flex h-14 w-14 items-center justify-center rounded-lg bg-red-50 text-red-600 dark:bg-red-950/30 dark:text-red-400">
                 <Icon name="exclamationCircle" size="xl" />
@@ -337,52 +334,87 @@
               </button>
             </div>
 
-            <div v-else class="flex p-3">
-              <div class="w-full gap-3" :class="images.length > 1 ? 'grid grid-cols-1 md:grid-cols-2' : 'flex min-w-0'">
-                <figure
-                  v-for="(image, index) in images"
-                  :key="image.url + '-' + index"
-                  class="group overflow-hidden rounded-lg border border-gray-200 bg-gray-50 dark:border-dark-700 dark:bg-dark-800"
-                  :class="images.length === 1 ? 'flex min-h-0 min-w-0 flex-1 flex-col' : ''"
-                >
-                  <div
-                    class="relative flex items-center justify-center overflow-hidden bg-gray-100 dark:bg-dark-950"
-                    :class="images.length === 1 ? 'studio-single-media min-h-[520px] flex-1' : 'min-h-[260px]'"
-                    :style="images.length > 1 ? { aspectRatio: displayPreviewAspectRatio } : undefined"
-                  >
+            <div v-else class="flex min-h-[600px] min-w-0 p-3">
+              <div v-if="activeImage" class="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
+                <figure class="group flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-gray-200 bg-gray-50 dark:border-dark-700 dark:bg-dark-800">
+                  <div class="studio-single-media relative flex min-h-[420px] flex-1 items-center justify-center overflow-hidden bg-gray-100 dark:bg-dark-950">
                     <img
-                      v-if="!imageLoadErrors[index]"
-                      :src="imageSource(image.url, index)"
-                      :alt="t('imageStudio.imageAlt', { index: index + 1 })"
-                      class="max-h-full max-w-full object-contain"
+                      v-if="!imageLoadErrors[activeImageIndex]"
+                      :src="imageSource(activeImage.url, activeImageIndex)"
+                      :alt="t('imageStudio.imageAlt', { index: activeImageIndex + 1 })"
+                      class="h-full w-full object-contain"
                       loading="eager"
-                      @error="markImageError(index)"
+                      @error="markImageError(activeImageIndex)"
                     />
                     <div v-else class="flex flex-col items-center text-center text-gray-500 dark:text-gray-400">
                       <Icon name="exclamationTriangle" size="lg" class="mb-2" />
                       <span class="text-sm">{{ t('imageStudio.imageLoadFailed') }}</span>
-                      <button type="button" class="mt-3 inline-flex items-center gap-1 rounded-md border border-gray-200 px-3 py-1.5 text-xs font-medium hover:bg-white dark:border-dark-600 dark:hover:bg-dark-800" @click="reloadImage(index)">
+                      <button type="button" class="mt-3 inline-flex items-center gap-1 rounded-md border border-gray-200 px-3 py-1.5 text-xs font-medium hover:bg-white dark:border-dark-600 dark:hover:bg-dark-800" @click="reloadImage(activeImageIndex)">
                         <Icon name="refresh" size="xs" />
                         {{ t('imageStudio.reload') }}
                       </button>
                     </div>
-                    <div v-if="!imageLoadErrors[index]" class="absolute right-3 top-3 flex gap-2 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
-                      <button type="button" class="flex h-9 w-9 items-center justify-center rounded-md bg-black/65 text-white hover:bg-black/80" :title="t('imageStudio.createVideo')" @click="createVideoFromImage(image.url)">
+
+                    <button
+                      v-if="images.length > 1"
+                      type="button"
+                      class="absolute left-3 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-md bg-black/65 text-white transition-colors hover:bg-black/80"
+                      :title="t('imageStudio.previousImage')"
+                      :aria-label="t('imageStudio.previousImage')"
+                      @click="showPreviousImage"
+                    >
+                      <Icon name="chevronLeft" size="md" />
+                    </button>
+                    <button
+                      v-if="images.length > 1"
+                      type="button"
+                      class="absolute right-3 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-md bg-black/65 text-white transition-colors hover:bg-black/80"
+                      :title="t('imageStudio.nextImage')"
+                      :aria-label="t('imageStudio.nextImage')"
+                      @click="showNextImage"
+                    >
+                      <Icon name="chevronRight" size="md" />
+                    </button>
+
+                    <div v-if="!imageLoadErrors[activeImageIndex]" class="absolute right-3 top-3 flex gap-2 opacity-100 transition-opacity sm:opacity-0 sm:group-hover:opacity-100 sm:group-focus-within:opacity-100">
+                      <button type="button" class="flex h-9 w-9 items-center justify-center rounded-md bg-black/65 text-white hover:bg-black/80" :title="t('imageStudio.createVideo')" @click="createVideoFromImage(activeImage.url)">
                         <Icon name="play" size="sm" />
                       </button>
-                      <button type="button" class="flex h-9 w-9 items-center justify-center rounded-md bg-black/65 text-white hover:bg-black/80" :title="t('imageStudio.preview')" @click="openPreview(index)">
+                      <button type="button" class="flex h-9 w-9 items-center justify-center rounded-md bg-black/65 text-white hover:bg-black/80" :title="t('imageStudio.preview')" @click="openPreview(activeImageIndex)">
                         <Icon name="eye" size="sm" />
                       </button>
-                      <button type="button" class="flex h-9 w-9 items-center justify-center rounded-md bg-black/65 text-white hover:bg-black/80" :title="t('imageStudio.download')" @click="downloadImage(image.url, index)">
+                      <button type="button" class="flex h-9 w-9 items-center justify-center rounded-md bg-black/65 text-white hover:bg-black/80" :title="t('imageStudio.download')" @click="downloadImage(activeImage.url, activeImageIndex)">
                         <Icon name="download" size="sm" />
                       </button>
                     </div>
                   </div>
                   <figcaption class="flex min-h-11 items-center justify-between gap-3 px-3 py-2">
-                    <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('imageStudio.resultNumber', { index: index + 1 }) }}</span>
+                    <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('imageStudio.imagePosition', { current: activeImageIndex + 1, total: images.length }) }}</span>
                     <span class="text-xs text-gray-400">{{ displayResolution }} · {{ displayRatio }}</span>
                   </figcaption>
                 </figure>
+
+                <div
+                  v-if="images.length > 1"
+                  class="flex h-16 shrink-0 items-center justify-center gap-2 overflow-x-auto"
+                  role="tablist"
+                  :aria-label="t('imageStudio.resultNavigation')"
+                >
+                  <button
+                    v-for="(image, index) in images"
+                    :key="'thumbnail-' + image.url + '-' + index"
+                    type="button"
+                    class="relative h-14 w-16 shrink-0 overflow-hidden rounded-md border-2 bg-gray-100 transition-colors dark:bg-dark-800"
+                    :class="activeImageIndex === index ? 'border-primary-500' : 'border-transparent hover:border-gray-300 dark:hover:border-dark-500'"
+                    :title="t('imageStudio.imagePosition', { current: index + 1, total: images.length })"
+                    :aria-selected="activeImageIndex === index"
+                    role="tab"
+                    @click="selectResultImage(index)"
+                  >
+                    <img :src="imageSource(image.url, index)" :alt="t('imageStudio.imageAlt', { index: index + 1 })" class="h-full w-full object-cover" />
+                    <span class="absolute bottom-0.5 right-0.5 flex h-4 min-w-4 items-center justify-center rounded bg-black/70 px-1 text-[10px] font-medium text-white">{{ index + 1 }}</span>
+                  </button>
+                </div>
               </div>
             </div>
           </section>
@@ -503,7 +535,6 @@ import {
   getMaxImageQuantity,
   getOpenAIImageSize,
   getPreferredImageModel,
-  getPreviewAspectRatio,
   getResolutionOptions,
   isImageStudioPlatform,
   normalizeStudioSelection,
@@ -579,6 +610,7 @@ const lastRequest = ref<GenerateImageRequest | null>(null)
 const startedAt = ref(0)
 const now = ref(Date.now())
 const previewIndex = ref<number | null>(null)
+const activeImageIndex = ref(0)
 const imageLoadErrors = ref<Record<number, boolean>>({})
 const imageReloadTokens = ref<Record<number, number>>({})
 const history = ref<StudioHistoryItem[]>([])
@@ -629,7 +661,6 @@ const ratioOptions = computed(() => getAspectRatioOptions(platform.value))
 const outputSizeLabel = computed(() => platform.value === 'openai'
   ? getOpenAIImageSize(ratio.value, resolution.value).replace('x', ' x ')
   : resolution.value + ' · ' + ratio.value)
-const previewAspectRatio = computed(() => getPreviewAspectRatio(ratio.value))
 const priceTiers = computed(() => {
   if (!selectedGroup.value) return []
   return getImagePriceTiers(selectedGroup.value, model.value, userRates.value[selectedGroup.value.id])
@@ -639,6 +670,7 @@ const estimatedCost = computed(() => {
   return estimateImageCost(selectedGroup.value, model.value, resolution.value, quantity.value, userRates.value[selectedGroup.value.id])
 })
 const images = computed(() => task.value ? extractTaskImageData(task.value) : [])
+const activeImage = computed(() => images.value[activeImageIndex.value] || images.value[0] || null)
 const taskId = computed(() => task.value?.task_id || task.value?.id || '')
 const isWorking = computed(() => submitting.value || viewState.value === 'processing')
 const canGenerate = computed(() => {
@@ -675,7 +707,6 @@ const previewImage = computed(() => previewIndex.value == null ? null : images.v
 const activeHistoryItem = computed(() => history.value.find((item) => item.id === activeHistoryId.value) || null)
 const displayResolution = computed(() => activeHistoryItem.value?.resolution || resolution.value)
 const displayRatio = computed(() => activeHistoryItem.value?.ratio || ratio.value)
-const displayPreviewAspectRatio = computed(() => getPreviewAspectRatio(displayRatio.value))
 
 function switchOperation(nextOperation: StudioOperation) {
   if (isWorking.value || operation.value === nextOperation) return
@@ -686,6 +717,7 @@ function switchOperation(nextOperation: StudioOperation) {
   viewState.value = 'idle'
   errorMessage.value = ''
   previewIndex.value = null
+  activeImageIndex.value = 0
   imageLoadErrors.value = {}
   imageReloadTokens.value = {}
 }
@@ -711,6 +743,7 @@ async function handleKeySelection() {
   viewState.value = 'idle'
   errorMessage.value = ''
   previewIndex.value = null
+  activeImageIndex.value = 0
   imageLoadErrors.value = {}
   imageReloadTokens.value = {}
   const normalized = normalizeStudioSelection(platform.value, ratio.value, resolution.value)
@@ -890,6 +923,7 @@ function selectHistoryItem(item: StudioHistoryItem) {
   startedAt.value = item.createdAt
   now.value = Date.now()
   previewIndex.value = null
+  activeImageIndex.value = 0
   imageLoadErrors.value = {}
   imageReloadTokens.value = {}
 }
@@ -1027,6 +1061,7 @@ async function generateImages() {
 
   stopPolling()
   task.value = null
+  activeImageIndex.value = 0
   imageLoadErrors.value = {}
   imageReloadTokens.value = {}
   errorMessage.value = ''
@@ -1138,6 +1173,21 @@ function openPreview(index: number) {
   previewIndex.value = index
 }
 
+function selectResultImage(index: number) {
+  if (index < 0 || index >= images.value.length) return
+  activeImageIndex.value = index
+}
+
+function showPreviousImage() {
+  if (images.value.length <= 1) return
+  activeImageIndex.value = (activeImageIndex.value - 1 + images.value.length) % images.value.length
+}
+
+function showNextImage() {
+  if (images.value.length <= 1) return
+  activeImageIndex.value = (activeImageIndex.value + 1) % images.value.length
+}
+
 function createVideoFromImage(url: string) {
   if (!saveVideoStudioImageDraft(url)) {
     appStore.showError(t('imageStudio.createVideoFailed'))
@@ -1208,6 +1258,7 @@ async function restoreTask(stored: StoredImageTask) {
   ratio.value = stored.ratio || '1:1'
   resolution.value = stored.resolution || '1K'
   lastRequest.value = stored.request
+  activeImageIndex.value = 0
   startedAt.value = stored.startedAt || Date.now()
   viewState.value = 'processing'
   task.value = {
@@ -1303,8 +1354,7 @@ onBeforeUnmount(() => {
 }
 
 .studio-single-media {
-  height: clamp(520px, calc(100vh - 13.5rem), 900px);
-  flex: none;
+  flex: 1 1 0%;
 }
 
 @media (min-width: 1280px) {

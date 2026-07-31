@@ -129,6 +129,7 @@ func TestSecurityHeaders(t *testing.T) {
 		assert.Contains(t, csp, "default-src 'self'")
 		assert.Contains(t, csp, "'nonce-")
 		assert.Contains(t, csp, CloudflareInsightsDomain)
+		assert.Contains(t, csp, "media-src 'self' blob:")
 	})
 
 	t.Run("api_route_skips_csp_nonce_generation", func(t *testing.T) {
@@ -358,6 +359,20 @@ func TestEnhanceCSPPolicy(t *testing.T) {
 		assert.Equal(t, 1, countDirectiveValue(enhanced, "style-src", AirwallexDemoStaticDomain))
 		assert.Equal(t, 1, countDirectiveValue(enhanced, "style-src", AirwallexDemoCheckoutDomain))
 		assert.Equal(t, 1, countDirectiveValue(enhanced, "frame-src", AirwallexDemoCheckoutDomain))
+	})
+	t.Run("allows_blob_media_for_video_playback", func(t *testing.T) {
+		policy := "default-src 'self'"
+		enhanced := enhanceCSPPolicy(policy)
+
+		assert.Contains(t, enhanced, "media-src 'self' blob:")
+		assert.Equal(t, 1, countDirectiveValue(enhanced, "media-src", CSPBlobSource))
+	})
+
+	t.Run("does_not_duplicate_blob_media_source", func(t *testing.T) {
+		policy := "default-src 'self'; media-src 'self' blob:"
+		enhanced := enhanceCSPPolicy(policy)
+
+		assert.Equal(t, 1, countDirectiveValue(enhanced, "media-src", CSPBlobSource))
 	})
 }
 
