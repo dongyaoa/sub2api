@@ -127,24 +127,38 @@ func TestVideoTaskServiceStoresMP4UsingExistingObjectStoragePrefix(t *testing.T)
 	require.Equal(t, VideoTaskStatusCompleted, record.Status)
 	require.Equal(t, int64(len(mp4)), record.ByteSize)
 	require.True(t, record.BrowserPlayable)
+	require.Equal(t, VideoPlaybackFormatVersion, record.PlaybackFormatVersion)
+	require.False(t, record.NeedsBrowserPlaybackUpgrade())
 }
 
-func TestPrepareBrowserPlayableVideoKeepsCompatibleH264MP4(t *testing.T) {
+func TestPrepareBrowserPlayableVideoCanonicalizesTaggedH264MP4(t *testing.T) {
 	input := []byte("\x00\x00\x00\x18ftypisomavc1mp4avideo")
+	converted := []byte("\x00\x00\x00\x18ftypisomavc1canonical")
 	transcodeCalled := false
 
 	prepared, contentType, err := prepareBrowserPlayableVideo(
 		context.Background(), "application/octet-stream", input,
 		func(context.Context, string, []byte) ([]byte, error) {
 			transcodeCalled = true
-			return nil, nil
+			return converted, nil
 		},
 	)
 
 	require.NoError(t, err)
-	require.False(t, transcodeCalled)
+	require.True(t, transcodeCalled)
 	require.Equal(t, "video/mp4", contentType)
-	require.Equal(t, input, prepared)
+	require.Equal(t, converted, prepared)
+}
+
+func TestVideoTaskRecordRequiresUpgradeForLegacyPlayableFlag(t *testing.T) {
+	legacy := &VideoTaskRecord{BrowserPlayable: true}
+	require.True(t, legacy.NeedsBrowserPlaybackUpgrade())
+
+	current := &VideoTaskRecord{
+		BrowserPlayable:       true,
+		PlaybackFormatVersion: VideoPlaybackFormatVersion,
+	}
+	require.False(t, current.NeedsBrowserPlaybackUpgrade())
 }
 
 func TestPrepareBrowserPlayableVideoTranscodesHEVCToH264(t *testing.T) {

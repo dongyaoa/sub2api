@@ -13,9 +13,10 @@ import (
 )
 
 const (
-	VideoTaskStatusProcessing = "processing"
-	VideoTaskStatusCompleted  = "completed"
-	VideoTaskStatusFailed     = "failed"
+	VideoTaskStatusProcessing  = "processing"
+	VideoTaskStatusCompleted   = "completed"
+	VideoTaskStatusFailed      = "failed"
+	VideoPlaybackFormatVersion = 1
 
 	defaultVideoTaskTTL = 7 * 24 * time.Hour
 )
@@ -36,22 +37,23 @@ type VideoTaskMetadata struct {
 // VideoTaskRecord is the private Redis representation. AccountID is retained
 // so status/content lookups keep reaching the account that created the task.
 type VideoTaskRecord struct {
-	ID              string            `json:"id"`
-	UserID          int64             `json:"user_id"`
-	APIKeyID        int64             `json:"api_key_id"`
-	GroupID         int64             `json:"group_id,omitempty"`
-	AccountID       int64             `json:"account_id"`
-	Status          string            `json:"status"`
-	HTTPStatus      int               `json:"http_status,omitempty"`
-	Error           json.RawMessage   `json:"error,omitempty"`
-	CreatedAt       int64             `json:"created_at"`
-	CompletedAt     *int64            `json:"completed_at,omitempty"`
-	ExpiresAt       int64             `json:"expires_at"`
-	Metadata        VideoTaskMetadata `json:"metadata,omitempty"`
-	VideoURL        string            `json:"video_url,omitempty"`
-	ContentType     string            `json:"content_type,omitempty"`
-	ByteSize        int64             `json:"byte_size,omitempty"`
-	BrowserPlayable bool              `json:"browser_playable,omitempty"`
+	ID                    string            `json:"id"`
+	UserID                int64             `json:"user_id"`
+	APIKeyID              int64             `json:"api_key_id"`
+	GroupID               int64             `json:"group_id,omitempty"`
+	AccountID             int64             `json:"account_id"`
+	Status                string            `json:"status"`
+	HTTPStatus            int               `json:"http_status,omitempty"`
+	Error                 json.RawMessage   `json:"error,omitempty"`
+	CreatedAt             int64             `json:"created_at"`
+	CompletedAt           *int64            `json:"completed_at,omitempty"`
+	ExpiresAt             int64             `json:"expires_at"`
+	Metadata              VideoTaskMetadata `json:"metadata,omitempty"`
+	VideoURL              string            `json:"video_url,omitempty"`
+	ContentType           string            `json:"content_type,omitempty"`
+	ByteSize              int64             `json:"byte_size,omitempty"`
+	BrowserPlayable       bool              `json:"browser_playable,omitempty"`
+	PlaybackFormatVersion int               `json:"playback_format_version,omitempty"`
 }
 
 type VideoTask struct {
@@ -74,6 +76,10 @@ type VideoTask struct {
 type VideoTaskOwner struct {
 	UserID   int64
 	APIKeyID int64
+}
+
+func (r *VideoTaskRecord) NeedsBrowserPlaybackUpgrade() bool {
+	return r == nil || !r.BrowserPlayable || r.PlaybackFormatVersion < VideoPlaybackFormatVersion
 }
 
 type VideoTaskStore interface {
@@ -235,7 +241,7 @@ func (s *VideoTaskService) StoreContent(ctx context.Context, owner VideoTaskOwne
 	if err != nil {
 		return err
 	}
-	if strings.TrimSpace(record.VideoURL) != "" && record.BrowserPlayable {
+	if strings.TrimSpace(record.VideoURL) != "" && !record.NeedsBrowserPlaybackUpgrade() {
 		return nil
 	}
 	normalizedType, _, normalizeErr := normalizeGeneratedVideoContent(contentType, data)
@@ -257,6 +263,7 @@ func (s *VideoTaskService) StoreContent(ctx context.Context, owner VideoTaskOwne
 	record.ContentType = storedType
 	record.ByteSize = int64(len(data))
 	record.BrowserPlayable = true
+	record.PlaybackFormatVersion = VideoPlaybackFormatVersion
 	record.Status = VideoTaskStatusCompleted
 	record.HTTPStatus = http.StatusOK
 	if record.CompletedAt == nil {
@@ -332,7 +339,7 @@ func videoTaskToPublic(record *VideoTaskRecord) *VideoTask {
 		ContentAvailable: strings.TrimSpace(record.VideoURL) != "",
 		ContentType:      record.ContentType,
 		ByteSize:         record.ByteSize,
-		BrowserPlayable:  record.BrowserPlayable,
+		BrowserPlayable:  !record.NeedsBrowserPlaybackUpgrade(),
 	}
 }
 

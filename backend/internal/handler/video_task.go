@@ -76,7 +76,8 @@ func (h *OpenAIGatewayHandler) serveStoredGrokVideoContent(
 		return false
 	}
 	rangeHeader := c.GetHeader("Range")
-	if !record.BrowserPlayable {
+	needsPlaybackUpgrade := record.NeedsBrowserPlaybackUpgrade()
+	if needsPlaybackUpgrade {
 		// The first full read of a legacy object upgrades HEVC/AV1/WebM content
 		// to H.264 MP4 before it reaches the browser.
 		rangeHeader = ""
@@ -87,7 +88,7 @@ func (h *OpenAIGatewayHandler) serveStoredGrokVideoContent(
 	}
 	defer func() { _ = resp.Body.Close() }()
 
-	if !record.BrowserPlayable {
+	if needsPlaybackUpgrade {
 		data, readErr := io.ReadAll(io.LimitReader(resp.Body, (512<<20)+1))
 		if readErr != nil || len(data) > 512<<20 {
 			h.errorResponse(c, http.StatusBadGateway, "video_conversion_error", "Failed to read the stored video for browser conversion")

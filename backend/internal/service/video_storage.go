@@ -53,9 +53,9 @@ func prepareBrowserPlayableVideo(
 	if err != nil {
 		return nil, "", err
 	}
-	if contentType == "video/mp4" && isBrowserCompatibleMP4(data) {
-		return data, contentType, nil
-	}
+	// MP4 sample-entry tags alone cannot prove browser decodability (for
+	// example, 10-bit H.264 can still carry avc1). Canonicalize every upstream
+	// file once, then use the persisted playback format version on later reads.
 	if transcode == nil {
 		return nil, "", errors.New("video requires browser-compatible transcoding")
 	}
