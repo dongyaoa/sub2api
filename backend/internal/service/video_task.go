@@ -36,21 +36,22 @@ type VideoTaskMetadata struct {
 // VideoTaskRecord is the private Redis representation. AccountID is retained
 // so status/content lookups keep reaching the account that created the task.
 type VideoTaskRecord struct {
-	ID          string            `json:"id"`
-	UserID      int64             `json:"user_id"`
-	APIKeyID    int64             `json:"api_key_id"`
-	GroupID     int64             `json:"group_id,omitempty"`
-	AccountID   int64             `json:"account_id"`
-	Status      string            `json:"status"`
-	HTTPStatus  int               `json:"http_status,omitempty"`
-	Error       json.RawMessage   `json:"error,omitempty"`
-	CreatedAt   int64             `json:"created_at"`
-	CompletedAt *int64            `json:"completed_at,omitempty"`
-	ExpiresAt   int64             `json:"expires_at"`
-	Metadata    VideoTaskMetadata `json:"metadata,omitempty"`
-	VideoURL    string            `json:"video_url,omitempty"`
-	ContentType string            `json:"content_type,omitempty"`
-	ByteSize    int64             `json:"byte_size,omitempty"`
+	ID              string            `json:"id"`
+	UserID          int64             `json:"user_id"`
+	APIKeyID        int64             `json:"api_key_id"`
+	GroupID         int64             `json:"group_id,omitempty"`
+	AccountID       int64             `json:"account_id"`
+	Status          string            `json:"status"`
+	HTTPStatus      int               `json:"http_status,omitempty"`
+	Error           json.RawMessage   `json:"error,omitempty"`
+	CreatedAt       int64             `json:"created_at"`
+	CompletedAt     *int64            `json:"completed_at,omitempty"`
+	ExpiresAt       int64             `json:"expires_at"`
+	Metadata        VideoTaskMetadata `json:"metadata,omitempty"`
+	VideoURL        string            `json:"video_url,omitempty"`
+	ContentType     string            `json:"content_type,omitempty"`
+	ByteSize        int64             `json:"byte_size,omitempty"`
+	BrowserPlayable bool              `json:"browser_playable,omitempty"`
 }
 
 type VideoTask struct {
@@ -67,6 +68,7 @@ type VideoTask struct {
 	ContentAvailable bool              `json:"content_available"`
 	ContentType      string            `json:"content_type,omitempty"`
 	ByteSize         int64             `json:"byte_size,omitempty"`
+	BrowserPlayable  bool              `json:"browser_playable"`
 }
 
 type VideoTaskOwner struct {
@@ -233,8 +235,12 @@ func (s *VideoTaskService) StoreContent(ctx context.Context, owner VideoTaskOwne
 	if err != nil {
 		return err
 	}
-	if strings.TrimSpace(record.VideoURL) != "" {
+	if strings.TrimSpace(record.VideoURL) != "" && record.BrowserPlayable {
 		return nil
+	}
+	normalizedType, _, normalizeErr := normalizeGeneratedVideoContent(contentType, data)
+	if normalizeErr != nil || normalizedType != "video/mp4" || !isBrowserCompatibleMP4(data) {
+		return errors.New("video content is not a browser-compatible H.264 MP4")
 	}
 	if s.resolve == nil {
 		return ErrVideoTaskUnavailable
@@ -243,13 +249,14 @@ func (s *VideoTaskService) StoreContent(ctx context.Context, owner VideoTaskOwne
 	if !enabled || uploader == nil {
 		return ErrVideoTaskUnavailable
 	}
-	url, normalizedType, err := uploader.StoreVideo(ctx, id, contentType, data)
+	url, storedType, err := uploader.StoreVideo(ctx, id, normalizedType, data)
 	if err != nil {
 		return err
 	}
 	record.VideoURL = url
-	record.ContentType = normalizedType
+	record.ContentType = storedType
 	record.ByteSize = int64(len(data))
+	record.BrowserPlayable = true
 	record.Status = VideoTaskStatusCompleted
 	record.HTTPStatus = http.StatusOK
 	if record.CompletedAt == nil {
@@ -257,6 +264,22 @@ func (s *VideoTaskService) StoreContent(ctx context.Context, owner VideoTaskOwne
 		record.CompletedAt = &completedAt
 	}
 	return s.save(ctx, record, time.Now().UTC())
+}
+
+func (s *VideoTaskService) UpgradeStoredContent(
+	ctx context.Context,
+	owner VideoTaskOwner,
+	id, contentType string,
+	data []byte,
+) ([]byte, string, error) {
+	prepared, preparedType, err := ensureBrowserPlayableVideo(ctx, contentType, data)
+	if err != nil {
+		return nil, "", err
+	}
+	if err := s.StoreContent(ctx, owner, id, preparedType, prepared); err != nil {
+		return prepared, preparedType, err
+	}
+	return prepared, preparedType, nil
 }
 
 func (s *VideoTaskService) OpenStoredContent(ctx context.Context, record *VideoTaskRecord, rangeHeader string) (*http.Response, error) {
@@ -309,6 +332,7 @@ func videoTaskToPublic(record *VideoTaskRecord) *VideoTask {
 		ContentAvailable: strings.TrimSpace(record.VideoURL) != "",
 		ContentType:      record.ContentType,
 		ByteSize:         record.ByteSize,
+		BrowserPlayable:  record.BrowserPlayable,
 	}
 }
 

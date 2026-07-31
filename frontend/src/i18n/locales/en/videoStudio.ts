@@ -45,6 +45,7 @@ export default {
     retry: 'Generate again',
     loadingVideo: 'Loading video',
     contentUnavailable: 'The video content is temporarily unavailable',
+    playbackFailed: 'This video codec is not supported by the browser. Reload to convert it to a compatible format.',
     reloadContent: 'Reload',
     download: 'Download video',
     history: 'Creation history',

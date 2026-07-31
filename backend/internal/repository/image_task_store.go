@@ -77,7 +77,7 @@ func (s *imageTaskStore) List(ctx context.Context, owner service.ImageTaskOwner,
 		return nil, err
 	}
 	tasks := make([]*service.ImageTaskRecord, 0, limit)
-	staleIDs := make([]interface{}, 0)
+	staleIDs := make([]any, 0)
 	for i, value := range values {
 		raw, ok := value.(string)
 		if !ok || strings.TrimSpace(raw) == "" {

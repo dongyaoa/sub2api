@@ -6,10 +6,19 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
+	"time"
 )
 
-const maxStoredVideoBytes int64 = 512 << 20
+const (
+	maxStoredVideoBytes          int64 = 512 << 20
+	defaultVideoTranscodeTimeout       = 5 * time.Minute
+)
+
+type browserVideoTranscoder func(ctx context.Context, contentType string, data []byte) ([]byte, error)
 
 type grokVideoContentPersisterContextKey struct{}
 
@@ -28,6 +37,121 @@ func grokVideoContentPersisterFromContext(ctx context.Context) GrokVideoContentP
 	}
 	persist, _ := ctx.Value(grokVideoContentPersisterContextKey{}).(GrokVideoContentPersister)
 	return persist
+}
+
+func ensureBrowserPlayableVideo(ctx context.Context, declaredContentType string, data []byte) ([]byte, string, error) {
+	return prepareBrowserPlayableVideo(ctx, declaredContentType, data, transcodeVideoWithFFmpeg)
+}
+
+func prepareBrowserPlayableVideo(
+	ctx context.Context,
+	declaredContentType string,
+	data []byte,
+	transcode browserVideoTranscoder,
+) ([]byte, string, error) {
+	contentType, _, err := normalizeGeneratedVideoContent(declaredContentType, data)
+	if err != nil {
+		return nil, "", err
+	}
+	if contentType == "video/mp4" && isBrowserCompatibleMP4(data) {
+		return data, contentType, nil
+	}
+	if transcode == nil {
+		return nil, "", errors.New("video requires browser-compatible transcoding")
+	}
+	converted, err := transcode(ctx, contentType, data)
+	if err != nil {
+		return nil, "", err
+	}
+	if int64(len(converted)) > maxStoredVideoBytes {
+		return nil, "", fmt.Errorf("transcoded video exceeds %d bytes", maxStoredVideoBytes)
+	}
+	convertedType, _, err := normalizeGeneratedVideoContent("video/mp4", converted)
+	if err != nil {
+		return nil, "", fmt.Errorf("validate transcoded video: %w", err)
+	}
+	if convertedType != "video/mp4" || !isBrowserCompatibleMP4(converted) {
+		return nil, "", errors.New("transcoder did not produce a browser-compatible H.264 MP4")
+	}
+	return converted, "video/mp4", nil
+}
+
+func isBrowserCompatibleMP4(data []byte) bool {
+	if !bytes.Contains(data, []byte("avc1")) && !bytes.Contains(data, []byte("avc3")) {
+		return false
+	}
+	for _, codec := range [][]byte{
+		[]byte("hvc1"), []byte("hev1"), []byte("dvh1"), []byte("dvhe"),
+		[]byte("av01"), []byte("vp09"), []byte("ac-3"), []byte("ec-3"),
+		[]byte("Opus"),
+	} {
+		if bytes.Contains(data, codec) {
+			return false
+		}
+	}
+	return true
+}
+
+func transcodeVideoWithFFmpeg(ctx context.Context, contentType string, data []byte) ([]byte, error) {
+	ffmpegPath := strings.TrimSpace(os.Getenv("VIDEO_FFMPEG_PATH"))
+	if ffmpegPath == "" {
+		var err error
+		ffmpegPath, err = exec.LookPath("ffmpeg")
+		if err != nil {
+			return nil, errors.New("ffmpeg is required to convert this video for browser playback")
+		}
+	}
+
+	tempDir, err := os.MkdirTemp("", "sub2api-video-")
+	if err != nil {
+		return nil, fmt.Errorf("create video transcode directory: %w", err)
+	}
+	defer func() { _ = os.RemoveAll(tempDir) }()
+
+	inputExtension := ".mp4"
+	if contentType == "video/webm" {
+		inputExtension = ".webm"
+	}
+	inputPath := filepath.Join(tempDir, "input"+inputExtension)
+	outputPath := filepath.Join(tempDir, "output.mp4")
+	if err := os.WriteFile(inputPath, data, 0o600); err != nil {
+		return nil, fmt.Errorf("write video transcode input: %w", err)
+	}
+
+	runCtx, cancel := context.WithTimeout(ctx, defaultVideoTranscodeTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(runCtx, ffmpegPath,
+		"-hide_banner", "-loglevel", "error", "-y",
+		"-i", inputPath,
+		"-map", "0:v:0", "-map", "0:a?", "-sn", "-dn",
+		"-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
+		"-pix_fmt", "yuv420p", "-profile:v", "high", "-tag:v", "avc1",
+		"-c:a", "aac", "-b:a", "128k",
+		"-movflags", "+faststart", "-max_muxing_queue_size", "1024",
+		outputPath,
+	)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		if runCtx.Err() != nil {
+			return nil, fmt.Errorf("transcode video: %w", runCtx.Err())
+		}
+		detail := strings.TrimSpace(string(output))
+		if len(detail) > 2048 {
+			detail = detail[len(detail)-2048:]
+		}
+		if detail == "" {
+			detail = err.Error()
+		}
+		return nil, fmt.Errorf("transcode video with ffmpeg: %s", detail)
+	}
+	converted, err := os.ReadFile(outputPath)
+	if err != nil {
+		return nil, fmt.Errorf("read transcoded video: %w", err)
+	}
+	if len(converted) == 0 {
+		return nil, errors.New("ffmpeg produced an empty video")
+	}
+	return converted, nil
 }
 
 // StoreVideo validates generated video bytes and stores them under the image
@@ -72,7 +196,7 @@ func sanitizeVideoObjectName(value string) string {
 	for _, r := range value {
 		switch {
 		case r >= 'a' && r <= 'z', r >= 'A' && r <= 'Z', r >= '0' && r <= '9', r == '-', r == '_':
-			out.WriteRune(r)
+			_, _ = out.WriteRune(r)
 		}
 	}
 	if out.Len() == 0 {

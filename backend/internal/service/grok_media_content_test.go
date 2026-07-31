@@ -72,7 +72,7 @@ func grokMediaContentStatusResponse(body string) *http.Response {
 }
 
 func grokMediaContentMP4(payload string) string {
-	return "\x00\x00\x00\x18ftypisom" + payload
+	return "\x00\x00\x00\x18ftypisomavc1mp4a" + payload
 }
 
 func TestForwardGrokMediaContentUsesUpstreamCredentialAndStreamsRange(t *testing.T) {

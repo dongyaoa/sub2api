@@ -81,7 +81,7 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 		record, recordErr := h.videoTasks.GetRecord(c.Request.Context(), videoOwner, requestID)
 		if recordErr == nil {
 			videoRecord = record
-			if endpoint == service.GrokMediaEndpointVideoContent && h.serveStoredGrokVideoContent(c, record) {
+			if endpoint == service.GrokMediaEndpointVideoContent && h.serveStoredGrokVideoContent(c, videoOwner, record) {
 				return
 			}
 			if endpoint == service.GrokMediaEndpointVideoStatus &&

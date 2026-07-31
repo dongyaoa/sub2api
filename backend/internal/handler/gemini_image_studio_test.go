@@ -18,12 +18,19 @@ func TestBuildGeminiStudioImageRequestGeneration(t *testing.T) {
 
 	var got map[string]any
 	require.NoError(t, json.Unmarshal(nativeBody, &got))
-	config := got["generationConfig"].(map[string]any)
+	config, ok := got["generationConfig"].(map[string]any)
+	require.True(t, ok)
 	require.Equal(t, []any{"TEXT", "IMAGE"}, config["responseModalities"])
 	require.Equal(t, map[string]any{"aspectRatio": "16:9", "imageSize": "4K"}, config["imageConfig"])
-	contents := got["contents"].([]any)
-	parts := contents[0].(map[string]any)["parts"].([]any)
-	require.Equal(t, "draw a city", parts[0].(map[string]any)["text"])
+	contents, ok := got["contents"].([]any)
+	require.True(t, ok)
+	content, ok := contents[0].(map[string]any)
+	require.True(t, ok)
+	parts, ok := content["parts"].([]any)
+	require.True(t, ok)
+	firstPart, ok := parts[0].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "draw a city", firstPart["text"])
 }
 
 func TestBuildGeminiStudioImageRequestEdit(t *testing.T) {
@@ -44,12 +51,21 @@ func TestBuildGeminiStudioImageRequestEdit(t *testing.T) {
 	require.NoError(t, err)
 	var got map[string]any
 	require.NoError(t, json.Unmarshal(nativeBody, &got))
-	contents := got["contents"].([]any)
-	parts := contents[0].(map[string]any)["parts"].([]any)
-	inline := parts[0].(map[string]any)["inlineData"].(map[string]any)
+	contents, ok := got["contents"].([]any)
+	require.True(t, ok)
+	content, ok := contents[0].(map[string]any)
+	require.True(t, ok)
+	parts, ok := content["parts"].([]any)
+	require.True(t, ok)
+	firstPart, ok := parts[0].(map[string]any)
+	require.True(t, ok)
+	inline, ok := firstPart["inlineData"].(map[string]any)
+	require.True(t, ok)
 	require.Equal(t, "image/png", inline["mimeType"])
 	require.Equal(t, base64.StdEncoding.EncodeToString(sourceData), inline["data"])
-	require.Equal(t, "replace the background", parts[1].(map[string]any)["text"])
+	secondPart, ok := parts[1].(map[string]any)
+	require.True(t, ok)
+	require.Equal(t, "replace the background", secondPart["text"])
 }
 
 func TestBuildGeminiStudioImageRequestRejectsUnsupportedInputs(t *testing.T) {

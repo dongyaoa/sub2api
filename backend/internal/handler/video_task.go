@@ -67,15 +67,46 @@ func grokVideoTaskError(c *gin.Context, err error) {
 	c.JSON(status, gin.H{"error": gin.H{"type": errType, "message": message}})
 }
 
-func (h *OpenAIGatewayHandler) serveStoredGrokVideoContent(c *gin.Context, record *service.VideoTaskRecord) bool {
+func (h *OpenAIGatewayHandler) serveStoredGrokVideoContent(
+	c *gin.Context,
+	owner service.VideoTaskOwner,
+	record *service.VideoTaskRecord,
+) bool {
 	if h == nil || h.videoTasks == nil || record == nil || strings.TrimSpace(record.VideoURL) == "" {
 		return false
 	}
-	resp, err := h.videoTasks.OpenStoredContent(c.Request.Context(), record, c.GetHeader("Range"))
+	rangeHeader := c.GetHeader("Range")
+	if !record.BrowserPlayable {
+		// The first full read of a legacy object upgrades HEVC/AV1/WebM content
+		// to H.264 MP4 before it reaches the browser.
+		rangeHeader = ""
+	}
+	resp, err := h.videoTasks.OpenStoredContent(c.Request.Context(), record, rangeHeader)
 	if err != nil {
 		return false
 	}
 	defer func() { _ = resp.Body.Close() }()
+
+	if !record.BrowserPlayable {
+		data, readErr := io.ReadAll(io.LimitReader(resp.Body, (512<<20)+1))
+		if readErr != nil || len(data) > 512<<20 {
+			h.errorResponse(c, http.StatusBadGateway, "video_conversion_error", "Failed to read the stored video for browser conversion")
+			return true
+		}
+		prepared, contentType, upgradeErr := h.videoTasks.UpgradeStoredContent(
+			c.Request.Context(), owner, record.ID, resp.Header.Get("Content-Type"), data,
+		)
+		if len(prepared) == 0 {
+			h.errorResponse(c, http.StatusBadGateway, "video_conversion_error", "Failed to convert the video to a browser-supported format")
+			return true
+		}
+		_ = upgradeErr // Playback can proceed even if refreshing the R2 object failed.
+		c.Header("Cache-Control", "private, max-age=3600")
+		c.Header("Accept-Ranges", "bytes")
+		service.MarkResponseCommitted(c)
+		c.Data(http.StatusOK, contentType, prepared)
+		return true
+	}
 
 	for _, name := range []string{"Content-Length", "Content-Range", "Accept-Ranges", "Content-Disposition", "ETag", "Last-Modified"} {
 		if value := strings.TrimSpace(resp.Header.Get(name)); value != "" {

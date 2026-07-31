@@ -72,7 +72,7 @@ func buildGeminiStudioImageRequest(path, contentType string, body []byte) (strin
 		return "", nil, errors.New("prompt is required")
 	}
 	if metadata.Quantity > 1 {
-		return "", nil, errors.New("Gemini image generation supports one image per request")
+		return "", nil, errors.New("gemini image generation supports one image per request")
 	}
 
 	resolution := strings.TrimSpace(metadata.Resolution)
@@ -112,7 +112,7 @@ func buildGeminiStudioImageRequest(path, contentType string, body []byte) (strin
 func geminiStudioSourceImage(contentType string, body []byte) (*geminiStudioInlineData, error) {
 	mediaType, params, err := mime.ParseMediaType(strings.TrimSpace(contentType))
 	if err != nil || !strings.EqualFold(mediaType, "multipart/form-data") {
-		return nil, errors.New("Gemini image editing requires multipart/form-data")
+		return nil, errors.New("gemini image editing requires multipart/form-data")
 	}
 	boundary := strings.TrimSpace(params["boundary"])
 	if boundary == "" {
@@ -204,7 +204,7 @@ func normalizeGeminiImageTaskBody(platform string, body []byte) ([]byte, error) 
 func normalizeGeminiStudioImageResponse(body []byte) ([]byte, error) {
 	var root map[string]any
 	if err := json.Unmarshal(body, &root); err != nil {
-		return nil, errors.New("Gemini returned an invalid image response")
+		return nil, errors.New("gemini returned an invalid image response")
 	}
 	response := root
 	if nested, ok := root["response"].(map[string]any); ok {
@@ -220,7 +220,7 @@ func normalizeGeminiStudioImageResponse(body []byte) ([]byte, error) {
 		for _, partValue := range parts {
 			part, _ := partValue.(map[string]any)
 			if text, _ := part["text"].(string); text != "" {
-				responseText.WriteString(text)
+				_, _ = responseText.WriteString(text)
 			}
 			inline, _ := part["inlineData"].(map[string]any)
 			if inline == nil {
@@ -245,7 +245,7 @@ func normalizeGeminiStudioImageResponse(body []byte) ([]byte, error) {
 		}
 	}
 	if len(images) == 0 {
-		return nil, errors.New("Gemini completed without returning an image")
+		return nil, errors.New("gemini completed without returning an image")
 	}
 	result := map[string]any{"created": time.Now().Unix(), "data": images}
 	return json.Marshal(result)

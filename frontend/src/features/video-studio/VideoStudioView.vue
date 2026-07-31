@@ -296,6 +296,7 @@
                   controls
                   playsinline
                   preload="metadata"
+                  @error="handleVideoPlaybackError"
                 />
                 <div v-else class="flex max-w-lg flex-col items-center px-6 text-center text-white/80">
                   <Icon name="exclamationCircle" size="xl" class="mb-3" />
@@ -871,6 +872,11 @@ async function loadVideoContent(key: ApiKey, id: string) {
     loadingContent.value = false
     if (taskController === controller) taskController = null
   }
+}
+
+function handleVideoPlaybackError() {
+  contentError.value = t('videoStudio.playbackFailed')
+  releaseVideoObjectURL()
 }
 
 async function reloadVideoContent() {

@@ -45,6 +45,7 @@ export default {
     retry: '重新生成',
     loadingVideo: '正在加载视频',
     contentUnavailable: '视频内容暂时无法加载',
+    playbackFailed: '视频编码仍不受当前浏览器支持，请点击重新加载以转换为兼容格式',
     reloadContent: '重新加载',
     download: '下载视频',
     history: '创作记录',

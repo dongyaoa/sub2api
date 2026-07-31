@@ -593,10 +593,11 @@ func (s *OpenAIGatewayService) forwardGrokMediaVideoContent(
 		if int64(len(data)) > maxStoredVideoBytes {
 			return nil, fmt.Errorf("grok video content exceeds %d bytes", maxStoredVideoBytes)
 		}
-		contentType, _, normalizeErr := normalizeGeneratedVideoContent(contentResp.Header.Get("Content-Type"), data)
+		preparedData, contentType, normalizeErr := ensureBrowserPlayableVideo(ctx, contentResp.Header.Get("Content-Type"), data)
 		if normalizeErr != nil {
 			return nil, normalizeErr
 		}
+		data = preparedData
 		if persist := grokVideoContentPersisterFromContext(ctx); persist != nil {
 			if persistErr := persist(ctx, requestID, contentType, data); persistErr != nil {
 				// Object storage failure must not make an otherwise valid generated

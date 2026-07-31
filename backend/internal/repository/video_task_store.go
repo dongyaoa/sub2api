@@ -74,7 +74,7 @@ func (s *videoTaskStore) List(ctx context.Context, owner service.VideoTaskOwner,
 		return nil, err
 	}
 	tasks := make([]*service.VideoTaskRecord, 0, limit)
-	staleIDs := make([]interface{}, 0)
+	staleIDs := make([]any, 0)
 	for index, value := range values {
 		raw, ok := value.(string)
 		if !ok || strings.TrimSpace(raw) == "" {

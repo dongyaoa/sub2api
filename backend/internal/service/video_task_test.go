@@ -113,7 +113,7 @@ func TestVideoTaskServiceStoresMP4UsingExistingObjectStoragePrefix(t *testing.T)
 	require.NoError(t, svc.RecordSubmission(
 		context.Background(), owner, 3, 4, "task-video", VideoTaskMetadata{Model: "grok-imagine-video"}, nil,
 	))
-	mp4 := []byte("\x00\x00\x00\x18ftypisomvideo")
+	mp4 := []byte("\x00\x00\x00\x18ftypisomavc1mp4avideo")
 
 	err := svc.StoreContent(context.Background(), owner, "task-video", "application/octet-stream", mp4)
 	require.NoError(t, err)
@@ -126,4 +126,45 @@ func TestVideoTaskServiceStoresMP4UsingExistingObjectStoragePrefix(t *testing.T)
 	require.Equal(t, "https://cdn.example/images/videos/task-video.mp4", record.VideoURL)
 	require.Equal(t, VideoTaskStatusCompleted, record.Status)
 	require.Equal(t, int64(len(mp4)), record.ByteSize)
+	require.True(t, record.BrowserPlayable)
+}
+
+func TestPrepareBrowserPlayableVideoKeepsCompatibleH264MP4(t *testing.T) {
+	input := []byte("\x00\x00\x00\x18ftypisomavc1mp4avideo")
+	transcodeCalled := false
+
+	prepared, contentType, err := prepareBrowserPlayableVideo(
+		context.Background(), "application/octet-stream", input,
+		func(context.Context, string, []byte) ([]byte, error) {
+			transcodeCalled = true
+			return nil, nil
+		},
+	)
+
+	require.NoError(t, err)
+	require.False(t, transcodeCalled)
+	require.Equal(t, "video/mp4", contentType)
+	require.Equal(t, input, prepared)
+}
+
+func TestPrepareBrowserPlayableVideoTranscodesHEVCToH264(t *testing.T) {
+	input := []byte("\x00\x00\x00\x18ftypisomhvc1video")
+	converted := []byte("\x00\x00\x00\x18ftypisomavc1mp4avideo")
+	var receivedType string
+	var receivedData []byte
+
+	prepared, contentType, err := prepareBrowserPlayableVideo(
+		context.Background(), "video/mp4", input,
+		func(_ context.Context, inputType string, data []byte) ([]byte, error) {
+			receivedType = inputType
+			receivedData = append([]byte(nil), data...)
+			return converted, nil
+		},
+	)
+
+	require.NoError(t, err)
+	require.Equal(t, "video/mp4", receivedType)
+	require.Equal(t, input, receivedData)
+	require.Equal(t, "video/mp4", contentType)
+	require.Equal(t, converted, prepared)
 }
