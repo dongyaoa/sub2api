@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import ModelPriceCard from '../ModelPriceCard.vue'
+import type { UserPricingInterval } from '@/api/channels'
 import type { ModelPricingVariant, ModelSquareModel } from '@/utils/modelSquare'
 
 vi.mock('vue-i18n', async () => {
@@ -26,7 +27,10 @@ const model: ModelSquareModel = {
   variants: [],
 }
 
-function imageVariant(perRequestPrice: number | null): ModelPricingVariant {
+function imageVariant(
+  perRequestPrice: number | null,
+  intervals: UserPricingInterval[] = [],
+): ModelPricingVariant {
   return {
     channelName: 'Gemini',
     groupIds: [1],
@@ -39,16 +43,20 @@ function imageVariant(perRequestPrice: number | null): ModelPricingVariant {
       image_input_price: null,
       image_output_price: 0.0001,
       per_request_price: perRequestPrice,
-      intervals: [],
+      intervals,
     },
   }
 }
 
-function mountCard(perRequestPrice: number | null, showMultiplier = false) {
+function mountCard(
+  perRequestPrice: number | null,
+  showMultiplier = false,
+  intervals: UserPricingInterval[] = [],
+) {
   return mount(ModelPriceCard, {
     props: {
       model,
-      variant: imageVariant(perRequestPrice),
+      variant: imageVariant(perRequestPrice, intervals),
       showMultiplier,
       multiplier: showMultiplier
         ? {
@@ -65,6 +73,7 @@ function mountCard(perRequestPrice: number | null, showMultiplier = false) {
       stubs: {
         Icon: true,
         PlatformIcon: true,
+        Teleport: true,
       },
     },
   })
@@ -88,8 +97,75 @@ describe('ModelPriceCard image pricing', () => {
 
   it('does not fall back to image token pricing when no per-request price is configured', () => {
     const wrapper = mountCard(null)
-
     expect(wrapper.get('.price').text()).toBe('\u2014')
     expect(wrapper.text()).not.toContain('$0.0001')
   })
+
+  it('shows configured image resolution tiers when the default price is empty', () => {
+    const intervals: UserPricingInterval[] = [
+      {
+        min_tokens: 0,
+        max_tokens: null,
+        tier_label: '1K',
+        input_price: null,
+        output_price: null,
+        cache_write_price: null,
+        cache_read_price: null,
+        per_request_price: 0.04,
+      },
+      {
+        min_tokens: 0,
+        max_tokens: null,
+        tier_label: '2K',
+        input_price: null,
+        output_price: null,
+        cache_write_price: null,
+        cache_read_price: null,
+        per_request_price: 0.04,
+      },
+      {
+        min_tokens: 0,
+        max_tokens: null,
+        tier_label: '4K',
+        input_price: null,
+        output_price: null,
+        cache_write_price: null,
+        cache_read_price: null,
+        per_request_price: 0.09,
+      },
+    ]
+    const wrapper = mountCard(null, true, intervals)
+
+    expect(wrapper.findAll('.metric-tier').map((tier) => tier.text())).toEqual(['1K', '2K', '4K'])
+    expect(wrapper.findAll('.price').map((price) => price.text())).toEqual(['$0.04', '$0.04', '$0.09'])
+    expect(wrapper.find('.base-price').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('$0.0001')
+  })
+
+  it('uses the per-request price column in the image tier dialog', async () => {
+    const intervals: UserPricingInterval[] = [{
+      min_tokens: 0,
+      max_tokens: null,
+      tier_label: '4K',
+      input_price: null,
+      output_price: null,
+      cache_write_price: null,
+      cache_read_price: null,
+      per_request_price: 0.09,
+    }]
+    const wrapper = mountCard(null, false, intervals)
+
+    await wrapper.get('.tier-btn').trigger('click')
+    const dialog = wrapper.get('[role="dialog"]')
+
+    expect(dialog.findAll('th').map((heading) => heading.text())).toEqual([
+      'modelSquare.interval',
+      'modelSquare.imageOutput',
+    ])
+    expect(dialog.text()).toContain('4K')
+    expect(dialog.text()).toContain('$0.09')
+    expect(dialog.text()).toContain('modelSquare.perRequest')
+    expect(dialog.text()).not.toContain('modelSquare.input')
+  })
+
 })

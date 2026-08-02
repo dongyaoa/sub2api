@@ -49,6 +49,7 @@
         <div class="metric-header">
           <Icon :name="row.icon" size="sm" class="metric-icon" />
           <span class="metric-label">{{ row.label }}</span>
+          <span v-if="row.tier" class="metric-tier">{{ row.tier }}</span>
         </div>
         <div class="metric-value">
           <span
@@ -122,10 +123,15 @@
               <thead class="text-gray-500 dark:text-gray-400">
                 <tr class="border-b border-gray-200 dark:border-dark-700">
                   <th class="px-2 py-2 font-medium">{{ t('modelSquare.interval') }}</th>
-                  <th class="px-2 py-2 font-medium">{{ t('modelSquare.input') }}</th>
-                  <th class="px-2 py-2 font-medium">{{ t('modelSquare.output') }}</th>
-                  <th class="px-2 py-2 font-medium">{{ t('modelSquare.cacheWrite') }}</th>
-                  <th class="px-2 py-2 font-medium">{{ t('modelSquare.cacheRead') }}</th>
+                  <template v-if="isRequestBasedPricing">
+                    <th class="px-2 py-2 font-medium">{{ tierPriceLabel }}</th>
+                  </template>
+                  <template v-else>
+                    <th class="px-2 py-2 font-medium">{{ t('modelSquare.input') }}</th>
+                    <th class="px-2 py-2 font-medium">{{ t('modelSquare.output') }}</th>
+                    <th class="px-2 py-2 font-medium">{{ t('modelSquare.cacheWrite') }}</th>
+                    <th class="px-2 py-2 font-medium">{{ t('modelSquare.cacheRead') }}</th>
+                  </template>
                 </tr>
               </thead>
               <tbody>
@@ -137,10 +143,18 @@
                   <td class="whitespace-nowrap px-2 py-3 text-gray-700 dark:text-gray-300">
                     {{ interval.tier_label || intervalRange(interval.min_tokens, interval.max_tokens) }}
                   </td>
-                  <td class="px-2 py-3 font-semibold tabular-nums" :class="priceTextClass">{{ primaryPrice(interval.input_price, 1_000_000) }}</td>
-                  <td class="px-2 py-3 font-semibold tabular-nums" :class="priceTextClass">{{ primaryPrice(interval.output_price, 1_000_000) }}</td>
-                  <td class="px-2 py-3 font-semibold tabular-nums" :class="priceTextClass">{{ primaryPrice(interval.cache_write_price, 1_000_000) }}</td>
-                  <td class="px-2 py-3 font-semibold tabular-nums" :class="priceTextClass">{{ primaryPrice(interval.cache_read_price, 1_000_000) }}</td>
+                  <template v-if="isRequestBasedPricing">
+                    <td class="px-2 py-3 font-semibold tabular-nums" :class="priceTextClass">
+                      {{ primaryPrice(interval.per_request_price, 1) }}
+                      <span class="ml-1 font-normal text-gray-400 dark:text-gray-500">{{ t('modelSquare.perRequest') }}</span>
+                    </td>
+                  </template>
+                  <template v-else>
+                    <td class="px-2 py-3 font-semibold tabular-nums" :class="priceTextClass">{{ primaryPrice(interval.input_price, 1_000_000) }}</td>
+                    <td class="px-2 py-3 font-semibold tabular-nums" :class="priceTextClass">{{ primaryPrice(interval.output_price, 1_000_000) }}</td>
+                    <td class="px-2 py-3 font-semibold tabular-nums" :class="priceTextClass">{{ primaryPrice(interval.cache_write_price, 1_000_000) }}</td>
+                    <td class="px-2 py-3 font-semibold tabular-nums" :class="priceTextClass">{{ primaryPrice(interval.cache_read_price, 1_000_000) }}</td>
+                  </template>
                 </tr>
               </tbody>
             </table>
@@ -181,6 +195,13 @@ const showIntervals = ref(false)
 const pricing = computed(() => props.variant?.pricing ?? null)
 const showAdjustedPrice = computed(
   () => props.showMultiplier && pricing.value?.billing_mode !== BILLING_MODE_IMAGE)
+const isRequestBasedPricing = computed(() =>
+  pricing.value?.billing_mode === BILLING_MODE_IMAGE ||
+  pricing.value?.billing_mode === BILLING_MODE_PER_REQUEST)
+const tierPriceLabel = computed(() =>
+  pricing.value?.billing_mode === BILLING_MODE_IMAGE
+    ? t('modelSquare.imageOutput')
+    : t('modelSquare.requestPrice'))
 
 const billingModeLabel = computed(() => {
   switch (pricing.value?.billing_mode) {
@@ -205,6 +226,7 @@ const channelLabel = computed(() => {
 type PriceRow = {
   key: string
   label: string
+  tier?: string
   value: number | null
   scale: number
   unit: string
@@ -217,6 +239,22 @@ const priceRows = computed<PriceRow[]>(() => {
   if (!value) return []
 
   if (value.billing_mode === BILLING_MODE_IMAGE) {
+    const intervalRows = value.intervals.flatMap<PriceRow>((interval, index) =>
+      interval.per_request_price == null
+        ? []
+        : [{
+            key: `image-${index}`,
+            label: t('modelSquare.imageOutput'),
+            tier: interval.tier_label || intervalRange(interval.min_tokens, interval.max_tokens),
+            value: interval.per_request_price,
+            scale: 1,
+            unit: t('modelSquare.perRequest'),
+            icon: 'sparkles',
+            toneClass: 'text-pink-500 dark:text-pink-400',
+          }],
+    )
+    if (intervalRows.length > 0) return intervalRows
+
     return [
       {
         key: 'image',
@@ -231,6 +269,22 @@ const priceRows = computed<PriceRow[]>(() => {
   }
 
   if (value.billing_mode === BILLING_MODE_PER_REQUEST) {
+    const intervalRows = value.intervals.flatMap<PriceRow>((interval, index) =>
+      interval.per_request_price == null
+        ? []
+        : [{
+            key: `request-${index}`,
+            label: t('modelSquare.requestPrice'),
+            tier: interval.tier_label || intervalRange(interval.min_tokens, interval.max_tokens),
+            value: interval.per_request_price,
+            scale: 1,
+            unit: t('modelSquare.perRequest'),
+            icon: 'bolt',
+            toneClass: 'text-amber-500 dark:text-amber-400',
+          }],
+    )
+    if (intervalRows.length > 0) return intervalRows
+
     return [
       {
         key: 'request',
@@ -547,6 +601,18 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleEscape))
   font-weight: 500;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.metric-tier {
+  flex-shrink: 0;
+  margin-left: auto;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--brand-bg);
+  color: var(--brand-color);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
 }
 
 .metric-value {
