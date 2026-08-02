@@ -207,7 +207,7 @@
 
             <div class="min-w-0">
               <span class="input-label">{{ t('imageStudio.aspectRatio') }}</span>
-              <div class="grid grid-flow-col auto-cols-fr gap-1.5">
+              <div class="grid grid-cols-4 gap-1.5">
                 <button
                   v-for="option in ratioOptions"
                   :key="option.value"
@@ -945,17 +945,40 @@ function imageTaskResolution(item: ImageTask): ImageResolutionTier {
   const value = item.metadata?.resolution?.toUpperCase()
   if (value === '1K' || value === '2K' || value === '4K') return value
   const size = item.metadata?.size?.toLowerCase() || ''
-  if (size === '1536x1024' || size === '1024x1536' || size === '2k') return '2K'
-  if (size === '4k' || size === '4096x4096' || size === '4096x2731' || size === '2731x4096') return '4K'
+  if (
+    size === '2k' ||
+    ['1536x1024', '1024x1536', '2048x1152', '1152x2048', '1536x1152', '1152x1536', '1792x768'].includes(size)
+  ) return '2K'
+  if (
+    size === '4k' ||
+    [
+      '2880x2880',
+      '3456x2304',
+      '2304x3456',
+      '3840x2160',
+      '2160x3840',
+      '3072x2304',
+      '2304x3072',
+      '3584x1536',
+      '4096x4096',
+      '4096x2731',
+      '2731x4096',
+    ].includes(size)
+  ) return '4K'
   return '1K'
 }
 
 function imageTaskRatio(item: ImageTask): ImageAspectRatio {
   const value = item.metadata?.aspect_ratio
-  if (value && ['1:1', '3:2', '2:3', '16:9', '9:16', '4:3', '3:4'].includes(value)) return value
+  if (value && ['1:1', '3:2', '2:3', '16:9', '9:16', '4:3', '3:4', '21:9'].includes(value)) return value
   const size = item.metadata?.size?.toLowerCase()
-  if (size === '1536x1024' || size === '4096x2731') return '3:2'
-  if (size === '1024x1536' || size === '2731x4096') return '2:3'
+  if (size === '1536x1024' || size === '3456x2304' || size === '4096x2731') return '3:2'
+  if (size === '1024x1536' || size === '2304x3456' || size === '2731x4096') return '2:3'
+  if (size === '2048x1152' || size === '3840x2160') return '16:9'
+  if (size === '1152x2048' || size === '2160x3840') return '9:16'
+  if (size === '1536x1152' || size === '3072x2304') return '4:3'
+  if (size === '1152x1536' || size === '2304x3072') return '3:4'
+  if (size === '1792x768' || size === '3584x1536') return '21:9'
   return '1:1'
 }
 

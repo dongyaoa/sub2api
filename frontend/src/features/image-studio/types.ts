@@ -4,7 +4,7 @@ export type ImageStudioPlatform = Extract<GroupPlatform, 'openai' | 'gemini' | '
 export type StudioOperation = 'generate' | 'edit'
 export type ImageResolutionTier = '1K' | '2K' | '4K'
 export type ImageQuality = 'auto' | 'low' | 'medium' | 'high'
-export type ImageAspectRatio = '1:1' | '3:2' | '2:3' | '16:9' | '9:16' | '4:3' | '3:4'
+export type ImageAspectRatio = '1:1' | '3:2' | '2:3' | '16:9' | '9:16' | '4:3' | '3:4' | '21:9'
 
 export interface ImageModel {
   id: string

@@ -16,6 +16,11 @@ const OPENAI_RATIOS: StudioOption<ImageAspectRatio>[] = [
   { value: '1:1', label: '1:1' },
   { value: '3:2', label: '3:2' },
   { value: '2:3', label: '2:3' },
+  { value: '16:9', label: '16:9' },
+  { value: '9:16', label: '9:16' },
+  { value: '4:3', label: '4:3' },
+  { value: '3:4', label: '3:4' },
+  { value: '21:9', label: '21:9' },
 ]
 
 const GROK_RATIOS: StudioOption<ImageAspectRatio>[] = [
@@ -32,6 +37,28 @@ const OPENAI_RESOLUTIONS: ImageResolutionTier[] = ['1K', '2K']
 const OPENAI_RESOLUTIONS_WITH_4K: ImageResolutionTier[] = ['1K', '2K', '4K']
 const GROK_RESOLUTIONS: ImageResolutionTier[] = ['1K', '2K']
 const GEMINI_RESOLUTIONS: ImageResolutionTier[] = ['1K', '2K', '4K']
+
+const OPENAI_2K_SIZES: Record<ImageAspectRatio, string> = {
+  '1:1': '1024x1024',
+  '3:2': '1536x1024',
+  '2:3': '1024x1536',
+  '16:9': '2048x1152',
+  '9:16': '1152x2048',
+  '4:3': '1536x1152',
+  '3:4': '1152x1536',
+  '21:9': '1792x768',
+}
+
+const OPENAI_4K_SIZES: Record<ImageAspectRatio, string> = {
+  '1:1': '2880x2880',
+  '3:2': '3456x2304',
+  '2:3': '2304x3456',
+  '16:9': '3840x2160',
+  '9:16': '2160x3840',
+  '4:3': '3072x2304',
+  '3:4': '2304x3072',
+  '21:9': '3584x1536',
+}
 
 const GEMINI_IMAGE_MODELS = new Set([
   'gemini-3.1-flash-image',
@@ -112,14 +139,9 @@ export function getOpenAIImageSize(
   ratio: ImageAspectRatio,
   resolution: ImageResolutionTier,
 ): string {
-  if (resolution === '4K') {
-    if (ratio === '2:3') return '2731x4096'
-    if (ratio === '3:2') return '4096x2731'
-    return '4096x4096'
-  }
-  if (resolution === '1K' || ratio === '1:1') return '1024x1024'
-  if (ratio === '2:3') return '1024x1536'
-  return '1536x1024'
+  if (resolution === '4K') return OPENAI_4K_SIZES[ratio]
+  if (resolution === '1K') return '1024x1024'
+  return OPENAI_2K_SIZES[ratio]
 }
 
 export function getPreviewAspectRatio(ratio: ImageAspectRatio): string {
