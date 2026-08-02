@@ -3,11 +3,15 @@
     <label v-if="props.showLabel" class="mb-3 block text-sm font-semibold text-gray-800 dark:text-gray-200">
       {{ t('payment.paymentMethod') }}
     </label>
-    <div :class="gridClass">
+    <div
+      data-testid="payment-method-grid"
+      :class="gridClass"
+    >
       <button
         v-for="method in sortedMethods"
         :key="method.type"
         type="button"
+        :title="methodLabel(method)"
         :disabled="!method.available"
         :class="[
           baseButtonClass,
@@ -19,12 +23,14 @@
         ]"
         @click="method.available && emit('select', method.type)"
       >
-        <span class="flex min-w-0 items-center gap-3">
+        <span class="flex min-w-0 flex-1 items-center gap-3">
           <span :class="['flex shrink-0 items-center justify-center rounded-2xl border', props.compact ? 'h-9 w-9' : 'h-11 w-11', methodIconClass(method.type, method.available)]">
             <img :src="methodIcon(method.type)" :alt="methodLabel(method)" :class="props.compact ? 'h-5 w-5 object-contain' : 'h-7 w-7 object-contain'" />
           </span>
-          <span class="min-w-0">
-            <span class="block truncate text-sm font-bold text-gray-950 dark:text-white">{{ methodLabel(method) }}</span>
+          <span class="min-w-0 flex-1">
+            <span data-testid="payment-method-label" class="block w-full truncate text-sm font-bold text-gray-950 dark:text-white">
+              {{ methodLabel(method) }}
+            </span>
             <span
               v-if="method.fee_rate > 0"
               class="mt-0.5 block text-xs text-gray-500 dark:text-dark-400"
@@ -88,12 +94,12 @@ const METHOD_ICONS: Record<string, string> = {
 
 const gridClass = computed(() => props.compact
   ? 'grid grid-cols-1 gap-2 sm:grid-cols-2'
-  : 'grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3'
+  : 'grid grid-cols-1 gap-3 sm:grid-cols-3 lg:grid-cols-4'
 )
 
 const baseButtonClass = computed(() => props.compact
-  ? 'group relative flex min-h-[60px] items-center justify-between gap-3 rounded-xl border p-2.5 text-left transition-all active:scale-[0.99]'
-  : 'group relative flex min-h-[74px] items-center justify-between gap-3 rounded-xl border p-3 text-left transition-all active:scale-[0.99]'
+  ? 'group relative flex min-h-[60px] min-w-0 items-center justify-between gap-3 rounded-xl border p-2.5 text-left transition-all active:scale-[0.99]'
+  : 'group relative flex min-h-[74px] min-w-0 items-center justify-between gap-3 rounded-xl border p-3 text-left transition-all active:scale-[0.99]'
 )
 
 const sortedMethods = computed(() => {
