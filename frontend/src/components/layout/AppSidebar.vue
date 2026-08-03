@@ -721,10 +721,10 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
   }
   items.push(
     { path: '/keys', label: t('nav.apiKeys'), icon: KeyIcon },
-    { path: '/image-studio', label: t('nav.imageStudio'), icon: ImageStudioIcon, hideInSimpleMode: true, featureFlag: flagImageStudioAccess },
+    { path: '/image-studio', label: t('nav.imageStudio'), icon: ImageStudioIcon, isNew: true, hideInSimpleMode: true, featureFlag: flagImageStudioAccess },
     { path: '/batch-image', label: t('nav.batchImage'), icon: BatchImageIcon, hideInSimpleMode: true, featureFlag: flagBatchImageAccess },
     { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true },
-    { path: '/model-square', label: locale.value === 'zh' ? '模型广场' : 'Model Square', icon: PriceTagIcon, isNew: true, hideInSimpleMode: true, featureFlag: flagAvailableChannels },
+    { path: '/model-square', label: locale.value === 'zh' ? '模型广场' : 'Model Square', icon: PriceTagIcon, hideInSimpleMode: true, featureFlag: flagAvailableChannels },
     { path: '/available-channels', label: t('nav.availableChannels'), icon: ChannelIcon, hideInSimpleMode: true, featureFlag: flagAvailableChannels },
     { path: '/monitor', label: t('nav.channelStatus'), icon: SignalIcon, featureFlag: flagChannelMonitor },
     { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true },
