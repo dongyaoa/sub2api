@@ -449,6 +449,17 @@ type OpenAIGatewayService struct {
 	openaiCompatAnthropicDigestSessions sync.Map
 }
 
+// ResolveUsageSubscription loads the subscription originally attached to a deferred usage record.
+func (s *OpenAIGatewayService) ResolveUsageSubscription(ctx context.Context, subscriptionID int64) (*UserSubscription, error) {
+	if subscriptionID <= 0 {
+		return nil, nil
+	}
+	if s == nil || s.userSubRepo == nil {
+		return nil, errors.New("user subscription repository is unavailable")
+	}
+	return s.userSubRepo.GetByIDIncludeDeleted(ctx, subscriptionID)
+}
+
 // NewOpenAIGatewayService creates a new OpenAIGatewayService
 func NewOpenAIGatewayService(
 	accountRepo AccountRepository,

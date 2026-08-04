@@ -4,6 +4,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -296,6 +297,28 @@ func TestForwardGrokMediaContentPersistsValidatedFullVideo(t *testing.T) {
 	require.Equal(t, "task-1", persistedID)
 	require.Equal(t, "video/mp4", persistedType)
 	require.Equal(t, mp4Payload, persistedBody)
+}
+
+func TestForwardGrokMediaContentStorageFailurePreventsDelivery(t *testing.T) {
+	mp4Payload := grokMediaContentMP4("persist-failure")
+	upstream := &grokMediaContentUpstreamStub{
+		responses: []*http.Response{grokMediaContentStatusResponse(`{"status":"completed"}`), {
+			StatusCode: http.StatusOK,
+			Header:     http.Header{"Content-Type": []string{"video/mp4"}},
+			Body:       io.NopCloser(strings.NewReader(mp4Payload)),
+		}},
+	}
+	svc := &OpenAIGatewayService{cfg: &config.Config{}, httpUpstream: upstream}
+	c, recorder := grokMediaContentTestContext(http.MethodGet, "https://api.example/v1/videos/task-1/content", nil)
+	ctx := WithGrokVideoContentPersister(context.Background(), func(context.Context, string, string, []byte) error {
+		return errors.New("r2 unavailable")
+	})
+	ctx = grokMediaContentTestTranscodeContext(ctx)
+
+	_, err := svc.ForwardGrokMedia(ctx, c, grokMediaContentTestAccount(), GrokMediaEndpointVideoContent, "task-1", nil, "")
+
+	require.ErrorContains(t, err, "persist grok video content: r2 unavailable")
+	require.Empty(t, recorder.Body.String())
 }
 
 func TestForwardGrokMediaContentRejectsJSONSuccessBody(t *testing.T) {

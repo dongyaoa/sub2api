@@ -793,58 +793,90 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleEscape))
   font-weight: 500;
 }
 
-:global(.dark) .premium-model-card {
+:global(.dark .premium-model-card) {
   border-color: #334155;
   background: #0f172a;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.18);
 }
 
-:global(.dark) .type-badge,
-:global(.dark) .metric-box {
+:global(.dark .premium-model-card:hover) {
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.2), 0 18px 44px rgba(0, 0, 0, 0.32);
+}
+
+:global(.dark .premium-model-card .type-badge),
+:global(.dark .premium-model-card .metric-box) {
   background: #1e293b;
 }
 
-:global(.dark) .model-title {
+:global(.dark .premium-model-card .brand-badge),
+:global(.dark .premium-model-card .metric-tier) {
+  background: color-mix(in srgb, var(--brand-color) 14%, #1e293b);
+  color: color-mix(in srgb, var(--brand-color) 45%, #f8fafc);
+}
+
+:global(.dark .premium-model-card .model-title) {
   color: #f8fafc;
 }
 
-:global(.dark) .type-badge,
-:global(.dark) .metric-label,
-:global(.dark) .metric-icon,
-:global(.dark) .footer-left {
+:global(.dark .premium-model-card .type-badge),
+:global(.dark .premium-model-card .metric-label),
+:global(.dark .premium-model-card .metric-icon),
+:global(.dark .premium-model-card .footer-left) {
   color: #cbd5e1;
 }
 
-:global(.dark) .metric-box {
+:global(.dark .premium-model-card .metric-box) {
   border-color: #334155;
 }
 
-:global(.dark) .price {
+:global(.dark .premium-model-card .price) {
   color: #f8fafc;
 }
 
-:global(.dark) .price.price--adjusted {
-  color: var(--price-brand);
+:global(.dark .premium-model-card .price.price--adjusted) {
+  color: color-mix(in srgb, var(--price-brand) 45%, #f8fafc);
 }
 
-:global(.dark) .card-footer {
+:global(.dark .premium-model-card .unit),
+:global(.dark .premium-model-card .adjusted-meta),
+:global(.dark .premium-model-card .base-price),
+:global(.dark .premium-model-card .ratio-equals),
+:global(.dark .premium-model-card .no-pricing) {
+  color: #94a3b8;
+}
+
+:global(.dark .premium-model-card .multiplier-pill) {
+  background: color-mix(in srgb, var(--price-brand) 14%, #1e293b);
+  color: color-mix(in srgb, var(--price-brand) 45%, #f8fafc);
+}
+
+:global(.dark .premium-model-card .action-btn:hover),
+:global(.dark .premium-model-card .tier-btn:hover) {
+  border-color: #475569;
+  background: #1e293b;
+  color: #f8fafc;
+}
+
+:global(.dark .premium-model-card .card-footer) {
   border-color: #334155;
   background: rgba(30, 41, 59, 0.65);
 }
 
-:global(.dark) .card-header {
+:global(.dark .premium-model-card .card-header) {
   border-color: #334155;
 }
 
-:global(.dark) .footer-right {
+:global(.dark .premium-model-card .footer-right) {
   border-color: color-mix(in srgb, var(--brand-color) 34%, #334155);
   background: color-mix(in srgb, var(--brand-color) 12%, #0f172a);
+  color: color-mix(in srgb, var(--brand-color) 45%, #f8fafc);
 }
 
-:global(.dark) .box-input:hover { border-color: rgba(16, 185, 129, 0.45); background: rgba(16, 185, 129, 0.1); }
-:global(.dark) .box-output:hover { border-color: rgba(59, 130, 246, 0.45); background: rgba(59, 130, 246, 0.1); }
-:global(.dark) .box-cache-write:hover { border-color: rgba(245, 158, 11, 0.45); background: rgba(245, 158, 11, 0.1); }
-:global(.dark) .box-cache-read:hover { border-color: rgba(139, 92, 246, 0.45); background: rgba(139, 92, 246, 0.1); }
-:global(.dark) .box-image:hover { border-color: rgba(236, 72, 153, 0.45); background: rgba(236, 72, 153, 0.1); }
+:global(.dark .premium-model-card .box-input:hover) { border-color: rgba(16, 185, 129, 0.45); background: rgba(16, 185, 129, 0.1); }
+:global(.dark .premium-model-card .box-output:hover) { border-color: rgba(59, 130, 246, 0.45); background: rgba(59, 130, 246, 0.1); }
+:global(.dark .premium-model-card .box-cache-write:hover) { border-color: rgba(245, 158, 11, 0.45); background: rgba(245, 158, 11, 0.1); }
+:global(.dark .premium-model-card .box-cache-read:hover) { border-color: rgba(139, 92, 246, 0.45); background: rgba(139, 92, 246, 0.1); }
+:global(.dark .premium-model-card .box-image:hover) { border-color: rgba(236, 72, 153, 0.45); background: rgba(236, 72, 153, 0.1); }
 
 @media (max-width: 640px) {
   .card-header {

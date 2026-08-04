@@ -199,6 +199,7 @@ export default {
     contentModeration: 'Content Moderation',
     promptAudit: 'Prompt Audit',
     auditLogs: 'Audit Logs',
+    videoGenerations: 'Video Reconciliation',
   },
 
   // Auth

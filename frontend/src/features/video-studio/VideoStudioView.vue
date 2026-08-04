@@ -286,6 +286,12 @@
                 />
               </div>
               <p v-if="taskProgress != null" class="mt-2 text-xs tabular-nums text-gray-400">{{ taskProgress }}%</p>
+              <p v-if="isLongRunning" class="mt-4 max-w-md text-sm leading-6 text-gray-500 dark:text-gray-400">
+                {{ t('videoStudio.backgroundProcessingHint') }}
+              </p>
+              <p v-if="pollWarning" class="mt-2 max-w-md text-xs leading-5 text-amber-600 dark:text-amber-400" :title="pollWarning">
+                {{ t('videoStudio.pollRetrying') }}
+              </p>
             </div>
 
             <div v-else-if="viewState === 'failed'" class="flex min-h-[600px] flex-col items-center justify-center px-6 text-center">
@@ -370,7 +376,7 @@
             <div class="flex items-center gap-2">
               <h2 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('videoStudio.history') }}</h2>
               <span class="text-xs tabular-nums text-gray-400">{{ history.length }}</span>
-              <span class="text-[11px] text-gray-400">{{ t('videoStudio.historyRetention', { count: retentionDays }) }}</span>
+              <span class="text-[11px] text-gray-400">{{ persistentHistory ? t('videoStudio.historyPermanent') : t('videoStudio.historyRetention', { count: retentionDays }) }}</span>
             </div>
             <button
               type="button"
@@ -458,6 +464,13 @@ import {
 } from './capabilities'
 import { consumeVideoStudioImageDraft } from './draft'
 import { estimateVideoCost, formatUSD, getVideoPriceTiers } from './pricing'
+import {
+  LONG_VIDEO_TASK_THRESHOLD_MS,
+  normalizeVideoTaskState,
+  shouldRetryVideoPollError,
+  VIDEO_POLL_INTERVAL_MS,
+  videoTaskPollDelay,
+} from './polling'
 import type {
   GenerateVideoRequest,
   StoredVideoHistoryItem,
@@ -472,8 +485,6 @@ import type {
 } from './types'
 
 const ACTIVE_TASK_KEY = 'video_studio_active_task_v1'
-const POLL_INTERVAL_MS = 5000
-const TASK_TIMEOUT_MS = 5 * 60 * 1000
 const MAX_HISTORY_ITEMS = 10
 const MAX_SOURCE_IMAGE_BYTES = 20 * 1024 * 1024
 const SOURCE_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp'])
@@ -503,6 +514,7 @@ const task = ref<VideoTask | null>(null)
 const requestId = ref('')
 const viewState = ref<VideoViewState>('idle')
 const errorMessage = ref('')
+const pollWarning = ref('')
 const contentError = ref('')
 const loadingContent = ref(false)
 const videoObjectUrl = ref('')
@@ -515,6 +527,7 @@ const startedAt = ref(0)
 const now = ref(Date.now())
 const history = ref<StoredVideoHistoryItem[]>([])
 const retentionDays = ref(7)
+const persistentHistory = ref(false)
 const activeHistoryId = ref('')
 
 let modelController: AbortController | null = null
@@ -562,13 +575,14 @@ const canGenerate = computed(() => (
   && (operation.value === 'text' || hasSourceImage.value)
 ))
 const elapsedSeconds = computed(() => startedAt.value > 0 ? Math.max(0, Math.floor((now.value - startedAt.value) / 1000)) : 0)
+const isLongRunning = computed(() => viewState.value === 'processing' && elapsedSeconds.value * 1000 >= LONG_VIDEO_TASK_THRESHOLD_MS)
 const taskProgress = computed(() => {
   const value = Number(task.value?.progress)
   return Number.isFinite(value) ? Math.min(100, Math.max(0, Math.round(value))) : null
 })
 const statusLabel = computed(() => {
   if (submitting.value) return t('videoStudio.submitting')
-  if (viewState.value === 'processing') return t('videoStudio.processing')
+  if (viewState.value === 'processing') return t(isLongRunning.value ? 'videoStudio.backgroundProcessing' : 'videoStudio.processing')
   if (viewState.value === 'completed') return t('videoStudio.completed')
   return t('videoStudio.failed')
 })
@@ -735,6 +749,7 @@ function resetResult() {
   activeHistoryId.value = ''
   viewState.value = 'idle'
   errorMessage.value = ''
+  pollWarning.value = ''
   contentError.value = ''
   loadingContent.value = false
 }
@@ -810,7 +825,7 @@ function backendTaskToHistory(taskItem: VideoTask, key: ApiKey): StoredVideoHist
       duration: Math.max(1, Number(metadata?.duration) || 4),
     },
     startedAt: Number.isFinite(createdAt) && createdAt > 0 ? createdAt * 1000 : Date.now(),
-    status: normalizedTaskState(taskItem.status),
+    status: normalizeVideoTaskState(taskItem.status),
     errorMessage: taskErrorText(taskItem.error),
   }
 }
@@ -824,6 +839,7 @@ async function loadHistory() {
   try {
     const result = await listVideoTasks(key.key, MAX_HISTORY_ITEMS)
     retentionDays.value = result.retentionDays
+    persistentHistory.value = result.persistentHistory
     history.value = result.tasks
       .map(item => backendTaskToHistory(item, key))
       .filter((item): item is StoredVideoHistoryItem => item !== null)
@@ -842,6 +858,7 @@ async function generateVideo() {
   task.value = null
   requestId.value = ''
   errorMessage.value = ''
+  pollWarning.value = ''
   contentError.value = ''
   viewState.value = 'processing'
   submitting.value = true
@@ -881,7 +898,7 @@ async function generateVideo() {
     persistActiveTask(stored)
     addHistoryItem(stored)
     submitting.value = false
-    pollTimer = setTimeout(() => void pollTask(id, key), POLL_INTERVAL_MS)
+    pollTimer = setTimeout(() => void pollTask(id, key), VIDEO_POLL_INTERVAL_MS)
   } catch (error) {
     if ((error as Error).name !== 'AbortError') failTask(errorText(error, t('videoStudio.submitFailed')))
   } finally {
@@ -890,24 +907,18 @@ async function generateVideo() {
   }
 }
 
-function normalizedTaskState(status: string | undefined): Exclude<VideoViewState, 'idle'> {
-  const normalized = String(status || '').trim().toLowerCase()
-  if (['completed', 'succeeded', 'success', 'done'].includes(normalized)) return 'completed'
-  if (['failed', 'cancelled', 'canceled', 'expired', 'error'].includes(normalized)) return 'failed'
-  return 'processing'
+function nextPollDelay(): number {
+  return videoTaskPollDelay(startedAt.value)
 }
 
 async function pollTask(id: string, key: ApiKey) {
-  if (Date.now() - startedAt.value >= TASK_TIMEOUT_MS) {
-    failTask(t('videoStudio.timeout'))
-    return
-  }
   const controller = new AbortController()
   taskController = controller
   try {
     const current = await getVideoTask(key.key, id, controller.signal)
     task.value = current
-    const state = normalizedTaskState(current.status)
+    pollWarning.value = ''
+    const state = normalizeVideoTaskState(current.status)
     if (state === 'completed') {
       viewState.value = 'completed'
       updateHistoryItem(id, { status: 'completed', errorMessage: '' })
@@ -922,14 +933,20 @@ async function pollTask(id: string, key: ApiKey) {
       return
     }
     viewState.value = 'processing'
-    pollTimer = setTimeout(() => void pollTask(id, key), POLL_INTERVAL_MS)
+    pollTimer = setTimeout(() => void pollTask(id, key), nextPollDelay())
   } catch (error) {
-    if ((error as Error).name !== 'AbortError') failTask(errorText(error, t('videoStudio.pollFailed')))
+    if ((error as Error).name === 'AbortError') return
+    if (shouldRetryVideoPollError(error)) {
+      pollWarning.value = errorText(error, t('videoStudio.pollFailed'))
+      viewState.value = 'processing'
+      pollTimer = setTimeout(() => void pollTask(id, key), nextPollDelay())
+    } else {
+      failTask(errorText(error, t('videoStudio.pollFailed')))
+    }
   } finally {
     if (taskController === controller) taskController = null
   }
 }
-
 async function loadVideoContent(key: ApiKey, id: string) {
   releaseVideoObjectURL()
   contentError.value = ''

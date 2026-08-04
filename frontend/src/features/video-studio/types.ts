@@ -60,6 +60,7 @@ export interface VideoTask {
 export interface VideoTaskListResult {
   tasks: VideoTask[]
   retentionDays: number
+  persistentHistory: boolean
 }
 
 export interface VideoStudioError extends Error {

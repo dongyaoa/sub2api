@@ -97,6 +97,7 @@ describe('video studio API', () => {
         json: vi.fn().mockResolvedValue({
           data: [{ id: 'video_123', status: 'completed' }],
           retention_days: 14,
+          persistent_history: true,
         }),
       })
       .mockResolvedValueOnce({ ok: true })
@@ -105,6 +106,7 @@ describe('video studio API', () => {
     await expect(listVideoTasks('history-key')).resolves.toEqual({
       tasks: [{ id: 'video_123', status: 'completed' }],
       retentionDays: 14,
+      persistentHistory: true,
     })
     await expect(clearVideoTasks('history-key')).resolves.toBeUndefined()
 

@@ -166,10 +166,10 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 		ctx := context.WithValue(c.Request.Context(), ctxkey.UserID, apiKey.User.ID)
 		c.Request = c.Request.WithContext(ctx)
 		billingInfoRequest := c.Request.URL.Path == "/v1/sub2api/billing"
-		// Async image task polling only reads data that already belongs to the
+		// Async media task polling only reads data that already belongs to the
 		// authenticated key and must remain available after the completed
 		// generation consumes the key's remaining balance.
-		skipBilling := c.Request.URL.Path == "/v1/usage" || billingInfoRequest || isAsyncImageTaskRead(c.Request.Method, c.Request.URL.Path)
+		skipBilling := c.Request.URL.Path == "/v1/usage" || billingInfoRequest || isAsyncMediaTaskRead(c.Request.Method, c.Request.URL.Path)
 
 		// ── 4. SimpleMode → early return ─────────────────────────────
 
@@ -341,6 +341,19 @@ func isAsyncImageTaskRead(method, path string) bool {
 		path == "/images/tasks" ||
 		strings.HasPrefix(path, "/v1/images/tasks/") ||
 		strings.HasPrefix(path, "/images/tasks/")
+}
+
+func isAsyncMediaTaskRead(method, path string) bool {
+	if isAsyncImageTaskRead(method, path) {
+		return true
+	}
+	if method != http.MethodGet {
+		return false
+	}
+	return path == "/v1/videos/tasks" ||
+		path == "/videos/tasks" ||
+		strings.HasPrefix(path, "/v1/videos/") ||
+		strings.HasPrefix(path, "/videos/")
 }
 
 // GetAPIKeyFromContext 从上下文中获取API key

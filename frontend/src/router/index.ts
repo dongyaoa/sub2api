@@ -664,6 +664,18 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/admin/video-generations',
+    name: 'AdminVideoGenerations',
+    component: () => import('@/views/admin/VideoGenerationsView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Video Reconciliation',
+      titleKey: 'admin.videoGenerations.title',
+      descriptionKey: 'admin.videoGenerations.description'
+    }
+  },
+  {
     path: '/admin/affiliates',
     redirect: '/admin/affiliates/invites'
   },

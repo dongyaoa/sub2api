@@ -124,7 +124,7 @@ var ProviderSet = wire.NewSet(
 	NewUpdateCache,
 	NewGeminiTokenCache,
 	NewImageTaskStore,
-	NewVideoTaskStore,
+	ProvideVideoTaskStore,
 	NewBatchImageQueue,
 	NewBatchImageDownloadLimiter,
 	NewLeaderLockCache,

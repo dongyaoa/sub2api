@@ -27,9 +27,10 @@ func (h *OpenAIGatewayHandler) GrokVideoTasks(c *gin.Context) {
 	}
 	c.Header("Cache-Control", "no-store")
 	c.JSON(http.StatusOK, gin.H{
-		"object":         "list",
-		"data":           tasks,
-		"retention_days": h.videoTasks.RetentionDays(),
+		"object":             "list",
+		"data":               tasks,
+		"retention_days":     h.videoTasks.RetentionDays(),
+		"persistent_history": h.videoTasks.PersistentHistory(),
 	})
 }
 

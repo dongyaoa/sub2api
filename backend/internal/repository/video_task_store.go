@@ -2,7 +2,9 @@ package repository
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
+	"errors"
 	"strconv"
 	"strings"
 	"time"
@@ -19,15 +21,36 @@ const (
 
 type videoTaskStore struct {
 	rdb *redis.Client
+	db  *sql.DB
 }
 
 func NewVideoTaskStore(rdb *redis.Client) service.VideoTaskStore {
 	return &videoTaskStore{rdb: rdb}
 }
 
+func ProvideVideoTaskStore(rdb *redis.Client, db *sql.DB) service.VideoTaskStore {
+	return &videoTaskStore{rdb: rdb, db: db}
+}
+
 func (s *videoTaskStore) Save(ctx context.Context, task *service.VideoTaskRecord, ttl time.Duration) error {
+	durableSaved := false
+	if s.db != nil {
+		if err := s.saveDurable(ctx, task); err != nil {
+			return err
+		}
+		durableSaved = true
+	}
+	if s.rdb == nil {
+		if durableSaved {
+			return nil
+		}
+		return errors.New("video task storage is unavailable")
+	}
 	data, err := json.Marshal(task)
 	if err != nil {
+		if durableSaved {
+			return nil
+		}
 		return err
 	}
 	historyKey := videoTaskHistoryKey(service.VideoTaskOwner{UserID: task.UserID, APIKeyID: task.APIKeyID})
@@ -37,12 +60,24 @@ func (s *videoTaskStore) Save(ctx context.Context, task *service.VideoTaskRecord
 	pipe.ZRemRangeByRank(ctx, historyKey, 0, -(maxVideoTaskHistoryItems + 1))
 	pipe.Expire(ctx, historyKey, ttl)
 	_, err = pipe.Exec(ctx)
+	if durableSaved {
+		return nil
+	}
 	return err
 }
 
 func (s *videoTaskStore) Get(ctx context.Context, id string) (*service.VideoTaskRecord, error) {
+	if s.rdb == nil {
+		if s.db != nil {
+			return s.getDurable(ctx, id)
+		}
+		return nil, errors.New("video task storage is unavailable")
+	}
 	data, err := s.rdb.Get(ctx, videoTaskKey(id)).Bytes()
 	if err != nil {
+		if s.db != nil {
+			return s.getDurable(ctx, id)
+		}
 		if err == redis.Nil {
 			return nil, service.ErrVideoTaskNotFound
 		}
@@ -56,6 +91,12 @@ func (s *videoTaskStore) Get(ctx context.Context, id string) (*service.VideoTask
 }
 
 func (s *videoTaskStore) List(ctx context.Context, owner service.VideoTaskOwner, limit int) ([]*service.VideoTaskRecord, error) {
+	if s.db != nil {
+		return s.listDurable(ctx, owner, limit)
+	}
+	if s.rdb == nil {
+		return nil, errors.New("video task storage is unavailable")
+	}
 	if limit <= 0 {
 		limit = 10
 	}
@@ -100,16 +141,36 @@ func (s *videoTaskStore) List(ctx context.Context, owner service.VideoTaskOwner,
 }
 
 func (s *videoTaskStore) Clear(ctx context.Context, owner service.VideoTaskOwner) error {
+	durableHidden := false
+	if s.db != nil {
+		if err := s.hideDurable(ctx, owner); err != nil {
+			return err
+		}
+		durableHidden = true
+	}
+	if s.rdb == nil {
+		if durableHidden {
+			return nil
+		}
+		return errors.New("video task storage is unavailable")
+	}
 	historyKey := videoTaskHistoryKey(owner)
 	ids, err := s.rdb.ZRange(ctx, historyKey, 0, -1).Result()
 	if err != nil {
+		if durableHidden {
+			return nil
+		}
 		return err
 	}
 	keys := []string{historyKey}
 	for _, id := range ids {
 		keys = append(keys, videoTaskKey(id))
 	}
-	return s.rdb.Del(ctx, keys...).Err()
+	err = s.rdb.Del(ctx, keys...).Err()
+	if durableHidden {
+		return nil
+	}
+	return err
 }
 
 func videoTaskKey(id string) string {

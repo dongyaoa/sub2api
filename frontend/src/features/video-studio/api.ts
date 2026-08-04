@@ -126,10 +126,11 @@ export async function listVideoTasks(
     signal,
   })
   if (!response.ok) throw await parseVideoStudioError(response)
-  const body = await response.json() as { data?: VideoTask[]; retention_days?: number }
+  const body = await response.json() as { data?: VideoTask[]; retention_days?: number; persistent_history?: boolean }
   return {
     tasks: Array.isArray(body.data) ? body.data : [],
     retentionDays: Math.max(1, Number(body.retention_days) || 7),
+    persistentHistory: body.persistent_history === true,
   }
 }
 

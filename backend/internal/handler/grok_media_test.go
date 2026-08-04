@@ -41,10 +41,10 @@ func TestShouldRecordGrokMediaUsage(t *testing.T) {
 			want:     true,
 		},
 		{
-			name:     "video generation records usage",
+			name:     "video generation defers usage until durable delivery",
 			endpoint: service.GrokMediaEndpointVideosGenerations,
 			model:    "grok-imagine-video-1.5-preview",
-			want:     true,
+			want:     false,
 		},
 		{
 			name:     "video status skips empty model usage",
@@ -71,6 +71,17 @@ func TestShouldRecordGrokMediaUsage(t *testing.T) {
 			require.Equal(t, tt.want, shouldRecordGrokMediaUsage(tt.endpoint, tt.model))
 		})
 	}
+}
+
+func TestGrokVideoLookupErrorEvidenceIncludesUpstreamBody(t *testing.T) {
+	failoverErr := &service.UpstreamFailoverError{
+		StatusCode:   500,
+		ResponseBody: []byte(`{"error":{"code":"internal_server_error","message":"auth_not_found: no auth available"}}`),
+	}
+	evidence := grokVideoLookupErrorEvidence(failoverErr)
+	require.Error(t, evidence)
+	require.Contains(t, evidence.Error(), "upstream status 500")
+	require.Contains(t, evidence.Error(), "auth_not_found")
 }
 
 func TestGrokMediaRequiredCapability(t *testing.T) {

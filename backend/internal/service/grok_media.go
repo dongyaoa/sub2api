@@ -613,9 +613,8 @@ func (s *OpenAIGatewayService) forwardGrokMediaVideoContent(
 		data = preparedData
 		if persist := grokVideoContentPersisterFromContext(ctx); persist != nil {
 			if persistErr := persist(ctx, requestID, contentType, data); persistErr != nil {
-				// Object storage failure must not make an otherwise valid generated
-				// video unplayable; the task remains available through the upstream.
 				logger.L().Warn("grok_media.persist_video_content_failed", zap.String("request_id", requestID), zap.Error(persistErr))
+				return nil, fmt.Errorf("persist grok video content: %w", persistErr)
 			}
 		}
 		contentResp.Header.Set("Content-Type", contentType)
