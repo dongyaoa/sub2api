@@ -35,6 +35,16 @@
         </router-link>
 
         <div class="flex shrink-0 items-center gap-1.5 sm:gap-2">
+          <router-link
+            to="/status"
+            class="nav-link nav-status-link"
+            :aria-label="copy.statusNavLabel"
+            :title="copy.statusNavLabel"
+          >
+            <Icon name="server" size="sm" />
+            <span class="hidden lg:inline">{{ copy.statusNavLabel }}</span>
+          </router-link>
+
           <a href="#pricing" class="nav-link hidden md:inline-flex">
             {{ copy.pricingNavLabel }}
           </a>
@@ -230,6 +240,7 @@
         <div class="flex items-center gap-4">
           <button @click="announcementModalOpen = true">{{ copy.announcementLabel }}</button>
           <button @click="serviceModalOpen = true">{{ copy.serviceLabel }}</button>
+          <router-link to="/status">{{ copy.statusNavLabel }}</router-link>
           <a href="#pricing">{{ copy.pricingNavLabel }}</a>
 
           <a
@@ -473,6 +484,7 @@ const copy = computed(() =>
         heroDescription:
           '稳定接入 Claude Code、Codex、Cursor 等 AI 工具，一个 Key 即可使用主流模型。',
         docsLabel: '接入文档',
+        statusNavLabel: '服务状态',
         pricingNavLabel: '定价',
         serviceLabel: '客服',
         serviceTitle: '联系技术支持',
@@ -508,6 +520,7 @@ const copy = computed(() =>
         heroDescription:
           'Connect Claude Code, Codex, Cursor, and more with one key for today’s leading models.',
         docsLabel: 'Documentation',
+        statusNavLabel: 'Service Status',
         pricingNavLabel: 'Pricing',
         serviceLabel: 'Support',
         serviceTitle: 'Technical Support',
@@ -580,7 +593,7 @@ const heroHighlights = computed(() => [
 ])
 
 const toolProducts = [
-  { name: 'Codex', logo: '' },
+  { name: 'Codex', logo: '/home-tools/codex.svg' },
   { name: 'VS Code', logo: '/home-tools/vscode.ico' },
   { name: 'Claude Code', logo: '/home-tools/claude.svg' },
   { name: 'OpenClaw', logo: '/home-tools/openclaw.svg' },
@@ -875,7 +888,7 @@ onBeforeUnmount(() => {
 
 .home-nav {
   position: relative;
-  overflow: hidden;
+  overflow: visible;
   border: 1px solid var(--home-glass-border);
   border-radius: 8px;
   background: var(--home-glass);
@@ -949,6 +962,7 @@ onBeforeUnmount(() => {
 }
 
 .nav-link {
+  display: inline-flex;
   height: 36px;
   gap: 6px;
   padding: 0 11px;
@@ -960,6 +974,11 @@ onBeforeUnmount(() => {
 .nav-link:hover {
   background: var(--home-glass-strong);
   color: inherit;
+}
+
+.nav-status-link {
+  width: 36px;
+  padding: 0;
 }
 
 .icon-button {
@@ -1063,7 +1082,7 @@ onBeforeUnmount(() => {
   flex-direction: column;
   align-items: center;
   margin: 0 auto;
-  padding: 74px 24px 0;
+  padding: 86px 24px 0;
   text-align: center;
 }
 
@@ -1138,12 +1157,13 @@ onBeforeUnmount(() => {
 .primary-button,
 .secondary-button {
   display: inline-flex;
-  min-width: 164px;
-  height: 50px;
-  gap: 9px;
-  padding: 0 21px;
-  font-size: 14px;
-  font-weight: 720;
+  min-width: 182px;
+  height: 54px;
+  gap: 11px;
+  padding: 0 28px;
+  font-size: 16px;
+  font-weight: 750;
+  line-height: 1;
 }
 
 .primary-button {
@@ -1248,7 +1268,7 @@ onBeforeUnmount(() => {
   z-index: 1;
   width: min(calc(100% - 32px), 1180px);
   overflow: hidden;
-  margin: 64px auto 58px;
+  margin: 82px auto 64px;
   border: 1px solid var(--home-glass-border);
   border-radius: 8px;
   background: var(--home-glass);
@@ -1740,7 +1760,7 @@ onBeforeUnmount(() => {
 
 @media (min-width: 640px) {
   .hero-content {
-    padding: 90px 28px 0;
+    padding: 106px 28px 0;
   }
 
   .hero-title {
@@ -1757,8 +1777,13 @@ onBeforeUnmount(() => {
 }
 
 @media (min-width: 1100px) {
+  .nav-status-link {
+    width: auto;
+    padding: 0 11px;
+  }
+
   .hero-content {
-    padding-top: 92px;
+    padding-top: 110px;
   }
 
   .hero-title {
@@ -1806,7 +1831,7 @@ onBeforeUnmount(() => {
   }
 
   .hero-content {
-    padding: 50px 16px 0;
+    padding: 56px 16px 0;
   }
 
   .hero-motion-canvas {
@@ -1860,8 +1885,8 @@ onBeforeUnmount(() => {
 
   .tool-marquee {
     width: calc(100% - 20px);
-    margin-top: 50px;
-    margin-bottom: 34px;
+    margin-top: 58px;
+    margin-bottom: 38px;
     padding: 19px 0;
   }
 

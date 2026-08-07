@@ -106,6 +106,10 @@ export function getMaxImageQuantity(platform: ImageStudioPlatform): number {
   return platform === 'gemini' ? 1 : 4
 }
 
+export function getMaxSourceImageQuantity(platform: ImageStudioPlatform): number {
+  return platform === 'gemini' ? 1 : 4
+}
+
 export function getPreferredImageModel(platform: ImageStudioPlatform): string {
   if (platform === 'openai') return 'gpt-image-2'
   if (platform === 'gemini') return 'gemini-3.1-flash-image'

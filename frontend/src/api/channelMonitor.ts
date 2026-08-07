@@ -75,9 +75,27 @@ export async function status(id: number): Promise<UserMonitorDetail> {
   return data
 }
 
+/**
+ * Public status-page feed. This endpoint returns the same sanitized monitor
+ * view without requiring a user session.
+ */
+export async function publicList(options?: { signal?: AbortSignal }): Promise<UserMonitorListResponse> {
+  const { data } = await apiClient.get<UserMonitorListResponse>('/public/channel-monitors', {
+    signal: options?.signal,
+  })
+  return data
+}
+
+export async function publicStatus(id: number): Promise<UserMonitorDetail> {
+  const { data } = await apiClient.get<UserMonitorDetail>(`/public/channel-monitors/${id}/status`)
+  return data
+}
+
 export const channelMonitorUserAPI = {
   list,
   status,
+  publicList,
+  publicStatus,
 }
 
 export default channelMonitorUserAPI

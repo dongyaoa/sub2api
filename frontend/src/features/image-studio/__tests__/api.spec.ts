@@ -55,11 +55,12 @@ describe('image studio external API', () => {
     })
     vi.stubGlobal('fetch', fetchMock)
     const file = new File(['source'], 'source.png', { type: 'image/png' })
+    const secondFile = new File(['second'], 'second.webp', { type: 'image/webp' })
 
     await expect(generateExternalImageEdit(
       'https://images.example.com/v1/',
       ' test-key ',
-      file,
+      [file, secondFile],
       { model: 'gpt-image-2', prompt: 'replace background', n: 2, size: '1536x1024', quality: 'high' },
     )).resolves.toEqual(result)
 
@@ -71,10 +72,14 @@ describe('image studio external API', () => {
     })
     expect(init.body).toBeInstanceOf(FormData)
     const form = init.body as FormData
-    const uploaded = form.get('image') as File
-    expect(uploaded.name).toBe('source.png')
-    expect(uploaded.type).toBe('image/png')
-    expect(uploaded.size).toBe(file.size)
+    const uploaded = form.getAll('image') as File[]
+    expect(uploaded).toHaveLength(2)
+    expect(uploaded[0].name).toBe('source.png')
+    expect(uploaded[0].type).toBe('image/png')
+    expect(uploaded[0].size).toBe(file.size)
+    expect(uploaded[1].name).toBe('second.webp')
+    expect(uploaded[1].type).toBe('image/webp')
+    expect(uploaded[1].size).toBe(secondFile.size)
     expect(form.get('model')).toBe('gpt-image-2')
     expect(form.get('prompt')).toBe('replace background')
     expect(form.get('n')).toBe('2')

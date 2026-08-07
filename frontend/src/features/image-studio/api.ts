@@ -81,9 +81,10 @@ export async function generateExternalImages(
   return response.json()
 }
 
-export function buildImageEditForm(file: File, payload: GenerateImageRequest): FormData {
+export function buildImageEditForm(files: File | readonly File[], payload: GenerateImageRequest): FormData {
   const form = new FormData()
-  form.append('image', file, file.name)
+  const sourceFiles = Array.isArray(files) ? files : [files]
+  sourceFiles.forEach((file) => form.append('image', file, file.name))
   form.append('model', payload.model)
   form.append('prompt', payload.prompt)
   form.append('n', String(payload.n))
@@ -97,7 +98,7 @@ export function buildImageEditForm(file: File, payload: GenerateImageRequest): F
 export async function generateExternalImageEdit(
   baseUrl: string,
   apiKey: string,
-  file: File,
+  files: File | readonly File[],
   payload: GenerateImageRequest,
   signal?: AbortSignal,
 ): Promise<ImageGenerationResult> {
@@ -105,7 +106,7 @@ export async function generateExternalImageEdit(
   const response = await fetch(endpoint, {
     method: 'POST',
     headers: authHeaders(apiKey.trim(), { Accept: 'application/json' }),
-    body: buildImageEditForm(file, payload),
+    body: buildImageEditForm(files, payload),
     signal,
   })
   if (!response.ok) throw await parseImageStudioError(response)
@@ -137,14 +138,14 @@ export async function submitImageTask(
 
 export async function submitImageEditTask(
   apiKey: string,
-  file: File,
+  files: File | readonly File[],
   payload: GenerateImageRequest,
   signal?: AbortSignal,
 ): Promise<ImageTask> {
   const response = await fetch(buildGatewayUrl('/v1/images/edits/async'), {
     method: 'POST',
     headers: authHeaders(apiKey, { Accept: 'application/json' }),
-    body: buildImageEditForm(file, payload),
+    body: buildImageEditForm(files, payload),
     signal,
   })
   if (!response.ok) throw await parseImageStudioError(response)

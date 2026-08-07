@@ -4,6 +4,7 @@ import {
   filterImageModels,
   getAspectRatioOptions,
   getMaxImageQuantity,
+  getMaxSourceImageQuantity,
   getOpenAIImageSize,
   getPreferredImageModel,
   getResolutionOptions,
@@ -128,6 +129,9 @@ describe('image studio capabilities', () => {
     expect(supportsImageEditing('grok')).toBe(true)
     expect(supportsImageEditing('gemini')).toBe(true)
     expect(getMaxImageQuantity('gemini')).toBe(1)
+    expect(getMaxSourceImageQuantity('openai')).toBe(4)
+    expect(getMaxSourceImageQuantity('grok')).toBe(4)
+    expect(getMaxSourceImageQuantity('gemini')).toBe(1)
     expect(getPreferredImageModel('gemini')).toBe('gemini-3.1-flash-image')
   })
 

@@ -105,33 +105,58 @@
             <div v-if="operation === 'edit'">
               <div class="mb-1 flex items-center justify-between gap-2">
                 <span class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('imageStudio.sourceImage') }}</span>
-                <span class="text-[11px] text-gray-400">{{ t('imageStudio.sourceImageLimit') }}</span>
+                <span class="text-[11px] text-gray-400">{{ t('imageStudio.sourceImageLimit', { max: maxSourceImages }) }}</span>
               </div>
               <input
                 ref="sourceInput"
                 type="file"
                 class="sr-only"
                 accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp"
+                :multiple="maxSourceImages > 1"
                 :disabled="isWorking"
                 @change="handleSourceInput"
               />
               <div
-                v-if="sourcePreviewUrl && sourceImageFile"
-                class="flex h-20 items-center gap-3 overflow-hidden rounded-lg border border-gray-200 bg-gray-50 p-2 dark:border-dark-700 dark:bg-dark-800"
+                v-if="sourceImageFiles.length > 0"
+                class="space-y-2 rounded-lg border border-gray-200 bg-gray-50 p-2 dark:border-dark-700 dark:bg-dark-800"
+                :class="sourceDragActive ? 'border-primary-500 bg-primary-50 dark:bg-primary-950/20' : ''"
+                @dragenter.prevent="sourceDragActive = true"
+                @dragover.prevent="sourceDragActive = true"
+                @dragleave.prevent="sourceDragActive = false"
+                @drop.prevent="handleSourceDrop"
               >
-                <img :src="sourcePreviewUrl" :alt="t('imageStudio.sourcePreview')" class="h-16 w-16 shrink-0 rounded-md object-cover" />
-                <div class="min-w-0 flex-1">
-                  <p class="truncate text-xs font-medium text-gray-800 dark:text-gray-200" :title="sourceImageFile.name">{{ sourceImageFile.name }}</p>
-                  <p class="mt-1 text-[11px] text-gray-400">{{ formatFileSize(sourceImageFile.size) }}</p>
+                <div class="grid grid-cols-2 gap-2">
+                  <div
+                    v-for="(file, index) in sourceImageFiles"
+                    :key="file.name + '-' + file.lastModified + '-' + index"
+                    class="flex min-w-0 items-center gap-2 rounded-md border border-gray-200 bg-white p-1.5 dark:border-dark-600 dark:bg-dark-900"
+                  >
+                    <img :src="sourcePreviewUrls[index]" :alt="t('imageStudio.sourcePreview')" class="h-10 w-10 shrink-0 rounded object-cover" />
+                    <span class="min-w-0 flex-1 truncate text-[11px] text-gray-700 dark:text-gray-200" :title="file.name">{{ file.name }}</span>
+                    <button
+                      type="button"
+                      class="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-gray-400 hover:bg-red-50 hover:text-red-600 disabled:opacity-40 dark:hover:bg-red-950/30 dark:hover:text-red-400"
+                      :disabled="isWorking"
+                      :title="t('imageStudio.removeImage')"
+                      :aria-label="t('imageStudio.removeImage')"
+                      @click="removeSourceImage(index)"
+                    >
+                      <Icon name="trash" size="xs" />
+                    </button>
+                  </div>
                 </div>
-                <div class="flex shrink-0 gap-1">
-                  <button type="button" class="flex h-8 w-8 items-center justify-center rounded-md text-gray-500 hover:bg-white hover:text-primary-600 disabled:opacity-40 dark:hover:bg-dark-700 dark:hover:text-primary-400" :disabled="isWorking" :title="t('imageStudio.replaceImage')" @click="openSourcePicker">
-                    <Icon name="upload" size="sm" />
-                  </button>
-                  <button type="button" class="flex h-8 w-8 items-center justify-center rounded-md text-gray-500 hover:bg-white hover:text-red-600 disabled:opacity-40 dark:hover:bg-dark-700 dark:hover:text-red-400" :disabled="isWorking" :title="t('imageStudio.removeImage')" @click="clearSourceImage">
-                    <Icon name="trash" size="sm" />
-                  </button>
-                </div>
+                <button
+                  v-if="sourceImageFiles.length < maxSourceImages"
+                  type="button"
+                  class="flex h-8 w-full items-center justify-center gap-1.5 rounded-md border border-dashed border-gray-300 bg-white text-xs font-medium text-gray-500 hover:border-primary-400 hover:text-primary-600 disabled:opacity-40 dark:border-dark-600 dark:bg-dark-900 dark:text-gray-400"
+                  :disabled="isWorking"
+                  :title="t('imageStudio.addSourceImages')"
+                  @click="openSourcePicker"
+                >
+                  <Icon name="upload" size="xs" />
+                  {{ t('imageStudio.addSourceImages') }}
+                  <span class="text-[11px] text-gray-400">{{ sourceImageFiles.length }}/{{ maxSourceImages }}</span>
+                </button>
               </div>
               <button
                 v-else
@@ -533,6 +558,7 @@ import {
   filterImageModels,
   getAspectRatioOptions,
   getMaxImageQuantity,
+  getMaxSourceImageQuantity,
   getOpenAIImageSize,
   getPreferredImageModel,
   getResolutionOptions,
@@ -586,8 +612,8 @@ const router = useRouter()
 const appStore = useAppStore()
 
 const operation = ref<StudioOperation>('generate')
-const sourceImageFile = ref<File | null>(null)
-const sourcePreviewUrl = ref('')
+const sourceImageFiles = ref<File[]>([])
+const sourcePreviewUrls = ref<string[]>([])
 const sourceInput = ref<HTMLInputElement | null>(null)
 const sourceDragActive = ref(false)
 const apiKeys = ref<ApiKey[]>([])
@@ -656,6 +682,7 @@ const qualityOptions = computed<Array<{ value: ImageQuality; label: string }>>((
 ])
 const allResolutionTiers: ImageResolutionTier[] = ['1K', '2K', '4K']
 const maxQuantity = computed(() => getMaxImageQuantity(platform.value))
+const maxSourceImages = computed(() => getMaxSourceImageQuantity(platform.value))
 const openAI4KEnabled = computed(() => (
   platform.value === 'openai' &&
   selectedGroup.value?.image_price_4k != null &&
@@ -680,7 +707,7 @@ const taskId = computed(() => task.value?.task_id || task.value?.id || '')
 const isWorking = computed(() => submitting.value || viewState.value === 'processing')
 const canGenerate = computed(() => {
   if (isWorking.value || !model.value.trim() || !prompt.value.trim()) return false
-  if (operation.value === 'edit' && (!supportsImageEditing(platform.value) || !sourceImageFile.value)) return false
+  if (operation.value === 'edit' && (!supportsImageEditing(platform.value) || sourceImageFiles.value.length === 0)) return false
   return !!selectedKey.value
 })
 const statusOperation = computed<StudioOperation>(() => (
@@ -762,6 +789,7 @@ async function handleKeySelection() {
   )
   ratio.value = normalized.ratio
   resolution.value = normalized.resolution
+  trimSourceImages(maxSourceImages.value)
   quality.value = 'auto'
   quantity.value = Math.min(quantity.value, maxQuantity.value)
   await Promise.all([
@@ -779,45 +807,65 @@ function isSupportedSourceImage(file: File): boolean {
   return /[.](png|jpe?g|webp)$/i.test(file.name)
 }
 
-function setSourceImage(file: File) {
+function addSourceImages(files: File[]) {
   sourceDragActive.value = false
-  if (!isSupportedSourceImage(file)) {
-    appStore.showError(t('imageStudio.sourceImageTypeError'))
+  if (isWorking.value || files.length === 0) return
+
+  const remaining = maxSourceImages.value - sourceImageFiles.value.length
+  if (remaining <= 0) {
+    appStore.showError(t('imageStudio.sourceImageCountError', { max: maxSourceImages.value }))
     return
   }
-  if (file.size > MAX_SOURCE_IMAGE_BYTES) {
-    appStore.showError(t('imageStudio.sourceImageSizeError'))
-    return
+
+  const candidates = files.slice(0, remaining)
+  for (const file of candidates) {
+    if (!isSupportedSourceImage(file)) {
+      appStore.showError(t('imageStudio.sourceImageTypeError'))
+      continue
+    }
+    if (file.size > MAX_SOURCE_IMAGE_BYTES) {
+      appStore.showError(t('imageStudio.sourceImageSizeError'))
+      continue
+    }
+    sourceImageFiles.value.push(file)
+    sourcePreviewUrls.value.push(URL.createObjectURL(file))
   }
-  if (sourcePreviewUrl.value) URL.revokeObjectURL(sourcePreviewUrl.value)
-  sourceImageFile.value = file
-  sourcePreviewUrl.value = URL.createObjectURL(file)
+
+  if (files.length > remaining) {
+    appStore.showError(t('imageStudio.sourceImageCountError', { max: maxSourceImages.value }))
+  }
 }
 
 function handleSourceInput(event: Event) {
   const input = event.target as HTMLInputElement
-  const file = input.files?.[0]
-  if (file) setSourceImage(file)
+  const files = Array.from((input as HTMLInputElement).files || [])
+  addSourceImages(files)
   input.value = ''
 }
 
 function handleSourceDrop(event: DragEvent) {
   sourceDragActive.value = false
   if (isWorking.value) return
-  const file = event.dataTransfer?.files?.[0]
-  if (file) setSourceImage(file)
+  addSourceImages(Array.from(event.dataTransfer?.files || []))
 }
 
-function clearSourceImage() {
-  if (sourcePreviewUrl.value) URL.revokeObjectURL(sourcePreviewUrl.value)
-  sourceImageFile.value = null
-  sourcePreviewUrl.value = ''
-  if (sourceInput.value) sourceInput.value.value = ''
+function removeSourceImage(index: number) {
+  const previewUrl = sourcePreviewUrls.value[index]
+  if (previewUrl) URL.revokeObjectURL(previewUrl)
+  sourceImageFiles.value.splice(index, 1)
+  sourcePreviewUrls.value.splice(index, 1)
 }
 
-function formatFileSize(bytes: number): string {
-  return (bytes / 1024 / 1024).toFixed(bytes >= 1024 * 1024 ? 1 : 2) + ' MB'
+function trimSourceImages(limit: number) {
+  const safeLimit = Math.max(1, limit)
+  while (sourceImageFiles.value.length > safeLimit) {
+    const previewUrl = sourcePreviewUrls.value.pop()
+    if (previewUrl) URL.revokeObjectURL(previewUrl)
+    sourceImageFiles.value.pop()
+  }
 }
+
+
 
 function processingItemLabel(index: number): string {
   const key = operation.value === 'edit' ? 'imageStudio.editRendering' : 'imageStudio.rendering'
@@ -896,8 +944,8 @@ function beginHistoryItem(request: GenerateImageRequest): StudioHistoryItem {
     quantity: request.n,
     createdAt: Date.now(),
     status: 'processing',
-    sourceThumbnail: operation.value === 'edit' && sourceImageFile.value
-      ? URL.createObjectURL(sourceImageFile.value)
+    sourceThumbnail: operation.value === 'edit' && sourceImageFiles.value[0]
+      ? URL.createObjectURL(sourceImageFiles.value[0])
       : undefined,
   }
   const nextHistory = [item, ...history.value]
@@ -1091,10 +1139,10 @@ function currentRequest(): GenerateImageRequest {
 async function generateImages() {
   if (!canGenerate.value) return
   const editing = operation.value === 'edit'
-  const sourceFile = sourceImageFile.value
+  const sourceFiles = sourceImageFiles.value
   const key = selectedKey.value
   if (!key) return
-  if (editing && !sourceFile) return
+  if (editing && sourceFiles.length === 0) return
 
   stopPolling()
   task.value = null
@@ -1115,7 +1163,7 @@ async function generateImages() {
 
   try {
     const submitted = editing
-      ? await submitImageEditTask(key.key, sourceFile as File, request, controller.signal)
+      ? await submitImageEditTask(key.key, sourceFiles, request, controller.signal)
       : await submitImageTask(key.key, request, controller.signal)
     task.value = submitted
     updateHistoryItem(historyItem.id, { task: submitted })
@@ -1355,7 +1403,7 @@ onBeforeUnmount(() => {
   historyController?.abort()
   stopPolling()
   if (elapsedTimer) clearInterval(elapsedTimer)
-  if (sourcePreviewUrl.value) URL.revokeObjectURL(sourcePreviewUrl.value)
+  sourcePreviewUrls.value.forEach((previewUrl) => URL.revokeObjectURL(previewUrl))
   history.value.forEach((item) => {
     if (item.sourceThumbnail) URL.revokeObjectURL(item.sourceThumbnail)
   })
