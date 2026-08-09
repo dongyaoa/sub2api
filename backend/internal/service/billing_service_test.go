@@ -1018,14 +1018,14 @@ func TestCalculateVideoCostBillsPerSecond(t *testing.T) {
 
 	oneSecond := svc.CalculateVideoCost("grok-imagine-video", "720p", 1, 1, nil, 1.0)
 	fifteenSeconds := svc.CalculateVideoCost("grok-imagine-video", "720p", 1, 15, nil, 1.0)
-	// duration <=0 时按上游默认 4 秒计费，超出上限按 15 秒收敛。
+	// duration <=0 时按上游默认 8 秒计费，超出上限按 15 秒收敛。
 	defaultDuration := svc.CalculateVideoCost("grok-imagine-video", "720p", 1, 0, nil, 1.0)
 	clampedDuration := svc.CalculateVideoCost("grok-imagine-video", "720p", 1, 999, nil, 1.0)
 
-	require.InDelta(t, 0.05, oneSecond.TotalCost, 1e-10)
-	require.InDelta(t, 0.05*15, fifteenSeconds.TotalCost, 1e-10)
-	require.InDelta(t, 0.05*4, defaultDuration.TotalCost, 1e-10)
-	require.InDelta(t, 0.05*15, clampedDuration.TotalCost, 1e-10)
+	require.InDelta(t, 0.07, oneSecond.TotalCost, 1e-10)
+	require.InDelta(t, 0.07*15, fifteenSeconds.TotalCost, 1e-10)
+	require.InDelta(t, 0.07*8, defaultDuration.TotalCost, 1e-10)
+	require.InDelta(t, 0.07*15, clampedDuration.TotalCost, 1e-10)
 }
 
 func TestCalculateGrokImagineImageCostUsesDefaultRateCard(t *testing.T) {
@@ -1036,10 +1036,10 @@ func TestCalculateGrokImagineImageCostUsesDefaultRateCard(t *testing.T) {
 	quality1K := svc.CalculateImageCost("grok-imagine-image-quality", "1K", 1, nil, 1.0)
 	quality2K := svc.CalculateImageCost("grok-imagine-image-quality", "2K", 1, nil, 1.0)
 
-	require.InDelta(t, 0.005, standard1K.TotalCost, 1e-10)
-	require.InDelta(t, 0.005, standard2K.TotalCost, 1e-10)
-	require.InDelta(t, 0.01, quality1K.TotalCost, 1e-10)
-	require.InDelta(t, 0.01, quality2K.TotalCost, 1e-10)
+	require.InDelta(t, 0.02, standard1K.TotalCost, 1e-10)
+	require.InDelta(t, 0.02, standard2K.TotalCost, 1e-10)
+	require.InDelta(t, 0.05, quality1K.TotalCost, 1e-10)
+	require.InDelta(t, 0.07, quality2K.TotalCost, 1e-10)
 }
 
 func TestCalculateGrokMediaCostUsesModelSpecificGroupPrices(t *testing.T) {
@@ -1074,10 +1074,10 @@ func TestCalculateGrokImagineVideoCostUsesDefaultRateCard(t *testing.T) {
 	video15_1080P := svc.CalculateVideoCost("grok-imagine-video-1.5-preview", "1080p", 1, 1, nil, 1.0)
 
 	require.InDelta(t, 0.05, standard480P.TotalCost, 1e-10)
-	require.InDelta(t, 0.05, standard720P.TotalCost, 1e-10)
-	require.InDelta(t, 0.15, video15_480P.TotalCost, 1e-10)
-	require.InDelta(t, 0.15, video15_720P.TotalCost, 1e-10)
-	require.InDelta(t, 0.15, video15_1080P.TotalCost, 1e-10)
+	require.InDelta(t, 0.07, standard720P.TotalCost, 1e-10)
+	require.InDelta(t, 0.08, video15_480P.TotalCost, 1e-10)
+	require.InDelta(t, 0.14, video15_720P.TotalCost, 1e-10)
+	require.InDelta(t, 0.25, video15_1080P.TotalCost, 1e-10)
 }
 
 func TestIsModelSupported(t *testing.T) {
