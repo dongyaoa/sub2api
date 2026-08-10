@@ -28,15 +28,21 @@ const (
 
 // ChannelMonitor 渠道监控配置（service 层模型，不直接暴露 ent 类型）。
 type ChannelMonitor struct {
-	ID              int64
-	Name            string
-	Provider        string
-	APIMode         string
-	Endpoint        string
-	APIKey          string // 解密后的明文 API Key（仅在 service 内部使用，handler 层不应直接序列化返回）
-	PrimaryModel    string
-	ExtraModels     []string
-	GroupName       string
+	ID           int64
+	Name         string
+	Provider     string
+	APIMode      string
+	Endpoint     string
+	APIKey       string // 解密后的明文 API Key（仅在 service 内部使用，handler 层不应直接序列化返回）
+	PrimaryModel string
+	ExtraModels  []string
+	GroupName    string
+
+	// GroupRateMultiplier is resolved from the current group record when building
+	// user-facing monitor cards. It is not persisted with the monitor, so group
+	// rate changes are reflected on the next status refresh.
+	GroupRateMultiplier *float64
+
 	Enabled         bool
 	IntervalSeconds int
 	JitterSeconds   int // 每次调度 ± [0, jitter] 的随机偏移（秒），0 = 固定间隔
@@ -130,6 +136,7 @@ type UserMonitorView struct {
 	Name                 string
 	Provider             string
 	GroupName            string
+	GroupRateMultiplier  *float64
 	PrimaryModel         string
 	PrimaryStatus        string
 	PrimaryLatencyMs     *int

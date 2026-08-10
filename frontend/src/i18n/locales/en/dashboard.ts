@@ -462,6 +462,8 @@ export default {
     detailLoadError: 'Failed to load channel detail',
     detailTitle: 'Channel Detail',
     closeDetail: 'Close',
+    groupRateValue: 'Rate {value}x',
+    groupRateTitle: '{group} current rate: {value}x',
     windowTab: {
       '7d': '7 days',
       '15d': '15 days',

@@ -16,7 +16,7 @@
         <div class="text-base font-semibold truncate text-gray-900 dark:text-gray-100">
           {{ item.name }}
         </div>
-        <div class="mt-0.5 flex items-center gap-1.5 min-w-0">
+        <div class="mt-0.5 flex min-w-0 flex-wrap items-center gap-1.5">
           <span
             class="inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium flex-shrink-0"
             :class="providerBadgeClass(item.provider)"
@@ -28,9 +28,16 @@
           </span>
           <span
             v-if="item.group_name"
-            class="inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium bg-gray-100 text-gray-600 dark:bg-dark-700 dark:text-gray-300 flex-shrink-0"
+            class="inline-flex max-w-full flex-shrink-0 items-center rounded-md bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-600 dark:bg-dark-700 dark:text-gray-300"
+            :title="groupRateTitle"
           >
-            {{ item.group_name }}
+            <span class="max-w-28 truncate">{{ item.group_name }}</span>
+            <span
+              v-if="item.group_rate_multiplier != null"
+              class="ml-1 border-l border-gray-300 pl-1 font-semibold text-primary-600 dark:border-dark-500 dark:text-primary-300"
+            >
+              {{ t('channelStatus.groupRateValue', { value: formatMultiplier(item.group_rate_multiplier) }) }}
+            </span>
           </span>
         </div>
       </div>
@@ -80,6 +87,7 @@ import {
   useChannelMonitorFormat,
   providerGradient,
 } from '@/composables/useChannelMonitorFormat'
+import { formatMultiplier } from '@/utils/formatters'
 import ProviderIcon from './ProviderIcon.vue'
 import MonitorMetricPair from './MonitorMetricPair.vue'
 import MonitorAvailabilityRow from './MonitorAvailabilityRow.vue'
@@ -119,6 +127,14 @@ const providerTintClass = computed(() =>
 const availabilityLabel = computed(() => {
   const win = t(`channelStatus.windowTab.${props.window}`)
   return `${t('monitorCommon.availabilityPrefix')} · ${win}`
+})
+
+const groupRateTitle = computed(() => {
+  if (props.item.group_rate_multiplier == null) return props.item.group_name
+  return t('channelStatus.groupRateTitle', {
+    group: props.item.group_name,
+    value: formatMultiplier(props.item.group_rate_multiplier),
+  })
 })
 
 const extraModelsCountLabel = computed(() => {

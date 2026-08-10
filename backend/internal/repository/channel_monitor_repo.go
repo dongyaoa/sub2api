@@ -4,12 +4,14 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log/slog"
 	"strings"
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitor"
 	"github.com/Wei-Shaw/sub2api/ent/channelmonitorhistory"
+	"github.com/Wei-Shaw/sub2api/ent/group"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/lib/pq"
 
@@ -195,7 +197,8 @@ func (r *channelMonitorRepository) List(ctx context.Context, params service.Chan
 // ---------- 调度器辅助 ----------
 
 func (r *channelMonitorRepository) ListEnabled(ctx context.Context) ([]*service.ChannelMonitor, error) {
-	rows, err := r.client.ChannelMonitor.Query().
+	client := clientFromContext(ctx, r.client)
+	rows, err := client.ChannelMonitor.Query().
 		Where(channelmonitor.EnabledEQ(true)).
 		All(ctx)
 	if err != nil {
@@ -205,7 +208,60 @@ func (r *channelMonitorRepository) ListEnabled(ctx context.Context) ([]*service.
 	for _, row := range rows {
 		out = append(out, entToServiceMonitor(row))
 	}
+	if err := hydrateMonitorGroupRates(ctx, client, out); err != nil {
+		// Rate display is supplemental. A temporary group lookup failure must not
+		// hide monitor health cards or prevent the active-probe scheduler starting.
+		slog.Warn("channel_monitor: load live group rates failed", "error", err)
+	}
 	return out, nil
+}
+
+// hydrateMonitorGroupRates resolves rates by the monitor's saved platform and
+// group name. The value is deliberately loaded on every ListEnabled call so a
+// group edit is visible on the next user status refresh without copying stale
+// billing configuration into channel_monitors.
+func hydrateMonitorGroupRates(ctx context.Context, client *dbent.Client, monitors []*service.ChannelMonitor) error {
+	names := make([]string, 0, len(monitors))
+	seen := make(map[string]struct{}, len(monitors))
+	for _, monitor := range monitors {
+		name := strings.TrimSpace(monitor.GroupName)
+		if name == "" {
+			continue
+		}
+		if _, ok := seen[name]; ok {
+			continue
+		}
+		seen[name] = struct{}{}
+		names = append(names, name)
+	}
+	if len(names) == 0 {
+		return nil
+	}
+
+	groups, err := client.Group.Query().Where(group.NameIn(names...)).All(ctx)
+	if err != nil {
+		return fmt.Errorf("query monitor groups: %w", err)
+	}
+	assignMonitorGroupRates(monitors, groups)
+	return nil
+}
+
+func assignMonitorGroupRates(monitors []*service.ChannelMonitor, groups []*dbent.Group) {
+	rates := make(map[string]float64, len(groups))
+	for _, row := range groups {
+		rates[monitorGroupRateKey(row.Platform, row.Name)] = row.RateMultiplier
+	}
+	for _, monitor := range monitors {
+		rate, ok := rates[monitorGroupRateKey(monitor.Provider, strings.TrimSpace(monitor.GroupName))]
+		if !ok {
+			continue
+		}
+		monitor.GroupRateMultiplier = &rate
+	}
+}
+
+func monitorGroupRateKey(platform, name string) string {
+	return strings.TrimSpace(platform) + "\x00" + strings.TrimSpace(name)
 }
 
 func (r *channelMonitorRepository) MarkChecked(ctx context.Context, id int64, checkedAt time.Time) error {

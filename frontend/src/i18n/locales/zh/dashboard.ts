@@ -467,6 +467,8 @@ export default {
     detailLoadError: '加载渠道详情失败',
     detailTitle: '渠道详情',
     closeDetail: '关闭',
+    groupRateValue: '倍率 {value}x',
+    groupRateTitle: '{group} 当前倍率：{value}x',
     windowTab: {
       '7d': '7 天',
       '15d': '15 天',
