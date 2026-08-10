@@ -1164,9 +1164,9 @@ func TestForwardGrokMediaAppliesAccountModelMappingAfterEndpointNormalization(t 
 			path:             "/v1/videos/generations",
 			body:             `{"model":"grok-imagine-video","prompt":"waves"}`,
 			modelMapping:     map[string]any{"grok-imagine-video": "grok-image-video"},
-			wantRequestModel: "grok-imagine-video-1.5",
-			wantUpstream:     "grok-imagine-video-1.5",
-			wantBody:         `{"model":"grok-imagine-video-1.5","prompt":"waves"}`,
+			wantRequestModel: "grok-imagine-video",
+			wantUpstream:     "grok-image-video",
+			wantBody:         `{"model":"grok-image-video","prompt":"waves"}`,
 			responseBody:     `{"request_id":"video-request-mapped"}`,
 		},
 		{
@@ -1405,9 +1405,9 @@ func TestForwardGrokMediaVideoGenerationReturnsUsageAndResponseID(t *testing.T) 
 	result, err := svc.ForwardGrokMedia(context.Background(), c, account, GrokMediaEndpointVideosGenerations, "", body, "application/json")
 	require.NoError(t, err)
 	require.Equal(t, "https://xai.test/v1/videos/generations", upstream.lastReq.URL.String())
-	require.JSONEq(t, `{"model":"grok-imagine-video-1.5","prompt":"waves","resolution":"720p","duration":10}`, string(upstream.lastBody))
+	require.JSONEq(t, `{"model":"grok-imagine-video","prompt":"waves","resolution":"720p","duration":10}`, string(upstream.lastBody))
 	require.Equal(t, "video-request-123", result.ResponseID)
-	require.Equal(t, "grok-imagine-video-1.5", result.BillingModel)
+	require.Equal(t, "grok-imagine-video", result.BillingModel)
 	require.Equal(t, 3, result.Usage.InputTokens)
 	require.Equal(t, 4, result.Usage.OutputTokens)
 	// Create accepts the job only — VideoCount stays 0 until status returns video.url.
