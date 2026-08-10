@@ -525,6 +525,7 @@ async function openMyKeyPicker() {
 
 function pickMyKey(k: ApiKey) {
   form.api_key = k.key
+  form.group_name = k.group?.name || ''
   showKeyPicker.value = false
 }
 

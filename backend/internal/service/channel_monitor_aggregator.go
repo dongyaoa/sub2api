@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"strings"
 )
 
 // 渠道监控聚合层：把 latest + availability 拼成 admin/user 视图所需的 summary / detail。
@@ -63,6 +64,7 @@ func (s *ChannelMonitorService) ListUserView(ctx context.Context) ([]*UserMonito
 	if len(monitors) == 0 {
 		return []*UserMonitorView{}, nil
 	}
+	s.hydrateMonitorGroupsFromAPIKeys(ctx, monitors)
 
 	ids, primaryByID, extrasByID := collectMonitorIndexes(monitors)
 	summaries := s.BatchMonitorStatusSummary(ctx, ids, primaryByID, extrasByID)
@@ -75,6 +77,43 @@ func (s *ChannelMonitorService) ListUserView(ctx context.Context) ([]*UserMonito
 		views = append(views, buildUserViewFromSummary(m, summaries[m.ID], primaryLatest, timelineMap[m.ID]))
 	}
 	return views, nil
+}
+
+// hydrateMonitorGroupsFromAPIKeys resolves the real group behind locally-issued
+// keys in one batch. The repository may already have populated a rate from the
+// optional group_name; key resolution wins because it also covers existing
+// monitors whose group_name is empty and follows later key rebindings.
+func (s *ChannelMonitorService) hydrateMonitorGroupsFromAPIKeys(ctx context.Context, monitors []*ChannelMonitor) {
+	if s == nil || s.encryptor == nil || s.apiKeyGroupResolver == nil {
+		return
+	}
+	monitorsByKey := make(map[string][]*ChannelMonitor, len(monitors))
+	keys := make([]string, 0, len(monitors))
+	for _, monitor := range monitors {
+		s.decryptInPlace(monitor)
+		if monitor == nil || monitor.APIKeyDecryptFailed || strings.TrimSpace(monitor.APIKey) == "" {
+			continue
+		}
+		if _, exists := monitorsByKey[monitor.APIKey]; !exists {
+			keys = append(keys, monitor.APIKey)
+		}
+		monitorsByKey[monitor.APIKey] = append(monitorsByKey[monitor.APIKey], monitor)
+	}
+	if len(keys) == 0 {
+		return
+	}
+	groupsByKey, err := s.apiKeyGroupResolver.ResolveByKeys(ctx, keys)
+	if err != nil {
+		slog.Warn("channel_monitor: resolve live groups from api keys failed", "error", err)
+		return
+	}
+	for key, group := range groupsByKey {
+		for _, monitor := range monitorsByKey[key] {
+			rate := group.RateMultiplier
+			monitor.GroupName = group.Name
+			monitor.GroupRateMultiplier = &rate
+		}
+	}
 }
 
 // collectMonitorIndexes 把 monitors 列表按 ID 展开为聚合查询所需的三个索引结构。

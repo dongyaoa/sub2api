@@ -914,9 +914,11 @@ func ProvideChannelMonitorService(
 	repo ChannelMonitorRepository,
 	encryptor SecretEncryptor,
 	settingService *SettingService,
+	apiKeyGroupResolver ChannelMonitorAPIKeyGroupResolver,
 ) *ChannelMonitorService {
 	svc := NewChannelMonitorService(repo, encryptor)
 	svc.SetRuntimeReader(settingService)
+	svc.SetAPIKeyGroupResolver(apiKeyGroupResolver)
 	return svc
 }
 

@@ -19,7 +19,7 @@ function monitor(overrides: Partial<UserMonitorView> = {}): UserMonitorView {
     id: 1,
     name: 'OpenAI 主渠道',
     provider: 'openai',
-    group_name: '标准分组',
+    group_name: '',
     group_rate_multiplier: 0.35,
     primary_model: 'gpt-5',
     primary_status: 'operational',
@@ -55,15 +55,14 @@ describe('MonitorCard group rate', () => {
   it('shows the live group multiplier with adaptive precision', () => {
     const wrapper = render(monitor())
 
-    expect(wrapper.text()).toContain('标准分组')
-    expect(wrapper.text()).toContain('倍率 0.35x')
-    expect(wrapper.get('[title="标准分组 当前倍率：0.35x"]').exists()).toBe(true)
+    expect(wrapper.get('[data-testid="monitor-group-rate"]').text()).toBe('倍率 0.35x')
+    expect(wrapper.get('[data-testid="monitor-status-stack"]').text()).toContain('倍率 0.35x')
+    expect(wrapper.get('[title="倍率 0.35x"]').exists()).toBe(true)
   })
 
-  it('keeps the group label without inventing a rate when no group matches', () => {
+  it('does not render a rate when no group matches', () => {
     const wrapper = render(monitor({ group_rate_multiplier: null }))
 
-    expect(wrapper.text()).toContain('标准分组')
-    expect(wrapper.text()).not.toContain('倍率')
+    expect(wrapper.find('[data-testid="monitor-group-rate"]').exists()).toBe(false)
   })
 })

@@ -67,6 +67,19 @@ type channelMonitorRuntimeReader interface {
 	GetChannelMonitorRuntime(ctx context.Context) ChannelMonitorRuntime
 }
 
+// ChannelMonitorAPIKeyGroup is the current billing group resolved from a
+// locally-issued API key used by a monitor.
+type ChannelMonitorAPIKeyGroup struct {
+	Name           string
+	RateMultiplier float64
+}
+
+// ChannelMonitorAPIKeyGroupResolver batch-resolves locally-issued monitor keys
+// without exposing credentials outside the service/repository boundary.
+type ChannelMonitorAPIKeyGroupResolver interface {
+	ResolveByKeys(ctx context.Context, keys []string) (map[string]ChannelMonitorAPIKeyGroup, error)
+}
+
 // ChannelMonitorService 渠道监控管理服务。
 type ChannelMonitorService struct {
 	repo      ChannelMonitorRepository
@@ -74,6 +87,10 @@ type ChannelMonitorService struct {
 	// settings is optional; when nil, RunCheck fails closed for active probes
 	// (mode defaults to v2 / retired) so tests without settings never hit upstream.
 	settings channelMonitorRuntimeReader
+	// apiKeyGroupResolver is optional for tests and external-only deployments.
+	// Production injects a batch DB resolver so existing monitors do not need a
+	// copied group name or rate snapshot.
+	apiKeyGroupResolver ChannelMonitorAPIKeyGroupResolver
 	// scheduler 由 wire 通过 SetScheduler 注入；CRUD 后调用对应钩子即时同步任务。
 	// 测试或未注入场景下保持 nil，所有钩子调用变为 no-op。
 	scheduler MonitorScheduler
@@ -99,6 +116,14 @@ func (s *ChannelMonitorService) SetRuntimeReader(r channelMonitorRuntimeReader) 
 		return
 	}
 	s.settings = r
+}
+
+// SetAPIKeyGroupResolver injects the live local API-key to group lookup.
+func (s *ChannelMonitorService) SetAPIKeyGroupResolver(r ChannelMonitorAPIKeyGroupResolver) {
+	if s == nil {
+		return
+	}
+	s.apiKeyGroupResolver = r
 }
 
 func (s *ChannelMonitorService) probeRuntime(ctx context.Context) ChannelMonitorRuntime {

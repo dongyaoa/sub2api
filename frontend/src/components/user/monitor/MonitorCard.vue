@@ -16,7 +16,7 @@
         <div class="text-base font-semibold truncate text-gray-900 dark:text-gray-100">
           {{ item.name }}
         </div>
-        <div class="mt-0.5 flex min-w-0 flex-wrap items-center gap-1.5">
+        <div class="mt-0.5 flex items-center gap-1.5 min-w-0">
           <span
             class="inline-flex items-center rounded-md px-1.5 py-0.5 text-[10px] font-medium flex-shrink-0"
             :class="providerBadgeClass(item.provider)"
@@ -26,27 +26,24 @@
           <span class="font-mono text-xs truncate text-gray-500 dark:text-gray-400">
             {{ item.primary_model }}
           </span>
-          <span
-            v-if="item.group_name"
-            class="inline-flex max-w-full flex-shrink-0 items-center rounded-md bg-gray-100 px-1.5 py-0.5 text-[10px] font-medium text-gray-600 dark:bg-dark-700 dark:text-gray-300"
-            :title="groupRateTitle"
-          >
-            <span class="max-w-28 truncate">{{ item.group_name }}</span>
-            <span
-              v-if="item.group_rate_multiplier != null"
-              class="ml-1 border-l border-gray-300 pl-1 font-semibold text-primary-600 dark:border-dark-500 dark:text-primary-300"
-            >
-              {{ t('channelStatus.groupRateValue', { value: formatMultiplier(item.group_rate_multiplier) }) }}
-            </span>
-          </span>
         </div>
       </div>
-      <span
-        class="px-2.5 py-1 rounded-full text-xs font-semibold flex-shrink-0"
-        :class="statusBadgeClass(item.primary_status)"
-      >
-        {{ statusLabel(item.primary_status) }}
-      </span>
+      <div data-testid="monitor-status-stack" class="flex flex-shrink-0 flex-col items-end gap-1.5">
+        <span
+          class="px-2.5 py-1 rounded-full text-xs font-semibold"
+          :class="statusBadgeClass(item.primary_status)"
+        >
+          {{ statusLabel(item.primary_status) }}
+        </span>
+        <span
+          v-if="item.group_rate_multiplier != null"
+          data-testid="monitor-group-rate"
+          class="whitespace-nowrap text-[11px] font-semibold text-primary-600 dark:text-primary-300"
+          :title="groupRateTitle"
+        >
+          {{ t('channelStatus.groupRateValue', { value: formatMultiplier(item.group_rate_multiplier) }) }}
+        </span>
+      </div>
     </div>
 
     <!-- Metrics -->
@@ -130,10 +127,14 @@ const availabilityLabel = computed(() => {
 })
 
 const groupRateTitle = computed(() => {
-  if (props.item.group_rate_multiplier == null) return props.item.group_name
+  if (props.item.group_rate_multiplier == null) return ''
+  const value = formatMultiplier(props.item.group_rate_multiplier)
+  if (!props.item.group_name) {
+    return t('channelStatus.groupRateValue', { value })
+  }
   return t('channelStatus.groupRateTitle', {
     group: props.item.group_name,
-    value: formatMultiplier(props.item.group_rate_multiplier),
+    value,
   })
 })
 
