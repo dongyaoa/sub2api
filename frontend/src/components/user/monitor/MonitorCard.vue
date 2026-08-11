@@ -28,7 +28,7 @@
           </span>
         </div>
       </div>
-      <div data-testid="monitor-status-stack" class="flex flex-shrink-0 flex-col items-end gap-2">
+      <div data-testid="monitor-status-stack" class="flex flex-shrink-0 flex-col items-end gap-1.5">
         <span
           class="px-2.5 py-1 rounded-full text-xs font-semibold"
           :class="statusBadgeClass(item.primary_status)"
@@ -38,7 +38,7 @@
         <span
           v-if="item.group_rate_multiplier != null"
           data-testid="monitor-group-rate"
-          class="inline-flex min-h-8 items-center justify-center whitespace-nowrap rounded-lg border border-primary-200 bg-primary-50/80 px-2.5 py-1 text-sm font-bold text-primary-600 shadow-sm dark:border-primary-500/30 dark:bg-primary-500/10 dark:text-primary-300"
+          class="inline-flex h-6 items-center justify-center whitespace-nowrap rounded-lg border border-primary-200 bg-primary-50/80 px-2 text-xs font-semibold text-primary-600 dark:border-primary-500/30 dark:bg-primary-500/10 dark:text-primary-300"
           :title="groupRateTitle"
         >
           {{ formatMultiplier(item.group_rate_multiplier) }}x
