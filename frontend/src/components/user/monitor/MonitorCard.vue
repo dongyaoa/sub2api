@@ -38,7 +38,7 @@
         <span
           v-if="item.group_rate_multiplier != null"
           data-testid="monitor-group-rate"
-          class="inline-flex h-6 items-center justify-center whitespace-nowrap rounded-lg border border-primary-200 bg-primary-50/80 px-2 text-xs font-semibold text-primary-600 dark:border-primary-500/30 dark:bg-primary-500/10 dark:text-primary-300"
+          class="inline-flex items-center justify-center whitespace-nowrap rounded-full bg-teal-50 px-2.5 py-1 text-xs font-semibold text-teal-700 dark:bg-teal-500/10 dark:text-teal-300"
           :title="groupRateTitle"
         >
           {{ formatMultiplier(item.group_rate_multiplier) }}x
