@@ -55,8 +55,9 @@ describe('MonitorCard group rate', () => {
   it('shows the live group multiplier with adaptive precision', () => {
     const wrapper = render(monitor())
 
-    expect(wrapper.get('[data-testid="monitor-group-rate"]').text()).toBe('倍率 0.35x')
-    expect(wrapper.get('[data-testid="monitor-status-stack"]').text()).toContain('倍率 0.35x')
+    expect(wrapper.get('[data-testid="monitor-group-rate"]').text()).toBe('0.35x')
+    expect(wrapper.get('[data-testid="monitor-status-stack"]').text()).toContain('0.35x')
+    expect(wrapper.get('[data-testid="monitor-group-rate"]').text()).not.toContain('倍率')
     expect(wrapper.get('[title="倍率 0.35x"]').exists()).toBe(true)
   })
 
