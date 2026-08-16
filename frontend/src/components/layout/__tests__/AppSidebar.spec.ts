@@ -42,6 +42,24 @@ describe('AppSidebar scroll position persistence', () => {
   })
 })
 
+describe('AppSidebar image studio access', () => {
+  it('shows the image studio entry without key or simple-mode restrictions', () => {
+    const item = componentSource.match(/\{ path: '\/image-studio'[^}]+\}/)?.[0]
+
+    expect(item).toBeDefined()
+    expect(item).not.toContain('featureFlag')
+    expect(item).not.toContain('hideInSimpleMode')
+  })
+})
+
+describe('AppSidebar check-in entries', () => {
+  it('keeps user and admin check-in pages in the sidebar declarations', () => {
+    expect(componentSource).toContain("path: '/checkin'")
+    expect(componentSource).toContain("path: '/admin/checkin'")
+    expect(componentSource).toContain("t('nav.checkinConsole')")
+  })
+})
+
 describe('AppSidebar header styles', () => {
   it('does not clip the version badge dropdown', () => {
     const sidebarHeaderBlockMatch = styleSource.match(/\.sidebar-header\s*\{[\s\S]*?\n {2}\}/)

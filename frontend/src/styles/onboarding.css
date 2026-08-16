@@ -37,7 +37,7 @@
   padding: 0 !important;
   max-width: min(440px, 90vw) !important; /* Responsive on small screens */
   color: #1f2937 !important;
-  font-family: ui-sans-serif, system-ui, sans-serif !important;
+  font-family: "Geist", sans-serif !important;
   overflow: hidden !important;
 }
 

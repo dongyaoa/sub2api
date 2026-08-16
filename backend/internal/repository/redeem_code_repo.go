@@ -103,7 +103,7 @@ func (r *redeemCodeRepository) List(ctx context.Context, params pagination.Pagin
 }
 
 func (r *redeemCodeRepository) ListWithFilters(ctx context.Context, params pagination.PaginationParams, codeType, status, search string) ([]service.RedeemCode, *pagination.PaginationResult, error) {
-	q := r.client.RedeemCode.Query()
+	q := r.client.RedeemCode.Query().Where(redeemcode.TypeNEQ(service.RedeemTypeCheckinBalance))
 
 	if codeType != "" {
 		q = q.Where(redeemcode.TypeEQ(codeType))

@@ -25,7 +25,7 @@ export default {
     hideKey: '隐藏 API Key',
     estimate: '预估 {amount}',
     loadingKeys: '正在加载 API Key...',
-    noKeys: '暂无可用的生图 API Key',
+    noKeys: '暂无可用的生图 API Key，请先创建 Key 并选择已开启生图的分组',
     createKey: '创建 API Key',
     apiKey: 'API Key',
     selectKey: '选择生图分组的 Key',

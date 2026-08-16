@@ -53,8 +53,8 @@
                 {{ t('imageStudio.loadingKeys') }}
               </div>
 
-              <div v-else-if="apiKeys.length === 0" class="flex h-10 items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 dark:border-amber-900/60 dark:bg-amber-950/20">
-                <span class="truncate text-xs text-amber-800 dark:text-amber-300">{{ t('imageStudio.noKeys') }}</span>
+              <div v-else-if="apiKeys.length === 0" class="flex min-h-12 items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 dark:border-amber-900/60 dark:bg-amber-950/20">
+                <span class="min-w-0 text-xs leading-5 text-amber-800 dark:text-amber-300">{{ t('imageStudio.noKeys') }}</span>
                 <RouterLink to="/keys" class="inline-flex shrink-0 items-center gap-1 text-xs font-semibold text-primary-600 hover:text-primary-700 dark:text-primary-400">
                   <Icon name="plus" size="xs" />
                   {{ t('imageStudio.createKey') }}

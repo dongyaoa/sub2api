@@ -23,11 +23,21 @@
 
       <!-- Right: Announcements + Docs + Language + Subscriptions + Balance + User Dropdown -->
       <div class="flex min-w-0 items-center gap-1 sm:gap-3">
+        <router-link
+          v-if="user"
+          to="/checkin"
+          class="flex items-center gap-2 rounded-xl bg-amber-100 px-3 py-1.5 text-sm font-medium text-amber-700 transition-colors hover:bg-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:hover:bg-amber-900/60"
+          :aria-label="t('nav.checkin')"
+          :title="t('nav.checkin')"
+        >
+          <Icon name="gift" size="sm" />
+          <span class="hidden md:inline">{{ t('nav.checkin') }}</span>
+        </router-link>
         <!-- Customer support and group chat -->
         <button
           v-if="user"
           type="button"
-          class="flex h-9 items-center gap-1.5 rounded-xl border border-sky-100 bg-sky-50 px-2.5 text-sm font-semibold text-sky-700 transition-colors hover:border-sky-200 hover:bg-sky-100 dark:border-sky-900/50 dark:bg-sky-950/30 dark:text-sky-300 dark:hover:bg-sky-950/60"
+          class="flex items-center gap-2 rounded-xl bg-sky-100 px-3 py-1.5 text-sm font-medium text-sky-700 transition-colors hover:bg-sky-200 dark:bg-sky-950/40 dark:text-sky-300 dark:hover:bg-sky-950/60"
           aria-label="客服群聊"
           title="客服群聊"
           @click="openSupportModal"
@@ -117,7 +127,7 @@
         <button
           v-if="user && paymentEnabled"
           type="button"
-          class="flex h-9 items-center gap-1.5 rounded-xl border border-emerald-100 bg-emerald-50 px-2.5 text-sm font-semibold text-emerald-700 transition-colors hover:border-emerald-200 hover:bg-emerald-100 dark:border-emerald-900/50 dark:bg-emerald-950/30 dark:text-emerald-300 dark:hover:bg-emerald-950/60"
+          class="flex items-center gap-2 rounded-xl bg-emerald-50 px-3 py-1.5 text-sm font-medium text-emerald-700 transition-colors hover:bg-emerald-100 dark:bg-emerald-950/30 dark:text-emerald-300 dark:hover:bg-emerald-950/60"
           aria-label="充值"
           title="充值"
           @click="goToRecharge"

@@ -63,6 +63,7 @@ func RegisterAdminRoutes(
 
 		// 卡密管理
 		registerRedeemCodeRoutes(admin, h)
+		registerCheckinRoutes(admin, h)
 
 		// 优惠码管理
 		registerPromoCodeRoutes(admin, h)
@@ -516,6 +517,18 @@ func registerRedeemCodeRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 		codes.POST("/batch-delete", h.Admin.Redeem.BatchDelete)
 		codes.POST("/batch-update", h.Admin.Redeem.BatchUpdate)
 		codes.POST("/:id/expire", h.Admin.Redeem.Expire)
+	}
+}
+
+func registerCheckinRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
+	checkin := admin.Group("/checkin")
+	{
+		checkin.GET("/summary", h.Admin.Checkin.Summary)
+		checkin.GET("/daily", h.Admin.Checkin.Daily)
+		checkin.GET("/users", h.Admin.Checkin.Users)
+		checkin.GET("/records", h.Admin.Checkin.Records)
+		checkin.GET("/config", h.Admin.Checkin.GetConfig)
+		checkin.PUT("/config", h.Admin.Checkin.UpdateConfig)
 	}
 }
 
