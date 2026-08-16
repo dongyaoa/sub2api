@@ -20,7 +20,7 @@ import (
 const (
 	SettingKeyCheckinConfig  = "daily_checkin_config"
 	RedeemTypeCheckinBalance = "checkin_balance"
-	checkinMaxRewardRatio    = 0.20
+	legacyCheckinRewardRatio = 0.20
 )
 
 var checkinLocation = time.FixedZone("Asia/Shanghai", 8*60*60)
@@ -31,6 +31,7 @@ type CheckinConfig struct {
 	QualificationDays  int     `json:"qualification_days"`
 	RewardMin          float64 `json:"reward_min"`
 	RewardMax          float64 `json:"reward_max"`
+	MaxPeriodReward    float64 `json:"max_period_reward"`
 	MinAccountAgeHours int     `json:"min_account_age_hours"`
 	Timezone           string  `json:"timezone"`
 	Version            int     `json:"version"`
@@ -43,6 +44,7 @@ func DefaultCheckinConfig() CheckinConfig {
 		QualificationDays:  30,
 		RewardMin:          0.01,
 		RewardMax:          0.05,
+		MaxPeriodReward:    2,
 		MinAccountAgeHours: 24,
 		Timezone:           "Asia/Shanghai",
 		Version:            1,
@@ -115,6 +117,13 @@ func (s *CheckinService) GetConfig(ctx context.Context) (CheckinConfig, error) {
 	if err := json.Unmarshal([]byte(value), &config); err != nil {
 		return CheckinConfig{}, fmt.Errorf("decode checkin config: %w", err)
 	}
+	var storedFields map[string]json.RawMessage
+	if err := json.Unmarshal([]byte(value), &storedFields); err != nil {
+		return CheckinConfig{}, fmt.Errorf("decode checkin config fields: %w", err)
+	}
+	if _, exists := storedFields["max_period_reward"]; !exists {
+		config.MaxPeriodReward = math.Ceil(config.MinRechargeAmount*legacyCheckinRewardRatio*100-0.0000001) / 100
+	}
 	if err := ValidateCheckinConfig(config); err != nil {
 		return CheckinConfig{}, err
 	}
@@ -157,8 +166,11 @@ func ValidateCheckinConfig(config CheckinConfig) error {
 	if config.MinAccountAgeHours < 0 || config.MinAccountAgeHours > 24*365 {
 		return infraerrors.BadRequest("CHECKIN_CONFIG_INVALID", "minimum account age must be between 0 and 8760 hours")
 	}
-	if float64(config.QualificationDays)*config.RewardMax > config.MinRechargeAmount*checkinMaxRewardRatio+0.0000001 {
-		return infraerrors.BadRequest("CHECKIN_CONFIG_COST_TOO_HIGH", "maximum reward over the qualification period cannot exceed 20% of the recharge threshold")
+	if config.MaxPeriodReward <= 0 || !isCentAmount(config.MaxPeriodReward) {
+		return infraerrors.BadRequest("CHECKIN_CONFIG_INVALID", "maximum period reward must be a positive amount with at most two decimals")
+	}
+	if float64(config.QualificationDays)*config.RewardMax > config.MaxPeriodReward+0.0000001 {
+		return infraerrors.BadRequest("CHECKIN_CONFIG_COST_TOO_HIGH", "maximum reward over the qualification period cannot exceed the configured safety limit")
 	}
 	return nil
 }

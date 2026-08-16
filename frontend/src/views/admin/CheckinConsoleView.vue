@@ -271,12 +271,16 @@
                 <span class="input-label">{{ t('adminCheckin.rewardMax') }}</span>
                 <input v-model.number="config.reward_max" class="input mt-1" type="number" min="0.01" step="0.01" required />
               </label>
-              <div class="rounded-lg bg-gray-50 px-4 py-3 dark:bg-dark-800">
-                <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('adminCheckin.costGuard') }}</p>
-                <p class="mt-1 text-sm font-semibold" :class="costGuardValid ? 'text-emerald-600 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'">
-                  {{ formatMoney(maxPeriodReward) }} / {{ formatMoney(rewardCostLimit) }}
-                </p>
-              </div>
+              <label class="block">
+                <span class="input-label">{{ t('adminCheckin.periodRewardLimit') }}</span>
+                <input v-model.number="config.max_period_reward" class="input mt-1" type="number" min="0.01" step="0.01" required />
+                <span
+                  class="mt-1.5 block text-xs"
+                  :class="costGuardValid ? 'text-gray-500 dark:text-gray-400' : 'text-red-600 dark:text-red-400'"
+                >
+                  {{ t('adminCheckin.periodRewardEstimate', { amount: formatMoney(maxPeriodReward) }) }}
+                </span>
+              </label>
             </div>
 
             <div class="mt-6 flex justify-end border-t border-gray-100 pt-5 dark:border-dark-700">
@@ -367,8 +371,10 @@ const overviewDetails = computed(() => [
 const maxDailyReward = computed(() => Math.max(0, ...recentDaily.value.map((item) => item.reward_total)))
 const dailyBarWidth = (value: number) => value > 0 && maxDailyReward.value > 0 ? Math.max(2, (value / maxDailyReward.value) * 100) : 0
 const maxPeriodReward = computed(() => (config.value?.qualification_days || 0) * (config.value?.reward_max || 0))
-const rewardCostLimit = computed(() => (config.value?.min_recharge_amount || 0) * 0.2)
-const costGuardValid = computed(() => maxPeriodReward.value <= rewardCostLimit.value + 0.0000001)
+const costGuardValid = computed(() => {
+  const limit = config.value?.max_period_reward || 0
+  return limit > 0 && maxPeriodReward.value <= limit + 0.0000001
+})
 
 const loadOverview = async () => {
   const [summaryResult, recordsResult] = await Promise.all([

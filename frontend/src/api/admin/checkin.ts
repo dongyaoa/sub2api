@@ -6,6 +6,7 @@ export interface CheckinConfig {
   qualification_days: number
   reward_min: number
   reward_max: number
+  max_period_reward: number
   min_account_age_hours: number
   timezone: string
   version: number
