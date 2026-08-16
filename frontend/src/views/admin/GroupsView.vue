@@ -186,7 +186,7 @@
                 >
                   <span v-if="row.daily_limit_usd" class="whitespace-nowrap">
                     <span
-                      v-if="usageLoading"
+                      v-if="usageLoading && !usageMap.has(row.id)"
                       class="font-medium text-gray-400 dark:text-gray-500"
                       >—</span
                     >
@@ -239,7 +239,7 @@
                   {{ t("admin.groups.usageTotal") }}
                   <span class="ml-1 font-medium text-gray-600 dark:text-gray-300"
                     >{{
-                      usageLoading
+                      usageLoading && !usageMap.has(row.id)
                         ? "—"
                         : formatUsd(usageMap.get(row.id)?.total_cost ?? 0)
                     }}</span
@@ -321,7 +321,7 @@
           </template>
 
           <template #cell-usage="{ row }">
-            <div v-if="usageLoading" class="text-xs text-gray-400">—</div>
+            <div v-if="usageLoading && !usageMap.has(row.id)" class="text-xs text-gray-400">—</div>
             <div v-else class="space-y-0.5 text-xs">
               <div class="text-gray-500 dark:text-gray-400">
                 <span class="text-gray-400 dark:text-gray-500">{{
@@ -4879,7 +4879,7 @@ const copyAccountsGroupOptionsForEdit = computed(() => {
 });
 
 const groups = ref<AdminGroup[]>([]);
-const loading = ref(false);
+const loading = ref(true);
 type GroupUsageSummary = {
   today_cost: number;
   yesterday_cost: number;
@@ -5673,17 +5673,20 @@ const loadGroups = async () => {
       { signal },
     );
     if (signal.aborted) return;
-    groups.value = response.items;
-    pagination.total = response.total;
-    pagination.pages = response.pages;
+    const supplementalLoads: Promise<void>[] = [];
     if (hasVisibleUsageSummaryConsumer.value) {
-      loadUsageSummary();
+      supplementalLoads.push(loadUsageSummary());
     } else {
       usageLoading.value = false;
     }
     if (hasVisibleCapacityColumn.value) {
-      loadCapacitySummary();
+      supplementalLoads.push(loadCapacitySummary());
     }
+    await Promise.all(supplementalLoads);
+    if (signal.aborted) return;
+    groups.value = response.items;
+    pagination.total = response.total;
+    pagination.pages = response.pages;
   } catch (error: any) {
     if (
       signal.aborted ||

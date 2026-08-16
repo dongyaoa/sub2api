@@ -30,6 +30,15 @@ function initThemeClass() {
   document.documentElement.classList.toggle('dark', shouldUseDark)
 }
 
+async function loadPrimaryFont() {
+  if (!document.fonts?.load) return
+  try {
+    await document.fonts.load('400 14px Geist')
+  } catch {
+    // Continue with the configured fallback if the local font cannot be loaded.
+  }
+}
+
 async function bootstrap() {
   // Apply theme class globally before app mount to keep all routes consistent.
   initThemeClass()
@@ -50,7 +59,7 @@ async function bootstrap() {
   }
   updateFavicon(appStore.siteLogo)
 
-  await initI18n()
+  await Promise.all([initI18n(), loadPrimaryFont()])
 
   app.use(router)
   app.use(i18n)

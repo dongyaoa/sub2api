@@ -35,11 +35,11 @@
         <div class="flex justify-end gap-3">
           <button
             @click="loadApiKeys"
-            :disabled="loading"
+            :disabled="loading || initializing"
             class="btn btn-secondary"
             :title="t('common.refresh')"
           >
-            <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
+            <Icon name="refresh" size="md" :class="loading || initializing ? 'animate-spin' : ''" />
           </button>
           <div class="relative" ref="columnDropdownRef">
             <button
@@ -84,7 +84,7 @@
         <DataTable
           :columns="columns"
           :data="apiKeys"
-          :loading="loading"
+          :loading="loading || initializing"
           :server-side-sort="true"
           default-sort-key="created_at"
           default-sort-order="desc"
@@ -1318,6 +1318,7 @@ const columns = computed<Column[]>(() =>
 const apiKeys = ref<ApiKey[]>([])
 const groups = ref<Group[]>([])
 const loading = ref(false)
+const initializing = ref(true)
 const submitting = ref(false)
 const now = ref(new Date())
 let resetTimer: ReturnType<typeof setInterval> | null = null
@@ -1534,9 +1535,7 @@ const loadApiKeys = async () => {
       signal
     })
     if (signal.aborted) return
-    apiKeys.value = response.items
-    pagination.value.total = response.total
-    pagination.value.pages = response.pages
+    let nextUsageStats: Record<string, BatchApiKeyUsageStats> = {}
 
     // Load usage stats for all API keys in the list
     if (response.items.length > 0) {
@@ -1544,13 +1543,18 @@ const loadApiKeys = async () => {
       try {
         const usageResponse = await usageAPI.getDashboardApiKeysUsage(keyIds, { signal })
         if (signal.aborted) return
-        usageStats.value = usageResponse.stats
+        nextUsageStats = usageResponse.stats
       } catch (e) {
         if (!isAbortError(e)) {
           console.error('Failed to load usage stats:', e)
         }
       }
     }
+    if (signal.aborted) return
+    apiKeys.value = response.items
+    usageStats.value = nextUsageStats
+    pagination.value.total = response.total
+    pagination.value.pages = response.pages
   } catch (error) {
     if (isAbortError(error)) {
       return
@@ -2014,10 +2018,14 @@ function formatResetTime(resetAt: string | null): string {
 
 onMounted(() => {
   loadSavedColumns()
-  loadApiKeys()
-  loadGroups()
-  loadUserGroupRates()
-  loadPublicSettings()
+  void Promise.all([
+    loadApiKeys(),
+    loadGroups(),
+    loadUserGroupRates(),
+    loadPublicSettings()
+  ]).finally(() => {
+    initializing.value = false
+  })
   document.addEventListener('click', closeGroupSelector)
   resetTimer = setInterval(() => { now.value = new Date() }, 60000)
 })

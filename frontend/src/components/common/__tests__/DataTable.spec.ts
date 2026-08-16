@@ -102,6 +102,46 @@ describe('DataTable', () => {
     expect(wrapper.findAll('tbody tr[aria-hidden="true"]')).toHaveLength(0)
   })
 
+  it('shows a fixed loading surface before the first dataset is ready', async () => {
+    const wrapper = mount(DataTable, {
+      props: {
+        columns: [{ key: 'name', label: 'Name' }],
+        data: [],
+        loading: true
+      }
+    })
+
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.find('[data-test="table-initial-loading"]').exists()).toBe(true)
+    expect(wrapper.find('table').exists()).toBe(false)
+
+    await wrapper.setProps({ data: [{ id: 1, name: 'Ready soon' }] })
+    expect(wrapper.find('[data-test="table-initial-loading"]').exists()).toBe(true)
+    expect(wrapper.find('table').exists()).toBe(false)
+
+    await wrapper.setProps({ loading: false })
+    expect(wrapper.find('[data-test="table-initial-loading"]').exists()).toBe(false)
+    expect(wrapper.findAll('tbody tr[data-index]')).toHaveLength(1)
+  })
+
+  it('keeps the completed table mounted while refreshing', async () => {
+    const wrapper = mount(DataTable, {
+      props: {
+        columns: [{ key: 'name', label: 'Name' }],
+        data: [{ id: 1, name: 'Existing row' }],
+        loading: true
+      }
+    })
+
+    await wrapper.vm.$nextTick()
+
+    expect(wrapper.find('[data-test="table-initial-loading"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="table-refreshing"]').exists()).toBe(true)
+    expect(wrapper.findAll('tbody tr[data-index]')).toHaveLength(1)
+    expect(wrapper.text()).toContain('Existing row')
+  })
+
   it('switches to windowed rendering once row count exceeds virtualizeThreshold', async () => {
     const data = Array.from({ length: 12 }, (_, i) => ({ id: i + 1, name: `Row ${i + 1}` }))
     const wrapper = mount(DataTable, {
