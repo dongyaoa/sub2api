@@ -125,7 +125,7 @@ describe('DataTable', () => {
     expect(wrapper.findAll('tbody tr[data-index]')).toHaveLength(1)
   })
 
-  it('keeps the completed table mounted while refreshing', async () => {
+  it('covers the completed table with the centered spinner while refreshing', async () => {
     const wrapper = mount(DataTable, {
       props: {
         columns: [{ key: 'name', label: 'Name' }],
@@ -137,8 +137,30 @@ describe('DataTable', () => {
     await wrapper.vm.$nextTick()
 
     expect(wrapper.find('[data-test="table-initial-loading"]').exists()).toBe(false)
-    expect(wrapper.find('[data-test="table-refreshing"]').exists()).toBe(true)
+    const refreshing = wrapper.find('[data-test="table-refreshing"]')
+    expect(refreshing.exists()).toBe(true)
+    expect(refreshing.attributes('role')).toBe('status')
+    expect(refreshing.find('.animate-spin').exists()).toBe(true)
     expect(wrapper.findAll('tbody tr[data-index]')).toHaveLength(1)
+    expect(wrapper.text()).toContain('Existing row')
+  })
+
+  it('uses the same centered spinner when refreshing the mobile card list', async () => {
+    stubMobileMatchMedia()
+    const wrapper = mount(DataTable, {
+      props: {
+        columns: [{ key: 'name', label: 'Name' }],
+        data: [{ id: 1, name: 'Existing row' }],
+        loading: true
+      }
+    })
+
+    await wrapper.vm.$nextTick()
+
+    const refreshing = wrapper.find('[data-test="table-refreshing"]')
+    expect(refreshing.exists()).toBe(true)
+    expect(refreshing.attributes('role')).toBe('status')
+    expect(refreshing.find('.animate-spin').exists()).toBe(true)
     expect(wrapper.text()).toContain('Existing row')
   })
 

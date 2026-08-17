@@ -87,10 +87,12 @@
 
     <div
       v-if="showRefreshing"
-      class="pointer-events-none absolute inset-x-0 top-0 h-0.5 overflow-hidden bg-primary-100 dark:bg-primary-900/30"
+      class="absolute inset-0 z-[230] !m-0 flex min-h-72 items-center justify-center bg-white text-primary-500 dark:bg-dark-900"
       data-test="table-refreshing"
+      role="status"
     >
-      <div class="h-full w-full animate-pulse bg-primary-500"></div>
+      <Icon name="refresh" size="lg" class="animate-spin" />
+      <span class="sr-only">{{ t('common.loading') }}</span>
     </div>
   </div>
 
@@ -115,10 +117,12 @@
     </div>
     <div
       v-if="showRefreshing"
-      class="pointer-events-none absolute inset-x-0 top-0 z-[230] h-0.5 overflow-hidden bg-primary-100 dark:bg-primary-900/30"
+      class="absolute inset-0 z-[230] flex min-h-72 items-center justify-center bg-white text-primary-500 dark:bg-dark-900"
       data-test="table-refreshing"
+      role="status"
     >
-      <div class="h-full w-full animate-pulse bg-primary-500"></div>
+      <Icon name="refresh" size="lg" class="animate-spin" />
+      <span class="sr-only">{{ t('common.loading') }}</span>
     </div>
     <table v-if="!showInitialLoading" class="w-full min-w-max divide-y divide-gray-200 dark:divide-dark-700">
       <thead class="table-header bg-gray-50 dark:bg-dark-800">
