@@ -27,3 +27,8 @@ func TestBuildVideoTaskAdminWhereSupportsChargedWithoutOutput(t *testing.T) {
 	require.Contains(t, where, "v.billing_status = $1")
 	require.Contains(t, where, "NOT v.browser_playable")
 }
+
+func TestVideoTaskAdminUsageLogJoinSupportsStableBillingRequestID(t *testing.T) {
+	require.Contains(t, videoTaskAdminUsageLogJoin, "request_id IN (v.request_id, 'grok-video:' || v.request_id)")
+	require.Contains(t, videoTaskAdminUsageLogJoin, "api_key_id = v.api_key_id")
+}

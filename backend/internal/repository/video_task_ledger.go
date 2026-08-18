@@ -16,6 +16,16 @@ type videoTaskScanner interface {
 	Scan(dest ...any) error
 }
 
+const videoTaskAdminUsageLogJoin = `
+		LEFT JOIN LATERAL (
+			SELECT id, actual_cost
+			FROM usage_logs
+			WHERE request_id IN (v.request_id, 'grok-video:' || v.request_id)
+			  AND api_key_id = v.api_key_id
+			ORDER BY created_at DESC
+			LIMIT 1
+		) ul ON TRUE `
+
 func (s *videoTaskStore) Persistent() bool {
 	return s != nil && s.db != nil
 }
@@ -200,14 +210,7 @@ func (s *videoTaskStore) AdminList(ctx context.Context, query service.VideoTaskA
 		LEFT JOIN users u ON u.id = v.user_id
 		LEFT JOIN api_keys k ON k.id = v.api_key_id
 		LEFT JOIN groups g ON g.id = v.group_id
-		LEFT JOIN accounts a ON a.id = v.account_id
-		LEFT JOIN LATERAL (
-			SELECT id, actual_cost
-			FROM usage_logs
-			WHERE request_id = v.request_id AND api_key_id = v.api_key_id
-			ORDER BY created_at DESC
-			LIMIT 1
-		) ul ON TRUE `
+		LEFT JOIN accounts a ON a.id = v.account_id` + videoTaskAdminUsageLogJoin
 
 	var total int64
 	if err := s.db.QueryRowContext(ctx, `SELECT COUNT(*) `+join+where, args...).Scan(&total); err != nil {

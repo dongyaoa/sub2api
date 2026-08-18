@@ -379,7 +379,7 @@ const costGuardValid = computed(() => {
 const loadOverview = async () => {
   const [summaryResult, recordsResult] = await Promise.all([
     adminAPI.checkin.getSummary(),
-    adminAPI.checkin.getRecords({ page: 1, page_size: 6, search: '' })
+    adminAPI.checkin.getRecords({ page: 1, page_size: 8, search: '' })
   ])
   summary.value = summaryResult
   recentRecords.value = recordsResult.items

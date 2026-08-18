@@ -2,12 +2,19 @@
   <AppLayout>
     <TablePageLayout>
       <template #actions>
-        <div class="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-gray-200 bg-gray-200 sm:grid-cols-3 xl:grid-cols-6 dark:border-dark-700 dark:bg-dark-700">
-          <div v-for="metric in summaryMetrics" :key="metric.key" class="min-h-20 bg-white px-4 py-3 dark:bg-dark-900">
-            <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ metric.label }}</p>
-            <p class="mt-1 text-xl font-semibold tabular-nums text-gray-900 dark:text-white" :class="metric.alert ? 'text-red-600 dark:text-red-400' : ''">
-              {{ metric.value }}
-            </p>
+        <div class="grid grid-cols-2 gap-4 lg:grid-cols-3 2xl:grid-cols-6">
+          <div v-for="metric in summaryMetrics" :key="metric.key" class="card p-4">
+            <div class="flex items-center gap-3">
+              <div class="rounded-lg p-2" :class="metric.iconBackgroundClass">
+                <Icon :name="metric.icon" size="md" :stroke-width="2" :class="metric.iconClass" />
+              </div>
+              <div class="min-w-0">
+                <p class="truncate text-xs font-medium text-gray-500 dark:text-gray-400" :title="metric.label">{{ metric.label }}</p>
+                <p class="mt-0.5 text-xl font-bold tabular-nums text-gray-900 dark:text-white" :class="metric.valueClass">
+                  {{ metric.value }}
+                </p>
+              </div>
+            </div>
           </div>
         </div>
       </template>
@@ -210,12 +217,12 @@ const billingOptions = computed(() => [
   ...['pending', 'charged', 'not_charged', 'billing_failed'].map(value => ({ value, label: billingLabel(value) })),
 ])
 const summaryMetrics = computed(() => [
-  { key: 'total', label: t('admin.videoGenerations.summary.total'), value: summary.value.total },
-  { key: 'processing', label: t('admin.videoGenerations.summary.processing'), value: summary.value.processing },
-  { key: 'delivered', label: t('admin.videoGenerations.summary.delivered'), value: summary.value.delivered },
-  { key: 'failed', label: t('admin.videoGenerations.summary.failed'), value: summary.value.failed },
-  { key: 'charged_without_output', label: t('admin.videoGenerations.summary.chargedWithoutOutput'), value: summary.value.charged_without_output, alert: summary.value.charged_without_output > 0 },
-  { key: 'total_charged', label: t('admin.videoGenerations.summary.totalCharged'), value: formatCost(summary.value.total_charged) },
+  { key: 'total', label: t('admin.videoGenerations.summary.total'), value: summary.value.total, icon: 'document' as const, iconBackgroundClass: 'bg-blue-100 dark:bg-blue-900/30', iconClass: 'text-blue-600 dark:text-blue-400', valueClass: '' },
+  { key: 'processing', label: t('admin.videoGenerations.summary.processing'), value: summary.value.processing, icon: 'clock' as const, iconBackgroundClass: 'bg-amber-100 dark:bg-amber-900/30', iconClass: 'text-amber-600 dark:text-amber-400', valueClass: '' },
+  { key: 'delivered', label: t('admin.videoGenerations.summary.delivered'), value: summary.value.delivered, icon: 'checkCircle' as const, iconBackgroundClass: 'bg-emerald-100 dark:bg-emerald-900/30', iconClass: 'text-emerald-600 dark:text-emerald-400', valueClass: '' },
+  { key: 'failed', label: t('admin.videoGenerations.summary.failed'), value: summary.value.failed, icon: 'xCircle' as const, iconBackgroundClass: 'bg-red-100 dark:bg-red-900/30', iconClass: 'text-red-600 dark:text-red-400', valueClass: summary.value.failed > 0 ? 'text-red-600 dark:text-red-400' : '' },
+  { key: 'charged_without_output', label: t('admin.videoGenerations.summary.chargedWithoutOutput'), value: summary.value.charged_without_output, icon: 'exclamationTriangle' as const, iconBackgroundClass: 'bg-orange-100 dark:bg-orange-900/30', iconClass: 'text-orange-600 dark:text-orange-400', valueClass: summary.value.charged_without_output > 0 ? 'text-red-600 dark:text-red-400' : '' },
+  { key: 'total_charged', label: t('admin.videoGenerations.summary.totalCharged'), value: formatCost(summary.value.total_charged), icon: 'dollar' as const, iconBackgroundClass: 'bg-green-100 dark:bg-green-900/30', iconClass: 'text-green-600 dark:text-green-400', valueClass: 'text-green-600 dark:text-green-400' },
 ])
 
 function toISO(value: string): string | undefined {
