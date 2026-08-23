@@ -5,6 +5,7 @@ import {
   generateExternalImages,
   normalizeExternalBaseUrl,
   clearImageTasks,
+  deleteImageTask,
   listImageTasks,
   submitImageEditTask,
 } from '../api'
@@ -147,6 +148,7 @@ describe('image studio history API', () => {
         json: vi.fn().mockResolvedValue({ object: 'list', data: tasks, retention_days: 7 }),
       })
       .mockResolvedValueOnce({ ok: true })
+      .mockResolvedValueOnce({ ok: true })
     vi.stubGlobal('fetch', fetchMock)
 
     await expect(listImageTasks('site-key', 10)).resolves.toEqual({
@@ -163,5 +165,11 @@ describe('image studio history API', () => {
     expect(clearUrl).toMatch(/[/]v1[/]images[/]tasks$/)
     expect(clearInit.method).toBe('DELETE')
     expect(clearInit.headers).toEqual({ Authorization: 'Bearer site-key' })
+
+    await expect(deleteImageTask('site-key', 'imgtask_1')).resolves.toBeUndefined()
+    const [deleteUrl, deleteInit] = fetchMock.mock.calls[2] as [string, RequestInit]
+    expect(deleteUrl).toMatch(/[/]v1[/]images[/]tasks[/]imgtask_1$/)
+    expect(deleteInit.method).toBe('DELETE')
+    expect(deleteInit.headers).toEqual({ Authorization: 'Bearer site-key' })
   })
 })

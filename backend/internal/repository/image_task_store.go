@@ -117,6 +117,23 @@ func (s *imageTaskStore) Clear(ctx context.Context, owner service.ImageTaskOwner
 	return s.rdb.Del(ctx, keys...).Err()
 }
 
+func (s *imageTaskStore) Delete(ctx context.Context, id string) error {
+	taskID := strings.TrimSpace(id)
+	if taskID == "" {
+		return service.ErrImageTaskNotFound
+	}
+	task, err := s.Get(ctx, taskID)
+	if err != nil {
+		return err
+	}
+	historyKey := imageTaskHistoryKey(service.ImageTaskOwner{UserID: task.UserID, APIKeyID: task.APIKeyID})
+	pipe := s.rdb.TxPipeline()
+	pipe.Del(ctx, imageTaskKey(taskID))
+	pipe.ZRem(ctx, historyKey, taskID)
+	_, err = pipe.Exec(ctx)
+	return err
+}
+
 func imageTaskKey(id string) string {
 	return imageTaskKeyPrefix + strings.TrimSpace(id)
 }

@@ -125,7 +125,7 @@ describe('DataTable', () => {
     expect(wrapper.findAll('tbody tr[data-index]')).toHaveLength(1)
   })
 
-  it('covers the completed table with the centered spinner while refreshing', async () => {
+  it('keeps the table visible and sticks the spinner to the current scrollport while refreshing', async () => {
     const wrapper = mount(DataTable, {
       props: {
         columns: [{ key: 'name', label: 'Name' }],
@@ -140,6 +140,8 @@ describe('DataTable', () => {
     const refreshing = wrapper.find('[data-test="table-refreshing"]')
     expect(refreshing.exists()).toBe(true)
     expect(refreshing.attributes('role')).toBe('status')
+    expect(refreshing.classes()).toContain('refresh-indicator')
+    expect(refreshing.classes()).not.toContain('bg-white')
     expect(refreshing.find('.animate-spin').exists()).toBe(true)
     expect(wrapper.findAll('tbody tr[data-index]')).toHaveLength(1)
     expect(wrapper.text()).toContain('Existing row')
@@ -160,6 +162,8 @@ describe('DataTable', () => {
     const refreshing = wrapper.find('[data-test="table-refreshing"]')
     expect(refreshing.exists()).toBe(true)
     expect(refreshing.attributes('role')).toBe('status')
+    expect(refreshing.classes()).toContain('fixed')
+    expect(refreshing.classes()).not.toContain('bg-white')
     expect(refreshing.find('.animate-spin').exists()).toBe(true)
     expect(wrapper.text()).toContain('Existing row')
   })

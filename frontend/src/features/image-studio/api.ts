@@ -191,6 +191,15 @@ export async function clearImageTasks(apiKey: string, signal?: AbortSignal): Pro
   if (!response.ok) throw await parseImageStudioError(response)
 }
 
+export async function deleteImageTask(apiKey: string, taskId: string, signal?: AbortSignal): Promise<void> {
+  const response = await fetch(buildGatewayUrl(`/v1/images/tasks/${encodeURIComponent(taskId)}`), {
+    method: 'DELETE',
+    headers: authHeaders(apiKey),
+    signal,
+  })
+  if (!response.ok) throw await parseImageStudioError(response)
+}
+
 export function extractTaskImageData(task: ImageTask): Array<{ url: string; revisedPrompt?: string }> {
   const result = task.result
   const data = Array.isArray(result?.data) ? result.data : []

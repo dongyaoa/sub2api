@@ -84,6 +84,7 @@ type ImageTaskStore interface {
 	Get(ctx context.Context, id string) (*ImageTaskRecord, error)
 	List(ctx context.Context, owner ImageTaskOwner, limit int) ([]*ImageTaskRecord, error)
 	Clear(ctx context.Context, owner ImageTaskOwner) error
+	Delete(ctx context.Context, id string) error
 }
 
 // ImageStorageResolver reports the currently effective object-storage binding.
@@ -268,6 +269,26 @@ func (s *ImageTaskService) Clear(ctx context.Context, owner ImageTaskOwner) erro
 		return ErrImageTaskUnavailable
 	}
 	if err := s.store.Clear(ctx, owner); err != nil {
+		return ErrImageTaskUnavailable.WithCause(err)
+	}
+	return nil
+}
+
+func (s *ImageTaskService) Delete(ctx context.Context, owner ImageTaskOwner, id string) error {
+	if s == nil || s.store == nil {
+		return ErrImageTaskUnavailable
+	}
+	task, err := s.store.Get(ctx, strings.TrimSpace(id))
+	if err != nil {
+		if errors.Is(err, ErrImageTaskNotFound) {
+			return ErrImageTaskNotFound
+		}
+		return ErrImageTaskUnavailable.WithCause(err)
+	}
+	if task.UserID != owner.UserID || task.APIKeyID != owner.APIKeyID {
+		return ErrImageTaskNotFound
+	}
+	if err := s.store.Delete(ctx, task.ID); err != nil {
 		return ErrImageTaskUnavailable.WithCause(err)
 	}
 	return nil

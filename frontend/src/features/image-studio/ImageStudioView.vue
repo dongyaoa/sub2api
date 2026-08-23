@@ -476,38 +476,52 @@
             </div>
 
             <div v-else class="studio-history-list divide-y divide-gray-100 overflow-y-auto dark:divide-dark-700">
-              <button
+              <div
                 v-for="item in history"
                 :key="item.id"
-                type="button"
                 class="flex w-full items-center gap-2.5 border-l-2 px-3 py-3 text-left transition-colors"
                 :class="activeHistoryId === item.id ? 'border-l-primary-500 bg-primary-50/60 dark:bg-primary-950/20' : 'border-l-transparent hover:bg-gray-50 dark:hover:bg-dark-800'"
-                :disabled="isWorking"
-                :title="item.prompt"
-                @click="selectHistoryItem(item)"
               >
-                <div class="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-md bg-gray-100 dark:bg-dark-800">
-                  <img
-                    v-if="historyThumbnail(item)"
-                    :src="historyThumbnail(item)"
-                    :alt="t('imageStudio.historyThumbnail')"
-                    class="h-full w-full object-cover"
-                  />
-                  <Icon v-else-if="item.status === 'failed'" name="exclamationCircle" size="md" class="text-red-500" />
-                  <Icon v-else name="sparkles" size="md" :class="item.status === 'processing' ? 'animate-pulse text-primary-500' : 'text-gray-400'" />
-                </div>
-                <div class="min-w-0 flex-1">
-                  <p class="truncate text-xs font-medium text-gray-800 dark:text-gray-200">{{ item.prompt }}</p>
-                  <div class="mt-1 flex items-center justify-between gap-2 text-[11px] text-gray-400">
-                    <span>{{ operationLabel(item.operation) }} · {{ item.resolution }} · {{ item.ratio }}</span>
-                    <span>{{ formatHistoryTime(item.createdAt) }}</span>
+                <button
+                  type="button"
+                  class="flex min-w-0 flex-1 items-center gap-2.5 text-left"
+                  :disabled="isWorking"
+                  :title="item.prompt"
+                  @click="selectHistoryItem(item)"
+                >
+                  <div class="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-md bg-gray-100 dark:bg-dark-800">
+                    <img
+                      v-if="historyThumbnail(item)"
+                      :src="historyThumbnail(item)"
+                      :alt="t('imageStudio.historyThumbnail')"
+                      class="h-full w-full object-cover"
+                    />
+                    <Icon v-else-if="item.status === 'failed'" name="exclamationCircle" size="md" class="text-red-500" />
+                    <Icon v-else name="sparkles" size="md" :class="item.status === 'processing' ? 'animate-pulse text-primary-500' : 'text-gray-400'" />
                   </div>
-                  <div class="mt-1 flex items-center gap-1.5 text-[11px]" :class="historyStatusClass(item.status)">
-                    <span class="h-1.5 w-1.5 rounded-full" :class="historyDotClass(item.status)" />
-                    <span>{{ historyStatusLabel(item.status) }}</span>
+                  <div class="min-w-0 flex-1">
+                    <p class="truncate text-xs font-medium text-gray-800 dark:text-gray-200">{{ item.prompt }}</p>
+                    <div class="mt-1 flex items-center justify-between gap-2 text-[11px] text-gray-400">
+                      <span>{{ operationLabel(item.operation) }} · {{ item.resolution }} · {{ item.ratio }}</span>
+                      <span>{{ formatHistoryTime(item.createdAt) }}</span>
+                    </div>
+                    <div class="mt-1 flex items-center gap-1.5 text-[11px]" :class="historyStatusClass(item.status)">
+                      <span class="h-1.5 w-1.5 rounded-full" :class="historyDotClass(item.status)" />
+                      <span>{{ historyStatusLabel(item.status) }}</span>
+                    </div>
                   </div>
-                </div>
-              </button>
+                </button>
+                <button
+                  type="button"
+                  class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-30 dark:hover:bg-red-950/30 dark:hover:text-red-400"
+                  :disabled="isWorking || item.status === 'processing' || deletingHistoryId === item.id"
+                  :title="t('imageStudio.deleteHistoryItem')"
+                  :aria-label="t('imageStudio.deleteHistoryItem')"
+                  @click="deleteHistoryItem(item)"
+                >
+                  <Icon :name="deletingHistoryId === item.id ? 'refresh' : 'trash'" size="sm" :class="deletingHistoryId === item.id ? 'animate-spin' : ''" />
+                </button>
+              </div>
             </div>
           </section>
         </aside>
@@ -546,6 +560,7 @@ import type { ApiKey } from '@/types'
 import { listEligibleImageKeys } from './access'
 import {
   clearImageTasks,
+  deleteImageTask,
   extractTaskImageData,
   getImageTask,
   listImageModels,
@@ -644,6 +659,7 @@ const activeHistoryId = ref('')
 const historyRetentionDays = ref(7)
 const loadingHistory = ref(false)
 const clearingHistory = ref(false)
+const deletingHistoryId = ref('')
 
 let historySequence = 0
 let modelController: AbortController | null = null
@@ -1093,6 +1109,30 @@ async function clearHistory() {
     appStore.showError(errorText(error, t('imageStudio.historyClearFailed')))
   } finally {
     clearingHistory.value = false
+  }
+}
+
+async function deleteHistoryItem(item: StudioHistoryItem) {
+  const key = selectedKey.value
+  if (isWorking.value || !key || item.status === 'processing' || deletingHistoryId.value) return
+  if (!window.confirm(t('imageStudio.deleteHistoryConfirm'))) return
+  deletingHistoryId.value = item.id
+  try {
+    await deleteImageTask(key.key, item.id)
+    if (item.sourceThumbnail) URL.revokeObjectURL(item.sourceThumbnail)
+    history.value = history.value.filter((historyItem) => historyItem.id !== item.id)
+    if (activeHistoryId.value === item.id) {
+      activeHistoryId.value = ''
+      task.value = null
+      viewState.value = 'idle'
+      previewIndex.value = null
+      activeImageIndex.value = 0
+      clearPersistedTask()
+    }
+  } catch (error) {
+    appStore.showError(errorText(error, t('imageStudio.historyDeleteFailed')))
+  } finally {
+    deletingHistoryId.value = ''
   }
 }
 

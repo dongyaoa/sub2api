@@ -87,11 +87,11 @@
 
     <div
       v-if="showRefreshing"
-      class="absolute inset-0 z-[230] !m-0 flex min-h-72 items-center justify-center bg-white text-primary-500 dark:bg-dark-900"
+      class="pointer-events-none fixed left-1/2 top-1/2 z-[230] !m-0 flex h-0 w-0 items-center justify-center text-primary-500"
       data-test="table-refreshing"
       role="status"
     >
-      <Icon name="refresh" size="lg" class="animate-spin" />
+      <Icon name="refresh" size="lg" class="flex-none animate-spin" />
       <span class="sr-only">{{ t('common.loading') }}</span>
     </div>
   </div>
@@ -117,11 +117,11 @@
     </div>
     <div
       v-if="showRefreshing"
-      class="absolute inset-0 z-[230] flex min-h-72 items-center justify-center bg-white text-primary-500 dark:bg-dark-900"
+      class="refresh-indicator"
       data-test="table-refreshing"
       role="status"
     >
-      <Icon name="refresh" size="lg" class="animate-spin" />
+      <Icon name="refresh" size="lg" class="flex-none animate-spin" />
       <span class="sr-only">{{ t('common.loading') }}</span>
     </div>
     <table v-if="!showInitialLoading" class="w-full min-w-max divide-y divide-gray-200 dark:divide-dark-700">
@@ -984,6 +984,21 @@ defineExpose({
   flex: 1;
   min-height: 0;
   isolation: isolate;
+}
+
+/* Keep refresh feedback centered in the visible scrollport without covering the rows. */
+.refresh-indicator {
+  position: sticky;
+  top: 50%;
+  left: 50%;
+  z-index: 230;
+  display: flex;
+  width: 0;
+  height: 0;
+  align-items: center;
+  justify-content: center;
+  color: rgb(16 185 129);
+  pointer-events: none;
 }
 
 /* 表头容器，确保在滚动时覆盖表体内容 */

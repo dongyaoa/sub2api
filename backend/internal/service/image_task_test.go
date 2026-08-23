@@ -60,6 +60,11 @@ func (s *imageTaskMemoryStore) Clear(_ context.Context, owner ImageTaskOwner) er
 	return nil
 }
 
+func (s *imageTaskMemoryStore) Delete(_ context.Context, _ string) error {
+	s.task = nil
+	return nil
+}
+
 func TestImageTaskServiceLifecycleAndOwnership(t *testing.T) {
 	store := &imageTaskMemoryStore{}
 	svc := NewImageTaskServiceWithOptions(store, time.Hour, 10*time.Minute)

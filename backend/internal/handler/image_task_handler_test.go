@@ -82,6 +82,16 @@ func (s *asyncImageMemoryStore) Clear(_ context.Context, owner service.ImageTask
 	return nil
 }
 
+func (s *asyncImageMemoryStore) Delete(_ context.Context, id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.tasks[id]; !ok {
+		return service.ErrImageTaskNotFound
+	}
+	delete(s.tasks, id)
+	return nil
+}
+
 func TestAsyncImageHandlerSubmitAndPoll(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	store := &asyncImageMemoryStore{tasks: make(map[string]*service.ImageTaskRecord)}
@@ -444,6 +454,7 @@ func TestAsyncImageHandlerListAndClear(t *testing.T) {
 	})
 	router.GET("/v1/images/tasks", h.List)
 	router.DELETE("/v1/images/tasks", h.Clear)
+	router.DELETE("/v1/images/tasks/:task_id", h.Delete)
 
 	listReq := httptest.NewRequest(http.MethodGet, "/v1/images/tasks?limit=10", nil)
 	listWriter := httptest.NewRecorder()
