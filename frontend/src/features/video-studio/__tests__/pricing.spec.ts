@@ -47,14 +47,16 @@ function group(overrides: Partial<Group> = {}): Group {
 
 describe('video studio pricing', () => {
   it('calculates standard video cost per second with the user rate', () => {
-    expect(estimateVideoCost(group(), 'grok-imagine-video', '720p', 10, 0.5)).toBeCloseTo(0.25)
+    expect(estimateVideoCost(group(), 'grok-imagine-video', '720p', 10, 0.5)).toBeCloseTo(0.35)
   })
 
   it('uses the independent video multiplier and custom group price', () => {
     const target = group({
       video_rate_independent: true,
       video_rate_multiplier: 1.5,
-      video_price_720p: 0.2,
+      video_model_prices: {
+        'grok-imagine-video-1.5': { '1080p': 0.2 },
+      },
     })
     expect(estimateVideoCost(target, 'grok-imagine-video-1.5-preview', '1080p', 5, 9)).toBeCloseTo(1.5)
   })
@@ -62,6 +64,19 @@ describe('video studio pricing', () => {
   it('uses video 1.5 defaults when group prices are absent', () => {
     const target = group({ rate_multiplier: 1 })
     expect(getVideoPriceTiers(target, 'grok-imagine-video-1.5-preview').map((item) => item.unitPrice))
-      .toEqual([0.15, 0.15, 0.15])
+      .toEqual([0.08, 0.14, 0.25])
+  })
+
+  it('uses flat resolution prices only when no model override exists', () => {
+    const target = group({
+      video_price_480p: 0.06,
+      video_price_720p: 0.09,
+      video_price_1080p: 0.3,
+      video_model_prices: {
+        'grok-imagine-video-1.5': { '1080p': 0.2 },
+      },
+    })
+    expect(getVideoPriceTiers(target, 'grok-imagine-video-1.5-preview').map((item) => item.unitPrice))
+      .toEqual([0.072, 0.108, 0.24])
   })
 })

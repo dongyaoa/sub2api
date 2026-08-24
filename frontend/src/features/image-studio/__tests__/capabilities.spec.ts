@@ -81,6 +81,14 @@ describe('image studio capabilities', () => {
     })
   })
 
+  it('limits Grok image generation to 1K and 2K', () => {
+    expect(getResolutionOptions('grok')).toEqual(['1K', '2K'])
+    expect(normalizeStudioSelection('grok', '1:1', '4K')).toEqual({
+      ratio: '1:1',
+      resolution: '1K',
+    })
+  })
+
   it('normalizes unsupported options after platform changes', () => {
     expect(normalizeStudioSelection('openai', '16:9', '4K')).toEqual({
       ratio: '1:1',

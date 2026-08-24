@@ -327,7 +327,6 @@ const grokPresetMappings = [
   { label: 'Imagine Image Quality', from: 'grok-imagine-image-quality', to: 'grok-imagine-image-quality', color: 'bg-cyan-100 text-cyan-700 hover:bg-cyan-200 dark:bg-cyan-900/30 dark:text-cyan-400' },
   { label: 'Imagine Video', from: 'grok-imagine-video', to: 'grok-imagine-video', color: 'bg-amber-100 text-amber-700 hover:bg-amber-200 dark:bg-amber-900/30 dark:text-amber-400' },
   { label: 'Imagine Video 1.5', from: 'grok-imagine-video-1.5', to: 'grok-imagine-video-1.5', color: 'bg-orange-100 text-orange-700 hover:bg-orange-200 dark:bg-orange-900/30 dark:text-orange-400' },
-  { label: 'Imagine Video 1.5 Preview', from: 'grok-imagine-video-1.5-preview', to: 'grok-imagine-video-1.5-preview', color: 'bg-orange-100 text-orange-700 hover:bg-orange-200 dark:bg-orange-900/30 dark:text-orange-400' }
 ]
 
 // Antigravity 预设映射（支持通配符）

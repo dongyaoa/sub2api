@@ -220,7 +220,7 @@
                   v-for="tier in allResolutionTiers"
                   :key="tier"
                   type="button"
-                  class="h-9 rounded-md border text-xs font-semibold transition-colors"
+                  class="h-9 rounded-md border text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40"
                   :class="resolution === tier ? 'border-primary-500 bg-primary-50 text-primary-700 dark:bg-primary-950/30 dark:text-primary-300' : 'border-gray-200 text-gray-600 hover:border-gray-300 dark:border-dark-600 dark:text-gray-300 dark:hover:border-dark-500'"
                   :disabled="isWorking || !resolutionOptions.includes(tier)"
                   @click="selectResolution(tier)"
@@ -684,7 +684,9 @@ const keyOptions = computed(() => apiKeys.value.map((key) => ({
 })))
 const modelOptions = computed(() => models.value.map((item) => ({
   value: item.id,
-  label: platform.value === 'gemini' && GEMINI_IMAGE_MODEL_NAMES[item.id]
+  label: platform.value === 'grok'
+    ? item.id
+    : platform.value === 'gemini' && GEMINI_IMAGE_MODEL_NAMES[item.id]
     ? GEMINI_IMAGE_MODEL_NAMES[item.id] + ' (' + item.id + ')'
     : item.display_name && item.display_name !== item.id
       ? item.display_name + ' (' + item.id + ')'

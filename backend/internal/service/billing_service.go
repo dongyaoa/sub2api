@@ -1922,6 +1922,45 @@ func (s *BillingService) getVideoUnitPrice(model string, resolution string, grou
 	return s.getDefaultVideoPrice(model, resolution)
 }
 
+func (c *VideoPriceConfig) priceFor(model string, resolution string) *float64 {
+	if c == nil {
+		return nil
+	}
+	if price := LookupVideoModelPrice(c.ModelPrices, model, resolution); price != nil {
+		return price
+	}
+	// A non-empty model map uses the current model-family/resolution layout;
+	// missing model tiers fall back to the flat price for that resolution.
+	if len(c.ModelPrices) > 0 {
+		switch NormalizeVideoBillingResolutionOrDefault(resolution) {
+		case VideoBillingResolution480P:
+			return c.Price480P
+		case VideoBillingResolution720P:
+			return c.Price720P
+		case VideoBillingResolution1080P:
+			return c.Price1080P
+		}
+	}
+	// Legacy creation-workbench layout: the 480p/720p columns represent the
+	// grok-imagine-video and grok-imagine-video-1.5 model families.
+	switch strings.ToLower(strings.TrimSpace(model)) {
+	case "grok-imagine-video":
+		return c.Price480P
+	case "grok-imagine-video-1.5-preview", "grok-imagine-video-1.5":
+		return c.Price720P
+	}
+	switch NormalizeVideoBillingResolutionOrDefault(resolution) {
+	case VideoBillingResolution480P:
+		return c.Price480P
+	case VideoBillingResolution720P:
+		return c.Price720P
+	case VideoBillingResolution1080P:
+		return c.Price1080P
+	default:
+		return c.Price480P
+	}
+}
+
 func (c *ImagePriceConfig) priceFor(model string, imageSize string) *float64 {
 	if c == nil {
 		return nil
@@ -1941,45 +1980,6 @@ func (c *ImagePriceConfig) priceFor(model string, imageSize string) *float64 {
 		return c.Price4K
 	default:
 		return c.Price2K
-	}
-}
-
-func (c *VideoPriceConfig) priceFor(model string, resolution string) *float64 {
-	if c == nil {
-		return nil
-	}
-	if price := LookupVideoModelPrice(c.ModelPrices, model, resolution); price != nil {
-		return price
-	}
-	// A non-empty model map identifies the v0.1.173 pricing layout. Missing
-	// model tiers fall back to the legacy flat column for that resolution.
-	if len(c.ModelPrices) > 0 {
-		switch NormalizeVideoBillingResolutionOrDefault(resolution) {
-		case VideoBillingResolution480P:
-			return c.Price480P
-		case VideoBillingResolution720P:
-			return c.Price720P
-		case VideoBillingResolution1080P:
-			return c.Price1080P
-		}
-	}
-	// Without a model map, preserve this deployment's pre-v0.1.173 column
-	// semantics where 480p/720p held the two Grok model-family prices.
-	switch strings.ToLower(strings.TrimSpace(model)) {
-	case "grok-imagine-video":
-		return c.Price480P
-	case "grok-imagine-video-1.5-preview", "grok-imagine-video-1.5":
-		return c.Price720P
-	}
-	switch NormalizeVideoBillingResolutionOrDefault(resolution) {
-	case VideoBillingResolution480P:
-		return c.Price480P
-	case VideoBillingResolution720P:
-		return c.Price720P
-	case VideoBillingResolution1080P:
-		return c.Price1080P
-	default:
-		return c.Price480P
 	}
 }
 

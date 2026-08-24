@@ -1079,14 +1079,23 @@ func TestCalculateGrokMediaCostUsesModelSpecificGroupPrices(t *testing.T) {
 
 	standardVideoPrice := 0.06
 	previewVideoPrice := 0.18
-	videoConfig := &VideoPriceConfig{Price480P: &standardVideoPrice, Price720P: &previewVideoPrice}
+	standardVideoOverride := 0.061
+	previewVideoOverride := 0.181
+	videoConfig := &VideoPriceConfig{
+		Price480P: &standardVideoPrice,
+		Price720P: &previewVideoPrice,
+		ModelPrices: map[string]map[string]float64{
+			VideoPriceFamilyGrokImagineVideo:   {VideoBillingResolution1080P: standardVideoOverride},
+			VideoPriceFamilyGrokImagineVideo15: {VideoBillingResolution480P: previewVideoOverride},
+		},
+	}
 	standardVideo := svc.CalculateVideoCost("grok-imagine-video", "1080p", 1, 2, videoConfig, 1.0)
 	previewVideo := svc.CalculateVideoCost("grok-imagine-video-1.5-preview", "480p", 1, 2, videoConfig, 1.0)
 
 	require.InDelta(t, 0.006, standardImage.TotalCost, 1e-10)
 	require.InDelta(t, 0.012, qualityImage.TotalCost, 1e-10)
-	require.InDelta(t, 0.12, standardVideo.TotalCost, 1e-10)
-	require.InDelta(t, 0.36, previewVideo.TotalCost, 1e-10)
+	require.InDelta(t, standardVideoOverride*2, standardVideo.TotalCost, 1e-10)
+	require.InDelta(t, previewVideoOverride*2, previewVideo.TotalCost, 1e-10)
 }
 
 func TestCalculateGrokImagineVideoCostUsesDefaultRateCard(t *testing.T) {

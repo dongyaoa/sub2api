@@ -14,7 +14,7 @@ export const VIDEO_ASPECT_RATIOS: VideoAspectRatio[] = ['16:9', '9:16', '1:1', '
 
 export function isVideoGenerationModel(modelId: string): boolean {
   const id = modelId.trim().toLowerCase()
-  return id === STANDARD_VIDEO_MODEL || id === IMAGE_VIDEO_MODEL || id === LEGACY_IMAGE_VIDEO_MODEL
+  return id === STANDARD_VIDEO_MODEL || id === IMAGE_VIDEO_MODEL
 }
 
 export function filterVideoModels(models: VideoModel[]): VideoModel[] {
@@ -32,8 +32,8 @@ export function isVideo15Model(modelId: string): boolean {
   return id === IMAGE_VIDEO_MODEL || id === LEGACY_IMAGE_VIDEO_MODEL
 }
 
-export function getVideoResolutionOptions(_modelId: string): VideoResolution[] {
-  return ['480p', '720p', '1080p']
+export function getVideoResolutionOptions(modelId: string): VideoResolution[] {
+  return isVideo15Model(modelId) ? ['480p', '720p', '1080p'] : ['480p', '720p']
 }
 
 export function selectPreferredVideoModel(

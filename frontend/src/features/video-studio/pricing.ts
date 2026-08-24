@@ -11,18 +11,36 @@ export interface VideoPriceTier {
 
 const STANDARD_DEFAULTS: Record<VideoResolution, number> = {
   '480p': 0.05,
-  '720p': 0.05,
-  '1080p': 0.05,
+  '720p': 0.07,
+  '1080p': 0.07,
 }
 
 const VIDEO_15_DEFAULTS: Record<VideoResolution, number> = {
-  '480p': 0.15,
-  '720p': 0.15,
-  '1080p': 0.15,
+  '480p': 0.08,
+  '720p': 0.14,
+  '1080p': 0.25,
 }
 
-function configuredPrice(group: Group, model: string): number | null {
-  const value = isVideo15Model(model) ? group.video_price_720p : group.video_price_480p
+function canonicalVideoPriceFamily(model: string): string {
+  const normalized = model.trim().toLowerCase().replace(/^(xai|x-ai|grok)\//, '')
+  if (normalized.startsWith('grok-imagine-video-1.5') || normalized === 'grok-video-1.5') {
+    return 'grok-imagine-video-1.5'
+  }
+  if (normalized === 'grok-imagine-video' || normalized === 'grok-imagine-video-preview' || normalized === 'grok-video' || normalized === 'grok-video-latest') {
+    return 'grok-imagine-video'
+  }
+  return normalized
+}
+
+function configuredPrice(group: Group, model: string, resolution: VideoResolution): number | null {
+  const family = canonicalVideoPriceFamily(model)
+  const familyPrices = Object.entries(group.video_model_prices || {})
+    .find(([key]) => key.trim().toLowerCase() === family)?.[1]
+  const override = familyPrices?.[resolution]
+  if (override != null && Number.isFinite(Number(override))) return Math.max(0, Number(override))
+
+  const flatKey = `video_price_${resolution}` as 'video_price_480p' | 'video_price_720p' | 'video_price_1080p'
+  const value = group[flatKey]
   return value == null || !Number.isFinite(Number(value)) ? null : Math.max(0, Number(value))
 }
 
@@ -38,7 +56,7 @@ export function getDefaultVideoPrice(model: string, resolution: VideoResolution)
 export function getVideoPriceTiers(group: Group, model: string, userRate?: number): VideoPriceTier[] {
   const multiplier = getVideoRateMultiplier(group, userRate)
   return (['480p', '720p', '1080p'] as VideoResolution[]).map((resolution) => {
-    const custom = configuredPrice(group, model)
+    const custom = configuredPrice(group, model, resolution)
     const basePrice = custom ?? getDefaultVideoPrice(model, resolution)
     return {
       resolution,

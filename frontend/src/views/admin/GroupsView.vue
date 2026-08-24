@@ -1068,9 +1068,9 @@
               placeholder="1"
             />
           </div>
-          <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <div class="grid grid-cols-3 gap-3">
             <div>
-              <label class="input-label">grok-imagine-video ($/s)</label>
+              <label class="input-label">480p ($/s)</label>
               <input
                 v-model.number="createForm.video_price_480p"
                 type="number"
@@ -1081,7 +1081,7 @@
               />
             </div>
             <div>
-              <label class="input-label">grok-imagine-video-1.5-preview ($/s)</label>
+              <label class="input-label">720p ($/s)</label>
               <input
                 v-model.number="createForm.video_price_720p"
                 type="number"
@@ -1089,6 +1089,17 @@
                 min="0"
                 class="input"
                 :placeholder="getVideoPricePlaceholder(createForm.platform, 'video_price_720p')"
+              />
+            </div>
+            <div>
+              <label class="input-label">1080p ($/s)</label>
+              <input
+                v-model.number="createForm.video_price_1080p"
+                type="number"
+                step="0.001"
+                min="0"
+                class="input"
+                :placeholder="getVideoPricePlaceholder(createForm.platform, 'video_price_1080p')"
               />
             </div>
           </div>
@@ -2789,9 +2800,9 @@
               placeholder="1"
             />
           </div>
-          <div class="grid grid-cols-1 gap-3 md:grid-cols-2">
+          <div class="grid grid-cols-3 gap-3">
             <div>
-              <label class="input-label">grok-imagine-video ($/s)</label>
+              <label class="input-label">480p ($/s)</label>
               <input
                 v-model.number="editForm.video_price_480p"
                 type="number"
@@ -2802,7 +2813,7 @@
               />
             </div>
             <div>
-              <label class="input-label">grok-imagine-video-1.5-preview ($/s)</label>
+              <label class="input-label">720p ($/s)</label>
               <input
                 v-model.number="editForm.video_price_720p"
                 type="number"
@@ -2810,6 +2821,17 @@
                 min="0"
                 class="input"
                 :placeholder="getVideoPricePlaceholder(editForm.platform, 'video_price_720p')"
+              />
+            </div>
+            <div>
+              <label class="input-label">1080p ($/s)</label>
+              <input
+                v-model.number="editForm.video_price_1080p"
+                type="number"
+                step="0.001"
+                min="0"
+                class="input"
+                :placeholder="getVideoPricePlaceholder(editForm.platform, 'video_price_1080p')"
               />
             </div>
           </div>

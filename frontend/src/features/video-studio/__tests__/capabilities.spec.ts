@@ -20,14 +20,14 @@ describe('video studio capabilities', () => {
     expect(filtered.map((item) => item.id)).toEqual([
       'grok-imagine-video',
       'grok-imagine-video-1.5',
-      'grok-imagine-video-1.5-preview',
     ])
     expect(selectPreferredVideoModel(filtered, 'text')).toBe('grok-imagine-video')
     expect(selectPreferredVideoModel(filtered, 'image')).toBe('grok-imagine-video-1.5')
   })
 
   it('uses model-level pricing across all supported resolutions', () => {
-    expect(getVideoResolutionOptions('grok-imagine-video')).toEqual(['480p', '720p', '1080p'])
+    expect(getVideoResolutionOptions('grok-imagine-video')).toEqual(['480p', '720p'])
+    expect(getVideoResolutionOptions('grok-imagine-video-1.5')).toEqual(['480p', '720p', '1080p'])
     expect(getVideoResolutionOptions('grok-imagine-video-1.5-preview')).toEqual(['480p', '720p', '1080p'])
   })
 

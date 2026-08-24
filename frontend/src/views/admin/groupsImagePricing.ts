@@ -40,15 +40,16 @@ const defaultImagePricePlaceholders: Record<
   },
 };
 
-// Grok 复用现有视频价格槽位：480p 槽位对应标准模型，720p 槽位对应 1.5 Preview。
+// 视频价为每秒单价（USD/s）。模型专属价格请使用 video_model_prices 覆盖表；
+// 这里的分辨率价格仅作为官方模型覆盖缺失时的兜底。
 const defaultVideoPricePlaceholders: Record<
   string,
   Record<VideoPricingTierKey, string>
 > = {
   grok: {
     video_price_480p: "0.05",
-    video_price_720p: "0.15",
-    video_price_1080p: "0.15",
+    video_price_720p: "0.07",
+    video_price_1080p: "0.25",
   },
 };
 
