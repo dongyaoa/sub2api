@@ -162,7 +162,11 @@ func parseGrokMediaJSONRequest(body []byte, info *GrokMediaRequestInfo) {
 	if seconds := gjson.GetBytes(body, "seconds"); seconds.Exists() {
 		info.DurationSeconds, _ = strconv.Atoi(strings.TrimSpace(seconds.String()))
 	} else if duration := gjson.GetBytes(body, "duration"); duration.Exists() {
-		info.DurationSeconds, _ = strconv.Atoi(strings.TrimSpace(duration.String()))
+		if duration.Type == gjson.Number {
+			info.DurationSeconds = int(duration.Int())
+		} else {
+			info.DurationSeconds, _ = strconv.Atoi(strings.TrimSpace(duration.String()))
+		}
 	}
 	if n := gjson.GetBytes(body, "n"); n.Exists() && n.Type == gjson.Number {
 		info.N = int(n.Int())
@@ -999,6 +1003,12 @@ func prepareGrokMediaForwardBody(endpoint GrokMediaEndpoint, body []byte, conten
 	if info.Size != "" {
 		payload["size"] = info.Size
 	}
+	if info.ImageResolution != "" {
+		payload["resolution"] = info.ImageResolution
+	}
+	if info.AspectRatio != "" {
+		payload["aspect_ratio"] = info.AspectRatio
+	}
 
 	images := make([]map[string]string, 0, len(info.InputImageURLs)+len(info.Uploads))
 	for _, imageURL := range info.InputImageURLs {
@@ -1475,11 +1485,16 @@ func (s *OpenAIGatewayService) handleGrokMediaErrorResponse(
 		Detail:             upstreamDetail,
 	})
 	if kind == "failover" {
+		retryable, retryDelay, retryDeadline, retryMax := grokSameAccountRetryMetadata(account, resp.StatusCode, body)
 		return nil, &UpstreamFailoverError{
-			StatusCode:             resp.StatusCode,
-			ResponseBody:           body,
-			ResponseHeaders:        resp.Header.Clone(),
-			RetryableOnSameAccount: account.IsPoolMode() && account.IsPoolModeRetryableStatus(resp.StatusCode),
+			StatusCode:               resp.StatusCode,
+			ResponseBody:             body,
+			ResponseHeaders:          resp.Header.Clone(),
+			RetryableOnSameAccount:   retryable,
+			RequestScopedTransient:   retryable && resp.StatusCode == http.StatusTooManyRequests,
+			SameAccountRetryDelay:    retryDelay,
+			SameAccountRetryDeadline: retryDeadline,
+			SameAccountRetryMax:      retryMax,
 		}
 	}
 

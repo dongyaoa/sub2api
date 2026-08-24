@@ -9,17 +9,25 @@ import (
 	"github.com/tidwall/sjson"
 )
 
-// Grok Imagine accepts aspect_ratio independently from resolution. Keep the
-// legacy OpenAI size field only as an input hint, then send the native fields
-// to both xAI and compatible Sub2API relays.
+// Official Imagine image geometry. The legacy OpenAI size field is retained as
+// an input hint and translated to native resolution/aspect-ratio fields.
 var grokImagineAspectRatioValues = []struct {
 	label string
 	ratio float64
 }{
-	{"1:1", 1}, {"16:9", 16.0 / 9.0}, {"9:16", 9.0 / 16.0},
-	{"4:3", 4.0 / 3.0}, {"3:4", 3.0 / 4.0}, {"3:2", 1.5}, {"2:3", 2.0 / 3.0},
-	{"2:1", 2}, {"1:2", 0.5}, {"19.5:9", 19.5 / 9.0}, {"9:19.5", 9.0 / 19.5},
-	{"20:9", 20.0 / 9.0}, {"9:20", 9.0 / 20.0},
+	{"1:1", 1},
+	{"16:9", 16.0 / 9.0},
+	{"9:16", 9.0 / 16.0},
+	{"4:3", 4.0 / 3.0},
+	{"3:4", 3.0 / 4.0},
+	{"3:2", 1.5},
+	{"2:3", 2.0 / 3.0},
+	{"2:1", 2},
+	{"1:2", 0.5},
+	{"19.5:9", 19.5 / 9.0},
+	{"9:19.5", 9.0 / 19.5},
+	{"20:9", 20.0 / 9.0},
+	{"9:20", 9.0 / 20.0},
 }
 
 func applyGrokImagineImageGeometry(body []byte) ([]byte, error) {
@@ -29,22 +37,28 @@ func applyGrokImagineImageGeometry(body []byte) ([]byte, error) {
 	out := append([]byte(nil), body...)
 
 	if resolution == "" {
-		resolution = grokImagineImageResolutionFromSize(size)
-	}
-	if resolution != "" && gjson.GetBytes(body, "resolution").String() != resolution {
-		var err error
-		out, err = sjson.SetBytes(out, "resolution", resolution)
-		if err != nil {
-			return nil, err
-		}
-	}
-	if aspect == "" {
-		if derived := grokImagineAspectRatioFromSize(size); derived != "" {
-			var err error
-			out, err = sjson.SetBytes(out, "aspect_ratio", derived)
+		if derived := grokImagineImageResolutionFromSize(size); derived != "" {
+			next, err := sjson.SetBytes(out, "resolution", derived)
 			if err != nil {
 				return nil, err
 			}
+			out = next
+		}
+	} else if gjson.GetBytes(body, "resolution").String() != resolution {
+		next, err := sjson.SetBytes(out, "resolution", resolution)
+		if err != nil {
+			return nil, err
+		}
+		out = next
+	}
+
+	if aspect == "" {
+		if derived := grokImagineAspectRatioFromSize(size); derived != "" {
+			next, err := sjson.SetBytes(out, "aspect_ratio", derived)
+			if err != nil {
+				return nil, err
+			}
+			out = next
 		}
 	}
 	if !gjson.GetBytes(out, "size").Exists() {
@@ -61,8 +75,8 @@ func assignGrokMediaResolution(value string, info *GrokMediaRequestInfo) {
 	if value == "" {
 		return
 	}
-	if imageResolution := grokImagineImageResolution(value); imageResolution != "" {
-		info.ImageResolution = imageResolution
+	if img := grokImagineImageResolution(value); img != "" {
+		info.ImageResolution = img
 		return
 	}
 	info.Resolution = value
@@ -84,7 +98,10 @@ func grokImagineImageResolutionFromSize(size string) string {
 		return explicit
 	}
 	tier, ok := ClassifyImageBillingTier(size)
-	if !ok || tier == ImageBillingSize1K {
+	if !ok {
+		return ""
+	}
+	if tier == ImageBillingSize1K {
 		return "1k"
 	}
 	return "2k"
@@ -106,8 +123,10 @@ func grokImagineAspectRatioFromSize(size string) string {
 	bestLabel := ""
 	bestDelta := math.MaxFloat64
 	for _, candidate := range grokImagineAspectRatioValues {
-		if delta := math.Abs(ratio - candidate.ratio); delta < bestDelta {
-			bestDelta, bestLabel = delta, candidate.label
+		delta := math.Abs(ratio - candidate.ratio)
+		if delta < bestDelta {
+			bestDelta = delta
+			bestLabel = candidate.label
 		}
 	}
 	return bestLabel
