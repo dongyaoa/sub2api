@@ -370,6 +370,31 @@ func TestFetchUpstreamSupportedModelsParsesGrokAPIKeyResponse(t *testing.T) {
 	require.Equal(t, "Bearer xai-key", upstream.lastReq.Header.Get("Authorization"))
 }
 
+func TestFetchUpstreamSupportedModelsParsesGrokSub2APIRelayAccount(t *testing.T) {
+	t.Parallel()
+
+	upstream := &httpUpstreamRecorder{resp: &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(`{"data":[{"id":"grok-imagine-video-1.5"},{"id":"grok-imagine-image-2.0"}]}`)),
+	}}
+	svc := &AccountTestService{httpUpstream: upstream, cfg: upstreamModelSyncTestConfig()}
+
+	models, err := svc.FetchUpstreamSupportedModels(context.Background(), &Account{
+		ID:       10,
+		Platform: PlatformGrok,
+		Type:     AccountTypeUpstream,
+		Credentials: map[string]any{
+			"api_key":  "relay-key",
+			"base_url": "https://relay.example/v1",
+		},
+	})
+	require.NoError(t, err)
+	require.Equal(t, []string{"grok-imagine-image-2.0", "grok-imagine-video-1.5"}, models)
+	require.Equal(t, "https://relay.example/v1/models", upstream.lastReq.URL.String())
+	require.Equal(t, "Bearer relay-key", upstream.lastReq.Header.Get("Authorization"))
+}
+
 func TestFetchUpstreamSupportedModelsParsesGrokOAuthResponse(t *testing.T) {
 	t.Parallel()
 

@@ -73,7 +73,7 @@ export function isImageGenerationModel(platform: ImageStudioPlatform, modelId: s
   const id = modelId.trim().toLowerCase()
   if (platform === 'openai') return id.startsWith('gpt-image-')
   if (platform === 'gemini') return GEMINI_IMAGE_MODELS.has(id)
-  return id === 'grok-imagine-image' || id === 'grok-imagine-image-quality'
+  return id === 'grok-imagine-image' || id === 'grok-imagine-image-quality' || id === 'grok-imagine-image-2.0'
 }
 
 export function filterImageModels(platform: ImageStudioPlatform, models: ImageModel[]): ImageModel[] {

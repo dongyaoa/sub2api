@@ -944,7 +944,7 @@ func (s *AccountTestService) grokTestAccessToken(ctx context.Context, account *A
 			return "", fmt.Errorf("failed to get grok access token: %s", err.Error())
 		}
 		return token, nil
-	case AccountTypeAPIKey:
+	case AccountTypeAPIKey, AccountTypeUpstream:
 		authToken := strings.TrimSpace(account.GetCredential("api_key"))
 		if authToken == "" {
 			return "", fmt.Errorf("grok api key is missing")

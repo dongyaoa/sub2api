@@ -17,8 +17,9 @@ func TestDefaultModelMappingExcludesCrossClientWildcards(t *testing.T) {
 	require.Equal(t, "grok-build-0.1", mapping["grok-build"])
 	require.Equal(t, DefaultTextModel, mapping["grok-build-latest"])
 	require.Equal(t, DefaultImagineImageQualityModel, mapping["grok-imagine-edit"])
-	require.Equal(t, DefaultImagineVideo15LegacyModel, mapping["grok-imagine-video-1.5"])
+	require.Equal(t, DefaultImagineVideo15Model, mapping["grok-imagine-video-1.5"])
 	require.Equal(t, DefaultImagineVideo15Model, mapping["grok-imagine-video-1.5-preview"])
+	require.Equal(t, DefaultImagineImage20Model, mapping["grok-imagine-image-2.0"])
 	require.Equal(t, "grok-4.5", mapping["xai/grok"])
 
 	// Cross-vendor wildcards must stay opt-in.

@@ -28,6 +28,12 @@ const DEFAULT_GROK_QUALITY_PRICES: Record<ImageResolutionTier, number> = {
   '4K': 0.01,
 }
 
+const DEFAULT_GROK_20_PRICES: Record<ImageResolutionTier, number> = {
+  '1K': 0.06,
+  '2K': 0.08,
+  '4K': 0.08,
+}
+
 function configuredPrice(group: Group, model: string, tier: ImageResolutionTier): number | null {
   const value = group.platform === 'grok'
     ? model.trim().toLowerCase() === 'grok-imagine-image-quality'
@@ -47,6 +53,7 @@ export function getDefaultImagePrice(
   tier: ImageResolutionTier,
 ): number {
   if (platform === 'grok') {
+    if (model.trim().toLowerCase() === 'grok-imagine-image-2.0') return DEFAULT_GROK_20_PRICES[tier]
     return model.trim().toLowerCase() === 'grok-imagine-image-quality'
       ? DEFAULT_GROK_QUALITY_PRICES[tier]
       : DEFAULT_GROK_PRICES[tier]

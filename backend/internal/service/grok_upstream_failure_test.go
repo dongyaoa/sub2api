@@ -68,6 +68,14 @@ func TestClassifyGrokUpstreamFailure_ValidationNoCool(t *testing.T) {
 	require.False(t, d.ShouldFailover)
 }
 
+func TestClassifyGrokUpstreamFailure_ModelSpecificBadRequestFailsOver(t *testing.T) {
+	body := []byte(`{"error":{"message":"model grok-imagine-video is not supported for this endpoint"}}`)
+	d := classifyGrokUpstreamFailure(http.StatusBadRequest, body, "grok-imagine-video")
+	require.Equal(t, GrokFailureModelUnsupported, d.Class)
+	require.True(t, d.ShouldFailover)
+	require.True(t, (&OpenAIGatewayService{}).shouldFailoverGrokUpstreamError(http.StatusBadRequest, body))
+}
+
 func TestClassifyGrokUpstreamFailure_FreeUsageWinsOver5xx(t *testing.T) {
 	// Proxy may rewrite free-usage into synthetic 502; body must win.
 	d := classifyGrokUpstreamFailure(http.StatusBadGateway, []byte(`subscription:free-usage-exhausted for model grok-4.3`), "grok-4.3")

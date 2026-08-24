@@ -70,6 +70,7 @@ type GrokMediaRequestInfo struct {
 	N               int
 	Size            string
 	SizeTier        string
+	ImageResolution string
 	Resolution      string
 	AspectRatio     string
 	DurationSeconds int
@@ -139,6 +140,7 @@ func ParseGrokMediaRequest(contentType string, body []byte) GrokMediaRequestInfo
 	info.Prompt = strings.TrimSpace(info.Prompt)
 	info.Size = strings.TrimSpace(info.Size)
 	info.SizeTier = NormalizeImageBillingTierOrDefault(info.Size)
+	info.ImageResolution = grokImagineImageResolution(info.ImageResolution)
 	info.Resolution = NormalizeVideoBillingResolutionOrDefault(info.Resolution)
 	info.AspectRatio = strings.TrimSpace(info.AspectRatio)
 	info.DurationSeconds = NormalizeVideoBillingDurationSecondsOrDefault(info.DurationSeconds)
@@ -155,8 +157,8 @@ func parseGrokMediaJSONRequest(body []byte, info *GrokMediaRequestInfo) {
 	info.Model = strings.TrimSpace(gjson.GetBytes(body, "model").String())
 	info.Prompt = strings.TrimSpace(gjson.GetBytes(body, "prompt").String())
 	info.Size = strings.TrimSpace(gjson.GetBytes(body, "size").String())
-	info.Resolution = strings.TrimSpace(gjson.GetBytes(body, "resolution").String())
 	info.AspectRatio = strings.TrimSpace(gjson.GetBytes(body, "aspect_ratio").String())
+	assignGrokMediaResolution(strings.TrimSpace(gjson.GetBytes(body, "resolution").String()), info)
 	if seconds := gjson.GetBytes(body, "seconds"); seconds.Exists() {
 		info.DurationSeconds, _ = strconv.Atoi(strings.TrimSpace(seconds.String()))
 	} else if duration := gjson.GetBytes(body, "duration"); duration.Exists() {
@@ -271,10 +273,10 @@ func parseGrokMediaMultipartRequest(contentType string, body []byte, info *GrokM
 			info.Prompt = value
 		case "size":
 			info.Size = value
-		case "resolution":
-			info.Resolution = value
 		case "aspect_ratio":
 			info.AspectRatio = value
+		case "resolution":
+			assignGrokMediaResolution(value, info)
 		case "seconds":
 			if seconds, err := strconv.Atoi(value); err == nil {
 				info.DurationSeconds = seconds
@@ -1169,10 +1171,7 @@ func sanitizeGrokMediaForwardBody(endpoint GrokMediaEndpoint, body []byte, conte
 	}
 	switch endpoint {
 	case GrokMediaEndpointImagesGenerations, GrokMediaEndpointImagesEdits:
-		if !gjson.GetBytes(body, "size").Exists() {
-			return body, contentType, nil
-		}
-		out, err := sjson.DeleteBytes(body, "size")
+		out, err := applyGrokImagineImageGeometry(body)
 		if err != nil {
 			return nil, "", fmt.Errorf("sanitize grok media size: %w", err)
 		}

@@ -7,13 +7,14 @@ import type {
 } from './types'
 
 export const STANDARD_VIDEO_MODEL = 'grok-imagine-video'
-export const IMAGE_VIDEO_MODEL = 'grok-imagine-video-1.5-preview'
+export const IMAGE_VIDEO_MODEL = 'grok-imagine-video-1.5'
+export const LEGACY_IMAGE_VIDEO_MODEL = 'grok-imagine-video-1.5-preview'
 export const DEFAULT_VIDEO_ASPECT_RATIO: VideoAspectRatio = '16:9'
 export const VIDEO_ASPECT_RATIOS: VideoAspectRatio[] = ['16:9', '9:16', '1:1', '4:3', '3:4', '3:2', '2:3']
 
 export function isVideoGenerationModel(modelId: string): boolean {
   const id = modelId.trim().toLowerCase()
-  return id === STANDARD_VIDEO_MODEL || id === IMAGE_VIDEO_MODEL
+  return id === STANDARD_VIDEO_MODEL || id === IMAGE_VIDEO_MODEL || id === LEGACY_IMAGE_VIDEO_MODEL
 }
 
 export function filterVideoModels(models: VideoModel[]): VideoModel[] {
@@ -27,7 +28,8 @@ export function filterVideoModels(models: VideoModel[]): VideoModel[] {
 }
 
 export function isVideo15Model(modelId: string): boolean {
-  return modelId.trim().toLowerCase() === IMAGE_VIDEO_MODEL
+  const id = modelId.trim().toLowerCase()
+  return id === IMAGE_VIDEO_MODEL || id === LEGACY_IMAGE_VIDEO_MODEL
 }
 
 export function getVideoResolutionOptions(_modelId: string): VideoResolution[] {

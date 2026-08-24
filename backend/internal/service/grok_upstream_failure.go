@@ -18,14 +18,15 @@ import (
 type GrokUpstreamFailureClass string
 
 const (
-	GrokFailureNone          GrokUpstreamFailureClass = ""
-	GrokFailureFreeUsage     GrokUpstreamFailureClass = "subscription:free-usage-exhausted"
-	GrokFailureBilling       GrokUpstreamFailureClass = "billing_quota"
-	GrokFailureEmptyUpstream GrokUpstreamFailureClass = "empty_upstream"
-	GrokFailureModelCapacity GrokUpstreamFailureClass = "model_capacity"
-	GrokFailureRateLimit     GrokUpstreamFailureClass = "rate_limit"
-	GrokFailureAuth          GrokUpstreamFailureClass = "auth_error"
-	GrokFailureServer        GrokUpstreamFailureClass = "server_error"
+	GrokFailureNone             GrokUpstreamFailureClass = ""
+	GrokFailureFreeUsage        GrokUpstreamFailureClass = "subscription:free-usage-exhausted"
+	GrokFailureBilling          GrokUpstreamFailureClass = "billing_quota"
+	GrokFailureEmptyUpstream    GrokUpstreamFailureClass = "empty_upstream"
+	GrokFailureModelCapacity    GrokUpstreamFailureClass = "model_capacity"
+	GrokFailureModelUnsupported GrokUpstreamFailureClass = "model_unsupported"
+	GrokFailureRateLimit        GrokUpstreamFailureClass = "rate_limit"
+	GrokFailureAuth             GrokUpstreamFailureClass = "auth_error"
+	GrokFailureServer           GrokUpstreamFailureClass = "server_error"
 )
 
 // GrokUpstreamFailureDecision is a pure classification result. Callers map it
@@ -137,6 +138,19 @@ func classifyGrokUpstreamFailure(statusCode int, responseBody []byte, requestedM
 		}
 	}
 
+	// A relay may expose a model in /v1/models while its media endpoint does
+	// not support that model family. Treat only explicit model-specific 400s as
+	// account-local so another configured Grok upstream can be tried; malformed
+	// prompts and other client validation errors remain terminal 400s.
+	if statusCode == http.StatusBadRequest && isGrokModelUnsupportedText(low) {
+		return GrokUpstreamFailureDecision{
+			Class:          GrokFailureModelUnsupported,
+			Model:          model,
+			ShouldFailover: true,
+			Reason:         firstNonEmpty(text, "model unsupported"),
+		}
+	}
+
 	// Rate limit without free-usage language.
 	if statusCode == http.StatusTooManyRequests || isGrokRateLimitText(low) {
 		return GrokUpstreamFailureDecision{
@@ -162,6 +176,21 @@ func classifyGrokUpstreamFailure(statusCode int, responseBody []byte, requestedM
 	}
 
 	return GrokUpstreamFailureDecision{Reason: text}
+}
+
+func isGrokModelUnsupportedText(lower string) bool {
+	lower = strings.ToLower(strings.TrimSpace(lower))
+	if lower == "" || !strings.Contains(lower, "model") {
+		return false
+	}
+	for _, phrase := range []string{
+		"not supported", "unsupported model", "invalid model", "not available", "does not support", "unknown model", "model not found",
+	} {
+		if strings.Contains(lower, phrase) {
+			return true
+		}
+	}
+	return false
 }
 
 func grokUpstreamErrorCorpus(statusCode int, responseBody []byte) (text, code, low string) {

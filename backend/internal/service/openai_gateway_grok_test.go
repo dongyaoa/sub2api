@@ -1241,6 +1241,16 @@ func TestForwardGrokMediaImagesGenerationPreservesSupportedModel(t *testing.T) {
 	require.Equal(t, ImageBillingSize2K, result.ImageSize)
 }
 
+func TestGrokMediaImageGeometryUsesNativeResolutionAndAspectRatio(t *testing.T) {
+	body := []byte(`{"model":"grok-imagine-image-2.0","prompt":"draw a wide scene","size":"2048x1024"}`)
+	out, contentType, err := sanitizeGrokMediaForwardBody(GrokMediaEndpointImagesGenerations, body, "application/json")
+	require.NoError(t, err)
+	require.Equal(t, "application/json", contentType)
+	require.Equal(t, "2k", gjson.GetBytes(out, "resolution").String())
+	require.Equal(t, "2:1", gjson.GetBytes(out, "aspect_ratio").String())
+	require.False(t, gjson.GetBytes(out, "size").Exists())
+}
+
 func TestForwardGrokMediaAppliesAccountModelMappingAfterEndpointNormalization(t *testing.T) {
 	t.Setenv(xai.EnvAllowUnsafeURLOverrides, "true")
 	gin.SetMode(gin.TestMode)
@@ -3603,6 +3613,7 @@ func TestIsGrokImageGenerationModel(t *testing.T) {
 	}{
 		{"grok-imagine-image", true},
 		{"grok-imagine-image-quality", true},
+		{"grok-imagine-image-2.0", true},
 		{"grok-imagine", false},
 		{"grok-imagine-edit", false},
 		{"grok-imagine-image-hd", false},

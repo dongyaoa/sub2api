@@ -23,9 +23,10 @@ describe('image studio capabilities', () => {
     expect(filterImageModels('grok', [
       { id: 'grok-4.5' },
       { id: 'grok-imagine-image' },
+      { id: 'grok-imagine-image-2.0' },
       { id: 'grok-imagine-edit' },
       { id: 'grok-imagine-video' },
-    ])).toEqual([{ id: 'grok-imagine-image' }])
+    ])).toEqual([{ id: 'grok-imagine-image' }, { id: 'grok-imagine-image-2.0' }])
 
     expect(filterImageModels('gemini', [
       { id: 'gemini-2.5-flash-image' },

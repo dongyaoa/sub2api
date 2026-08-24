@@ -33,7 +33,7 @@ func grokBaseURLValidator(account *Account, cfg *config.Config) (xai.BaseURLVali
 			}
 			return policyValidator(raw)
 		}), nil
-	case AccountTypeAPIKey:
+	case AccountTypeAPIKey, AccountTypeUpstream:
 		return redactedGrokBaseURLValidator(grokOperatorPolicyValidator(cfg)), nil
 	default:
 		return nil, fmt.Errorf("unsupported grok account type: %s", account.Type)

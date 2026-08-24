@@ -344,7 +344,7 @@ func TestOpenAIGatewayServiceParseOpenAIImagesRequest_RejectsNonImageModel(t *te
 func TestOpenAIGatewayServiceParseOpenAIImagesRequest_AllowsGrokImageModels(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	for _, model := range []string{"grok-imagine-image", "grok-imagine-image-quality"} {
+	for _, model := range []string{"grok-imagine-image", "grok-imagine-image-quality", "grok-imagine-image-2.0"} {
 		t.Run(model, func(t *testing.T) {
 			body := []byte(fmt.Sprintf(`{"model":%q,"prompt":"draw a cat","response_format":"b64_json"}`, model))
 			req := httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewReader(body))

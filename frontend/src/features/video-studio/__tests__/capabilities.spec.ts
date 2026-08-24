@@ -19,10 +19,11 @@ describe('video studio capabilities', () => {
     const filtered = filterVideoModels(models)
     expect(filtered.map((item) => item.id)).toEqual([
       'grok-imagine-video',
+      'grok-imagine-video-1.5',
       'grok-imagine-video-1.5-preview',
     ])
     expect(selectPreferredVideoModel(filtered, 'text')).toBe('grok-imagine-video')
-    expect(selectPreferredVideoModel(filtered, 'image')).toBe('grok-imagine-video-1.5-preview')
+    expect(selectPreferredVideoModel(filtered, 'image')).toBe('grok-imagine-video-1.5')
   })
 
   it('uses model-level pricing across all supported resolutions', () => {

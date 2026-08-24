@@ -57,9 +57,10 @@ const DefaultTextModel = "grok-4.5"
 const (
 	DefaultImagineImageQualityModel  = "grok-imagine-image-quality"
 	DefaultImagineImageFastModel     = "grok-imagine-image"
+	DefaultImagineImage20Model       = "grok-imagine-image-2.0"
 	DefaultImagineVideoModel         = "grok-imagine-video"
-	DefaultImagineVideo15LegacyModel = "grok-imagine-video-1.5"
-	DefaultImagineVideo15Model       = "grok-imagine-video-1.5-preview"
+	DefaultImagineVideo15Model       = "grok-imagine-video-1.5"
+	DefaultImagineVideo15LegacyModel = "grok-imagine-video-1.5-preview"
 )
 
 // ModelMappingOptions controls optional expansions of the default mapping.
@@ -96,9 +97,9 @@ var defaultModels = []Model{
 	// Imagine
 	{ID: DefaultImagineImageQualityModel, Object: "model", Type: "model", OwnedBy: "xai", DisplayName: "Grok Imagine Image Quality"},
 	{ID: DefaultImagineImageFastModel, Object: "model", Type: "model", OwnedBy: "xai", DisplayName: "Grok Imagine Image"},
+	{ID: DefaultImagineImage20Model, Object: "model", Type: "model", OwnedBy: "xai", DisplayName: "Grok Imagine Image 2.0"},
 	{ID: DefaultImagineVideoModel, Object: "model", Type: "model", OwnedBy: "xai", DisplayName: "Grok Imagine Video"},
-	{ID: DefaultImagineVideo15Model, Object: "model", Type: "model", OwnedBy: "xai", DisplayName: "Grok Imagine Video 1.5 Preview"},
-	{ID: DefaultImagineVideo15LegacyModel, Object: "model", Type: "model", OwnedBy: "xai", DisplayName: "Grok Imagine Video 1.5 Legacy"},
+	{ID: DefaultImagineVideo15Model, Object: "model", Type: "model", OwnedBy: "xai", DisplayName: "Grok Imagine Video 1.5"},
 }
 
 // grokTextResponsesModelAliases is the source of truth for Grok text models
@@ -175,11 +176,13 @@ func ModelMappingWithOptions(opts ModelMappingOptions) map[string]string {
 	// image-quality model rather than a separate grok-imagine-edit model.
 	mapping["grok-imagine-edit"] = DefaultImagineImageQualityModel
 	mapping["grok-imagine-image"] = DefaultImagineImageFastModel
+	mapping["grok-imagine-image-2.0"] = DefaultImagineImage20Model
 	mapping["grok-imagine-image-quality"] = DefaultImagineImageQualityModel
 	// Keep official IDs as identity so client-requested model strings are not
 	// rewritten on the wire (pricing still canonicalizes 1.5* via CanonicalImagineVideoModel).
 	mapping["grok-imagine-video"] = DefaultImagineVideoModel
-	mapping["grok-imagine-video-1.5"] = DefaultImagineVideo15LegacyModel
+	mapping["grok-imagine-video-1.5"] = DefaultImagineVideo15Model
+	// Keep the preview ID as a compatibility alias for the current 1.5 model.
 	mapping["grok-imagine-video-1.5-preview"] = DefaultImagineVideo15Model
 	// Informal alias only:
 	mapping["grok-video-1.5"] = DefaultImagineVideo15Model

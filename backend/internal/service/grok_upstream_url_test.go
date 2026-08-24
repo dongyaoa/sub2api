@@ -91,6 +91,25 @@ func TestBuildGrokMediaURLUses2KENVideoCreateEndpoint(t *testing.T) {
 	require.Equal(t, xai.DefaultBaseURL+"/videos/generations", officialCreateURL)
 }
 
+func TestBuildGrokMediaURLSupportsSub2APIRelayAccountType(t *testing.T) {
+	account := &Account{
+		Platform: PlatformGrok,
+		Type:     AccountTypeUpstream,
+		Credentials: map[string]any{
+			"api_key":  "relay-key",
+			"base_url": "https://relay.example/v1",
+		},
+	}
+
+	imageURL, err := buildGrokMediaURL(account, &config.Config{}, GrokMediaEndpointImagesGenerations, "")
+	require.NoError(t, err)
+	require.Equal(t, "https://relay.example/v1/images/generations", imageURL)
+
+	videoURL, err := buildGrokMediaURL(account, &config.Config{}, GrokMediaEndpointVideosGenerations, "")
+	require.NoError(t, err)
+	require.Equal(t, "https://relay.example/v1/videos/generations", videoURL)
+}
+
 func TestGrokAPIKeyURLPolicyAppliesAllowlistAndPrivateHostControls(t *testing.T) {
 	account := &Account{
 		Platform: PlatformGrok,

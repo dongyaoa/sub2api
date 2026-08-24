@@ -162,7 +162,7 @@ func (s *AccountTestService) buildGrokUpstreamModelsRequest(ctx context.Context,
 		isOAuth           = account.IsGrokOAuth()
 	)
 	switch account.Type {
-	case AccountTypeAPIKey:
+	case AccountTypeAPIKey, AccountTypeUpstream:
 		authToken = strings.TrimSpace(account.GetCredential("api_key"))
 		if authToken == "" {
 			return nil, newUpstreamModelSyncConfigError("No Grok API key is available", nil)

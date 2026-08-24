@@ -271,6 +271,13 @@ func (a *Account) IsGrokOAuth() bool {
 	return a.IsGrok() && a.Type == AccountTypeOAuth
 }
 
+// IsGrokAPIKeyLike reports Grok accounts that authenticate with an API key
+// against a configurable OpenAI-compatible base URL. The upstream account
+// type is used when the configured base URL is another Sub2API relay.
+func (a *Account) IsGrokAPIKeyLike() bool {
+	return a.IsGrok() && (a.Type == AccountTypeAPIKey || a.Type == AccountTypeUpstream)
+}
+
 // IsKimi / IsZhipu / IsDeepseek 标识国产 OpenAI 兼容供应商账号。
 func (a *Account) IsKimi() bool {
 	return a.Platform == PlatformKimi

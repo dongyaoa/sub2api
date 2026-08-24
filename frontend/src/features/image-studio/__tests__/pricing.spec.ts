@@ -68,5 +68,7 @@ describe('image studio pricing', () => {
     })
     expect(getImagePriceTiers(target, 'grok-imagine-image-quality').map((item) => item.unitPrice))
       .toEqual([0.01, 0.01, 0.01])
+    expect(getImagePriceTiers(target, 'grok-imagine-image-2.0').map((item) => item.unitPrice))
+      .toEqual([0.06, 0.08, 0.08])
   })
 })
