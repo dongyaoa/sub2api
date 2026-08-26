@@ -8,7 +8,9 @@ import (
 	"fmt"
 	"math"
 	"math/big"
+	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
@@ -26,15 +28,34 @@ const (
 var checkinLocation = time.FixedZone("Asia/Shanghai", 8*60*60)
 
 type CheckinConfig struct {
-	Enabled            bool    `json:"enabled"`
-	MinRechargeAmount  float64 `json:"min_recharge_amount"`
-	QualificationDays  int     `json:"qualification_days"`
-	RewardMin          float64 `json:"reward_min"`
-	RewardMax          float64 `json:"reward_max"`
-	MaxPeriodReward    float64 `json:"max_period_reward"`
-	MinAccountAgeHours int     `json:"min_account_age_hours"`
-	Timezone           string  `json:"timezone"`
-	Version            int     `json:"version"`
+	Enabled            bool                `json:"enabled"`
+	MinRechargeAmount  float64             `json:"min_recharge_amount"`
+	QualificationDays  int                 `json:"qualification_days"`
+	RewardMin          float64             `json:"reward_min"`
+	RewardMax          float64             `json:"reward_max"`
+	DefaultTierName    string              `json:"default_tier_name"`
+	DefaultTierVisible bool                `json:"default_tier_visible"`
+	RewardTiers        []CheckinRewardTier `json:"reward_tiers"`
+	MaxPeriodReward    float64             `json:"max_period_reward"`
+	MinAccountAgeHours int                 `json:"min_account_age_hours"`
+	Timezone           string              `json:"timezone"`
+	Version            int                 `json:"version"`
+}
+
+type CheckinRewardTier struct {
+	ID                   string  `json:"id"`
+	Name                 string  `json:"name"`
+	MinRechargeAmount    float64 `json:"min_recharge_amount"`
+	RewardMin            float64 `json:"reward_min"`
+	RewardMax            float64 `json:"reward_max"`
+	Enabled              bool    `json:"enabled"`
+	Visible              bool    `json:"visible"`
+	QualifiedOnlyVisible bool    `json:"qualified_only_visible"`
+	ShowNextProgress     bool    `json:"show_next_progress"`
+	CustomButtonEnabled  bool    `json:"custom_button_enabled"`
+	ButtonColor          string  `json:"button_color"`
+	TierBadgeEnabled     bool    `json:"tier_badge_enabled"`
+	IsDefault            bool    `json:"is_default,omitempty"`
 }
 
 func DefaultCheckinConfig() CheckinConfig {
@@ -44,6 +65,9 @@ func DefaultCheckinConfig() CheckinConfig {
 		QualificationDays:  30,
 		RewardMin:          0.01,
 		RewardMax:          0.05,
+		DefaultTierName:    "默认档位",
+		DefaultTierVisible: true,
+		RewardTiers:        []CheckinRewardTier{},
 		MaxPeriodReward:    2,
 		MinAccountAgeHours: 24,
 		Timezone:           "Asia/Shanghai",
@@ -66,12 +90,16 @@ type CheckinStatus struct {
 	ClaimedToday       bool                 `json:"claimed_today"`
 	TodayReward        float64              `json:"today_reward"`
 	CurrentBalance     float64              `json:"current_balance"`
+	TotalReward        float64              `json:"total_reward"`
 	RechargeAmount     float64              `json:"recharge_amount"`
 	MinRechargeAmount  float64              `json:"min_recharge_amount"`
 	QualificationDays  int                  `json:"qualification_days"`
 	MinAccountAgeHours int                  `json:"min_account_age_hours"`
 	RewardMin          float64              `json:"reward_min"`
 	RewardMax          float64              `json:"reward_max"`
+	CurrentTier        *CheckinRewardTier   `json:"current_tier,omitempty"`
+	NextTier           *CheckinRewardTier   `json:"next_tier,omitempty"`
+	RewardTiers        []CheckinRewardTier  `json:"reward_tiers"`
 	NextResetAt        time.Time            `json:"next_reset_at"`
 	History            []CheckinHistoryItem `json:"history"`
 }
@@ -82,6 +110,18 @@ type CheckinClaimResult struct {
 	NewBalance     float64   `json:"new_balance"`
 	ClaimedAt      time.Time `json:"claimed_at"`
 	AlreadyClaimed bool      `json:"already_claimed"`
+	TierID         string    `json:"tier_id"`
+	TierName       string    `json:"tier_name"`
+	TierIsDefault  bool      `json:"tier_is_default"`
+}
+
+type checkinRecordMetadata struct {
+	Kind          string `json:"kind"`
+	BusinessDate  string `json:"business_date"`
+	ConfigVersion int    `json:"config_version"`
+	TierID        string `json:"tier_id"`
+	TierName      string `json:"tier_name"`
+	TierIsDefault bool   `json:"tier_is_default"`
 }
 
 type CheckinService struct {
@@ -124,6 +164,26 @@ func (s *CheckinService) GetConfig(ctx context.Context) (CheckinConfig, error) {
 	if _, exists := storedFields["max_period_reward"]; !exists {
 		config.MaxPeriodReward = math.Ceil(config.MinRechargeAmount*legacyCheckinRewardRatio*100-0.0000001) / 100
 	}
+	var storedTierFields struct {
+		RewardTiers []map[string]json.RawMessage `json:"reward_tiers"`
+	}
+	if err := json.Unmarshal([]byte(value), &storedTierFields); err != nil {
+		return CheckinConfig{}, fmt.Errorf("decode checkin tier fields: %w", err)
+	}
+	for index := range config.RewardTiers {
+		if index >= len(storedTierFields.RewardTiers) {
+			config.RewardTiers[index].Enabled = true
+			continue
+		}
+		fields := storedTierFields.RewardTiers[index]
+		if _, exists := fields["enabled"]; !exists {
+			config.RewardTiers[index].Enabled = true
+		}
+		if _, exists := fields["custom_button_enabled"]; !exists {
+			_ = json.Unmarshal(fields["exclusive_ui_enabled"], &config.RewardTiers[index].CustomButtonEnabled)
+		}
+	}
+	config = normalizeCheckinConfig(config)
 	if err := ValidateCheckinConfig(config); err != nil {
 		return CheckinConfig{}, err
 	}
@@ -140,6 +200,7 @@ func (s *CheckinService) UpdateConfig(ctx context.Context, config CheckinConfig)
 	if config.Version < 1 {
 		config.Version = 1
 	}
+	config = normalizeCheckinConfig(config)
 	if err := ValidateCheckinConfig(config); err != nil {
 		return CheckinConfig{}, err
 	}
@@ -163,6 +224,43 @@ func ValidateCheckinConfig(config CheckinConfig) error {
 	if config.RewardMin <= 0 || config.RewardMax < config.RewardMin || !isCentAmount(config.RewardMin) || !isCentAmount(config.RewardMax) {
 		return infraerrors.BadRequest("CHECKIN_CONFIG_INVALID", "reward range must use positive amounts with at most two decimals")
 	}
+	if strings.TrimSpace(config.DefaultTierName) == "" || len([]rune(config.DefaultTierName)) > 30 {
+		return infraerrors.BadRequest("CHECKIN_CONFIG_INVALID", "default tier name must contain between 1 and 30 characters")
+	}
+	if len(config.RewardTiers) > 20 {
+		return infraerrors.BadRequest("CHECKIN_CONFIG_INVALID", "no more than 20 custom reward tiers are allowed")
+	}
+	seenIDs := map[string]struct{}{"default": {}}
+	seenThresholds := map[int64]struct{}{int64(math.Round(config.MinRechargeAmount * 100)): {}}
+	for _, tier := range config.RewardTiers {
+		if tier.ID == "" || len(tier.ID) > 64 {
+			return infraerrors.BadRequest("CHECKIN_CONFIG_INVALID", "reward tier ID must contain between 1 and 64 characters")
+		}
+		if _, exists := seenIDs[tier.ID]; exists {
+			return infraerrors.BadRequest("CHECKIN_CONFIG_INVALID", "reward tier IDs must be unique")
+		}
+		seenIDs[tier.ID] = struct{}{}
+		if tier.Name == "" || len([]rune(tier.Name)) > 30 {
+			return infraerrors.BadRequest("CHECKIN_CONFIG_INVALID", "reward tier name must contain between 1 and 30 characters")
+		}
+		if tier.MinRechargeAmount <= config.MinRechargeAmount || !isCentAmount(tier.MinRechargeAmount) {
+			return infraerrors.BadRequest("CHECKIN_CONFIG_INVALID", "custom tier recharge amount must be greater than the default tier and use at most two decimals")
+		}
+		thresholdCents := int64(math.Round(tier.MinRechargeAmount * 100))
+		if _, exists := seenThresholds[thresholdCents]; exists {
+			return infraerrors.BadRequest("CHECKIN_CONFIG_INVALID", "reward tier recharge amounts must be unique")
+		}
+		seenThresholds[thresholdCents] = struct{}{}
+		if tier.RewardMin <= 0 || tier.RewardMax < tier.RewardMin || !isCentAmount(tier.RewardMin) || !isCentAmount(tier.RewardMax) {
+			return infraerrors.BadRequest("CHECKIN_CONFIG_INVALID", "custom tier reward range must use positive amounts with at most two decimals")
+		}
+		if tier.Enabled && float64(config.QualificationDays)*tier.RewardMax > config.MaxPeriodReward+0.0000001 {
+			return infraerrors.BadRequest("CHECKIN_CONFIG_COST_TOO_HIGH", "maximum tier reward over the qualification period cannot exceed the configured safety limit")
+		}
+		if tier.ButtonColor != "" && !isCheckinButtonColor(tier.ButtonColor) {
+			return infraerrors.BadRequest("CHECKIN_CONFIG_INVALID", "custom tier button color is not supported")
+		}
+	}
 	if config.MinAccountAgeHours < 0 || config.MinAccountAgeHours > 24*365 {
 		return infraerrors.BadRequest("CHECKIN_CONFIG_INVALID", "minimum account age must be between 0 and 8760 hours")
 	}
@@ -173,6 +271,126 @@ func ValidateCheckinConfig(config CheckinConfig) error {
 		return infraerrors.BadRequest("CHECKIN_CONFIG_COST_TOO_HIGH", "maximum reward over the qualification period cannot exceed the configured safety limit")
 	}
 	return nil
+}
+
+func normalizeCheckinConfig(config CheckinConfig) CheckinConfig {
+	config.DefaultTierName = strings.TrimSpace(config.DefaultTierName)
+	if config.DefaultTierName == "" {
+		config.DefaultTierName = DefaultCheckinConfig().DefaultTierName
+	}
+	if config.RewardTiers == nil {
+		config.RewardTiers = []CheckinRewardTier{}
+	}
+	usedIDs := make(map[string]struct{}, len(config.RewardTiers)+1)
+	usedIDs["default"] = struct{}{}
+	for index := range config.RewardTiers {
+		tier := &config.RewardTiers[index]
+		tier.ID = strings.TrimSpace(tier.ID)
+		tier.Name = strings.TrimSpace(tier.Name)
+		tier.ButtonColor = strings.ToLower(strings.TrimSpace(tier.ButtonColor))
+		if tier.ButtonColor == "" {
+			tier.ButtonColor = "emerald"
+		}
+		tier.IsDefault = false
+		if tier.ID != "" {
+			usedIDs[tier.ID] = struct{}{}
+		}
+	}
+	nextID := 1
+	for index := range config.RewardTiers {
+		if config.RewardTiers[index].ID != "" {
+			continue
+		}
+		for {
+			candidate := "tier-" + strconv.Itoa(nextID)
+			nextID++
+			if _, exists := usedIDs[candidate]; exists {
+				continue
+			}
+			config.RewardTiers[index].ID = candidate
+			usedIDs[candidate] = struct{}{}
+			break
+		}
+	}
+	sort.SliceStable(config.RewardTiers, func(i, j int) bool {
+		return config.RewardTiers[i].MinRechargeAmount < config.RewardTiers[j].MinRechargeAmount
+	})
+	return config
+}
+
+func (config CheckinConfig) allRewardTiers() []CheckinRewardTier {
+	tiers := make([]CheckinRewardTier, 0, len(config.RewardTiers)+1)
+	tiers = append(tiers, CheckinRewardTier{
+		ID:                "default",
+		Name:              config.DefaultTierName,
+		MinRechargeAmount: config.MinRechargeAmount,
+		RewardMin:         config.RewardMin,
+		RewardMax:         config.RewardMax,
+		Enabled:           true,
+		Visible:           config.DefaultTierVisible,
+		ButtonColor:       "emerald",
+		IsDefault:         true,
+	})
+	for _, tier := range config.RewardTiers {
+		if tier.Enabled {
+			tiers = append(tiers, tier)
+		}
+	}
+	return tiers
+}
+
+func selectCheckinRewardTier(config CheckinConfig, recharge float64) (CheckinRewardTier, bool) {
+	tiers := config.allRewardTiers()
+	selected := tiers[0]
+	if recharge+0.0000001 < selected.MinRechargeAmount {
+		return selected, false
+	}
+	for _, tier := range tiers[1:] {
+		if recharge+0.0000001 < tier.MinRechargeAmount {
+			break
+		}
+		selected = tier
+	}
+	return selected, true
+}
+
+func visibleCheckinRewardTiers(config CheckinConfig, recharge float64) []CheckinRewardTier {
+	all := config.allRewardTiers()
+	visible := make([]CheckinRewardTier, 0, len(all))
+	for _, tier := range all {
+		if tier.Visible && (!tier.QualifiedOnlyVisible || recharge+0.0000001 >= tier.MinRechargeAmount) {
+			visible = append(visible, tier)
+		}
+	}
+	return visible
+}
+
+func nextCheckinRewardTier(config CheckinConfig, recharge float64) (CheckinRewardTier, bool) {
+	tiers := config.allRewardTiers()
+	if len(tiers) < 2 || recharge+0.0000001 < tiers[0].MinRechargeAmount {
+		return CheckinRewardTier{}, false
+	}
+	currentIndex := 0
+	for index := 1; index < len(tiers); index++ {
+		if recharge+0.0000001 < tiers[index].MinRechargeAmount {
+			break
+		}
+		currentIndex = index
+	}
+	nextIndex := currentIndex + 1
+	if nextIndex >= len(tiers) || !tiers[nextIndex].ShowNextProgress {
+		return CheckinRewardTier{}, false
+	}
+	return tiers[nextIndex], true
+}
+
+func isCheckinButtonColor(value string) bool {
+	switch value {
+	case "emerald", "blue", "amber", "rose", "violet", "slate":
+		return true
+	default:
+		return false
+	}
 }
 
 func isCentAmount(value float64) bool {
@@ -203,18 +421,31 @@ func (s *CheckinService) GetStatus(ctx context.Context, userID int64) (*CheckinS
 	if err != nil {
 		return nil, err
 	}
+	totalReward, err := s.queryTotalCheckinReward(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	selectedTier, tierReached := selectCheckinRewardTier(config, recharge)
 	status := &CheckinStatus{
 		Enabled:            config.Enabled,
 		BusinessDate:       businessDate,
 		CurrentBalance:     userEntity.Balance,
+		TotalReward:        totalReward,
 		RechargeAmount:     recharge,
 		MinRechargeAmount:  config.MinRechargeAmount,
 		QualificationDays:  config.QualificationDays,
 		MinAccountAgeHours: config.MinAccountAgeHours,
-		RewardMin:          config.RewardMin,
-		RewardMax:          config.RewardMax,
+		RewardMin:          selectedTier.RewardMin,
+		RewardMax:          selectedTier.RewardMax,
+		RewardTiers:        visibleCheckinRewardTiers(config, recharge),
 		NextResetAt:        checkinNextReset(now),
 		History:            history,
+	}
+	if tierReached {
+		status.CurrentTier = &selectedTier
+		if nextTier, ok := nextCheckinRewardTier(config, recharge); ok {
+			status.NextTier = &nextTier
+		}
 	}
 	if claim != nil {
 		status.ClaimedToday = true
@@ -287,14 +518,21 @@ func (s *CheckinService) Claim(ctx context.Context, userID int64) (*CheckinClaim
 			return nil, infraerrors.Forbidden("CHECKIN_NOT_ELIGIBLE", "account is not eligible for daily check-in")
 		}
 	}
-	reward, err := secureCheckinReward(config.RewardMin, config.RewardMax)
+	selectedTier, ok := selectCheckinRewardTier(config, recharge)
+	if !ok {
+		return nil, infraerrors.Forbidden("CHECKIN_RECHARGE_REQUIRED", "recharge requirement has not been met")
+	}
+	reward, err := secureCheckinReward(selectedTier.RewardMin, selectedTier.RewardMax)
 	if err != nil {
 		return nil, err
 	}
-	notes, _ := json.Marshal(map[string]any{
-		"kind":           "daily_checkin",
-		"business_date":  businessDate,
-		"config_version": config.Version,
+	notes, _ := json.Marshal(checkinRecordMetadata{
+		Kind:          "daily_checkin",
+		BusinessDate:  businessDate,
+		ConfigVersion: config.Version,
+		TierID:        selectedTier.ID,
+		TierName:      selectedTier.Name,
+		TierIsDefault: selectedTier.IsDefault,
 	})
 	created, err := tx.RedeemCode.Create().
 		SetCode(checkinCode(userID, businessDate)).
@@ -339,10 +577,13 @@ func (s *CheckinService) Claim(ctx context.Context, userID int64) (*CheckinClaim
 	}
 	s.invalidateBalance(ctx, userID)
 	return &CheckinClaimResult{
-		BusinessDate: businessDate,
-		Reward:       created.Value,
-		NewBalance:   userEntity.Balance,
-		ClaimedAt:    now,
+		BusinessDate:  businessDate,
+		Reward:        created.Value,
+		NewBalance:    userEntity.Balance,
+		ClaimedAt:     now,
+		TierID:        selectedTier.ID,
+		TierName:      selectedTier.Name,
+		TierIsDefault: selectedTier.IsDefault,
 	}, nil
 }
 
@@ -351,13 +592,32 @@ func claimResult(claim *dbent.RedeemCode, balance float64, already bool) *Checki
 	if claim.UsedAt != nil {
 		claimedAt = *claim.UsedAt
 	}
+	metadata := parseCheckinRecordMetadata(claim.Notes)
 	return &CheckinClaimResult{
 		BusinessDate:   checkinBusinessDate(claimedAt),
 		Reward:         claim.Value,
 		NewBalance:     balance,
 		ClaimedAt:      claimedAt,
 		AlreadyClaimed: already,
+		TierID:         metadata.TierID,
+		TierName:       metadata.TierName,
+		TierIsDefault:  metadata.TierIsDefault,
 	}
+}
+
+func parseCheckinRecordMetadata(notes *string) checkinRecordMetadata {
+	metadata := checkinRecordMetadata{TierID: "default", TierIsDefault: true}
+	if notes == nil || strings.TrimSpace(*notes) == "" {
+		return metadata
+	}
+	var stored checkinRecordMetadata
+	if err := json.Unmarshal([]byte(*notes), &stored); err != nil {
+		return metadata
+	}
+	if stored.TierID == "" {
+		return metadata
+	}
+	return stored
 }
 
 func (s *CheckinService) GetHistory(ctx context.Context, userID int64, limit int) ([]CheckinHistoryItem, error) {
@@ -441,6 +701,18 @@ func (s *CheckinService) queryEffectiveRecharge(ctx context.Context, client *dbe
 		return 0, fmt.Errorf("scan effective recharge: %w", err)
 	}
 	return amount, rows.Err()
+}
+
+func (s *CheckinService) queryTotalCheckinReward(ctx context.Context, userID int64) (float64, error) {
+	const query = `
+		SELECT COALESCE(SUM(value), 0)::double precision
+		FROM redeem_codes
+		WHERE used_by = $1 AND type = $2 AND status = 'used'`
+	var total float64
+	if err := scanCheckinScalar(ctx, s.client, query, []any{userID, RedeemTypeCheckinBalance}, &total); err != nil {
+		return 0, fmt.Errorf("query total checkin reward: %w", err)
+	}
+	return total, nil
 }
 
 func secureCheckinReward(minAmount, maxAmount float64) (float64, error) {

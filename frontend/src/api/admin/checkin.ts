@@ -6,11 +6,32 @@ export interface CheckinConfig {
   qualification_days: number
   reward_min: number
   reward_max: number
+  default_tier_name: string
+  default_tier_visible: boolean
+  reward_tiers: CheckinRewardTier[]
   max_period_reward: number
   min_account_age_hours: number
   timezone: string
   version: number
 }
+
+export interface CheckinRewardTier {
+  id: string
+  name: string
+  min_recharge_amount: number
+  reward_min: number
+  reward_max: number
+  enabled: boolean
+  visible: boolean
+  qualified_only_visible: boolean
+  show_next_progress: boolean
+  custom_button_enabled: boolean
+  button_color: CheckinButtonColor
+  tier_badge_enabled: boolean
+  is_default?: boolean
+}
+
+export type CheckinButtonColor = 'emerald' | 'blue' | 'amber' | 'rose' | 'violet' | 'slate'
 
 export interface CheckinDailyStat {
   date: string
@@ -28,7 +49,16 @@ export interface CheckinSummary {
   users_7_days: number
   reward_30_days: number
   eligible_users: number
+  tier_qualified_stats: CheckinTierQualifiedStat[]
   daily: CheckinDailyStat[]
+}
+
+export interface CheckinTierQualifiedStat {
+  tier_id: string
+  tier_name: string
+  min_recharge_amount: number
+  qualified_users: number
+  is_default: boolean
 }
 
 export interface CheckinUserReport {
@@ -43,6 +73,9 @@ export interface CheckinUserReport {
   reward_total: number
   last_checkin_at?: string
   eligible: boolean
+  tier_id: string
+  tier_name: string
+  tier_is_default: boolean
 }
 
 export interface CheckinRecord {
@@ -54,6 +87,9 @@ export interface CheckinRecord {
   current_balance: number
   business_date: string
   claimed_at: string
+  tier_id: string
+  tier_name: string
+  tier_is_default: boolean
 }
 
 export interface Paginated<T> {

@@ -80,6 +80,9 @@
                     </div>
                     <div class="flex-none text-right">
                       <p class="text-sm font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">+{{ formatMoney(item.reward) }}</p>
+                      <p v-if="!item.tier_is_default && item.tier_name" class="mt-0.5 text-[11px] font-medium text-primary-600 dark:text-primary-400">
+                        {{ item.tier_name }}
+                      </p>
                       <p class="mt-0.5 text-xs text-gray-400 dark:text-gray-500">{{ formatDateTime(item.claimed_at) }}</p>
                     </div>
                   </div>
@@ -110,6 +113,27 @@
         </section>
 
         <section v-else-if="activeTab === 'users'" class="space-y-4">
+          <div v-if="summary?.tier_qualified_stats?.length" class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+            <div
+              v-for="item in summary.tier_qualified_stats"
+              :key="item.tier_id"
+              class="card px-4 py-3"
+            >
+              <div class="flex items-center justify-between gap-3">
+                <div class="min-w-0">
+                  <p class="truncate text-sm font-semibold text-gray-900 dark:text-white">{{ item.tier_name }}</p>
+                  <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">
+                    {{ t('adminCheckin.tierThreshold', { amount: formatMoney(item.min_recharge_amount) }) }}
+                  </p>
+                </div>
+                <div class="flex-none text-right">
+                  <p class="text-xl font-bold tabular-nums text-primary-600 dark:text-primary-400">{{ item.qualified_users }}</p>
+                  <p class="text-[11px] text-gray-400 dark:text-gray-500">{{ t('adminCheckin.qualifiedUsers') }}</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
           <div class="flex flex-wrap items-center gap-3">
             <div class="relative min-w-60 flex-1 sm:max-w-sm">
               <Icon name="search" size="sm" class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
@@ -133,7 +157,7 @@
           <div class="card overflow-hidden">
             <div v-if="usersLoading" class="flex min-h-64 items-center justify-center"><LoadingSpinner /></div>
             <div v-else class="overflow-x-auto">
-              <table class="w-full min-w-[1120px]">
+              <table class="w-full min-w-[1220px]">
                 <thead class="bg-gray-50/80 text-left text-xs text-gray-500 dark:bg-dark-800 dark:text-gray-400">
                   <tr>
                     <th class="px-5 py-3 font-medium">{{ t('adminCheckin.user') }}</th>
@@ -143,6 +167,7 @@
                     <th class="px-5 py-3 text-right font-medium">{{ t('adminCheckin.checkinDays') }}</th>
                     <th class="px-5 py-3 text-right font-medium">{{ t('adminCheckin.rewardTotal') }}</th>
                     <th class="px-5 py-3 font-medium">{{ t('adminCheckin.lastCheckin') }}</th>
+                    <th class="px-5 py-3 text-center font-medium">{{ t('adminCheckin.rewardTier') }}</th>
                     <th class="px-5 py-3 text-center font-medium">{{ t('adminCheckin.qualification') }}</th>
                   </tr>
                 </thead>
@@ -159,6 +184,12 @@
                     <td class="px-5 py-4 text-right text-sm font-medium tabular-nums text-emerald-600 dark:text-emerald-400">{{ formatMoney(item.reward_total) }}</td>
                     <td class="px-5 py-4 text-sm text-gray-500 dark:text-gray-400">{{ item.last_checkin_at ? formatDateTime(item.last_checkin_at) : '-' }}</td>
                     <td class="px-5 py-4 text-center">
+                      <span v-if="item.eligible && item.tier_name" class="inline-flex rounded-full bg-primary-50 px-2 py-1 text-xs font-medium text-primary-700 dark:bg-primary-900/20 dark:text-primary-300">
+                        {{ item.tier_name }}
+                      </span>
+                      <span v-else class="text-sm text-gray-400">-</span>
+                    </td>
+                    <td class="px-5 py-4 text-center">
                       <span
                         class="inline-flex rounded-full px-2 py-1 text-xs font-medium"
                         :class="item.eligible ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300' : 'bg-gray-100 text-gray-600 dark:bg-dark-700 dark:text-gray-400'"
@@ -168,7 +199,7 @@
                     </td>
                   </tr>
                   <tr v-if="!users.items.length">
-                    <td colspan="8" class="px-5 py-12 text-center text-sm text-gray-500 dark:text-gray-400">{{ t('adminCheckin.noData') }}</td>
+                    <td colspan="9" class="px-5 py-12 text-center text-sm text-gray-500 dark:text-gray-400">{{ t('adminCheckin.noData') }}</td>
                   </tr>
                 </tbody>
               </table>
@@ -220,7 +251,15 @@
                       <p class="mt-0.5 text-xs text-gray-500 dark:text-gray-400">{{ item.email }}</p>
                     </td>
                     <td class="px-5 py-4 text-sm text-gray-700 dark:text-gray-300">{{ item.business_date }}</td>
-                    <td class="px-5 py-4 text-right text-sm font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">+{{ formatMoney(item.reward) }}</td>
+                    <td class="px-5 py-4 text-right">
+                      <p class="text-sm font-semibold tabular-nums text-emerald-600 dark:text-emerald-400">+{{ formatMoney(item.reward) }}</p>
+                      <span
+                        v-if="!item.tier_is_default && item.tier_name"
+                        class="mt-1 inline-flex rounded-full bg-primary-50 px-2 py-0.5 text-[11px] font-medium text-primary-700 dark:bg-primary-900/20 dark:text-primary-300"
+                      >
+                        {{ item.tier_name }}
+                      </span>
+                    </td>
                     <td class="px-5 py-4 text-right text-sm font-medium tabular-nums text-gray-900 dark:text-white">{{ formatMoney(item.current_balance) }}</td>
                   </tr>
                   <tr v-if="!records.items.length">
@@ -252,6 +291,10 @@
 
             <div class="mt-6 grid gap-5 md:grid-cols-2 xl:grid-cols-3">
               <label class="block">
+                <span class="input-label">{{ t('adminCheckin.defaultTierName') }}</span>
+                <input v-model.trim="config.default_tier_name" class="input mt-1" type="text" maxlength="30" required />
+              </label>
+              <label class="block">
                 <span class="input-label">{{ t('adminCheckin.minRecharge') }}</span>
                 <input v-model.number="config.min_recharge_amount" class="input mt-1" type="number" min="0.01" step="0.01" required />
               </label>
@@ -281,6 +324,124 @@
                   {{ t('adminCheckin.periodRewardEstimate', { amount: formatMoney(maxPeriodReward) }) }}
                 </span>
               </label>
+              <div class="flex items-center justify-between gap-4 rounded-lg border border-gray-200 px-4 py-3 dark:border-dark-700">
+                <div>
+                  <p class="input-label">{{ t('adminCheckin.tierVisible') }}</p>
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('adminCheckin.tierVisibleHint') }}</p>
+                </div>
+                <Toggle v-model="config.default_tier_visible" />
+              </div>
+            </div>
+
+            <div class="mt-7 border-t border-gray-100 pt-6 dark:border-dark-700">
+              <div class="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <h3 class="text-sm font-semibold text-gray-950 dark:text-white">{{ t('adminCheckin.customTiers') }}</h3>
+                  <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">{{ t('adminCheckin.customTiersHint') }}</p>
+                </div>
+                <button
+                  type="button"
+                  class="btn btn-secondary btn-sm"
+                  :disabled="config.reward_tiers.length >= 20"
+                  @click="addRewardTier"
+                >
+                  <Icon name="plus" size="sm" class="mr-1.5" />
+                  {{ t('adminCheckin.addTier') }}
+                </button>
+              </div>
+
+              <div v-if="config.reward_tiers.length" class="mt-4 divide-y divide-gray-100 border-y border-gray-100 dark:divide-dark-700 dark:border-dark-700">
+                <div v-for="(tier, index) in config.reward_tiers" :key="tier.id" class="py-5">
+                  <div class="grid items-end gap-4 md:grid-cols-2 xl:grid-cols-[1.25fr_1fr_1fr_1fr_auto]">
+                    <label class="block">
+                      <span class="input-label">{{ t('adminCheckin.tierName') }}</span>
+                      <input v-model.trim="tier.name" class="input mt-1" type="text" maxlength="30" required />
+                    </label>
+                    <label class="block">
+                      <span class="input-label">{{ t('adminCheckin.tierMinRecharge') }}</span>
+                      <input v-model.number="tier.min_recharge_amount" class="input mt-1" type="number" :min="config.min_recharge_amount + 0.01" step="0.01" required />
+                    </label>
+                    <label class="block">
+                      <span class="input-label">{{ t('adminCheckin.rewardMin') }}</span>
+                      <input v-model.number="tier.reward_min" class="input mt-1" type="number" min="0.01" step="0.01" required />
+                    </label>
+                    <label class="block">
+                      <span class="input-label">{{ t('adminCheckin.rewardMax') }}</span>
+                      <input v-model.number="tier.reward_max" class="input mt-1" type="number" min="0.01" step="0.01" required />
+                    </label>
+                    <button
+                      type="button"
+                      class="btn btn-ghost btn-sm h-10 w-10 p-0 text-red-500 hover:text-red-600"
+                      :title="t('adminCheckin.removeTier')"
+                      @click="removeRewardTier(index)"
+                    >
+                      <Icon name="trash" size="sm" />
+                    </button>
+                  </div>
+                  <div class="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                    <div class="flex items-center justify-between gap-3 rounded-lg border border-gray-200 px-3 py-2.5 dark:border-dark-700">
+                      <div class="min-w-0">
+                        <p class="text-xs font-medium text-gray-700 dark:text-gray-300">{{ t('adminCheckin.tierEnabled') }}</p>
+                        <p class="mt-0.5 text-[11px] text-gray-400 dark:text-gray-500">{{ t('adminCheckin.tierEnabledHint') }}</p>
+                      </div>
+                      <Toggle v-model="tier.enabled" />
+                    </div>
+                    <div class="flex items-center justify-between gap-3 rounded-lg border border-gray-200 px-3 py-2.5 dark:border-dark-700">
+                      <div class="min-w-0">
+                        <p class="text-xs font-medium text-gray-700 dark:text-gray-300">{{ t('adminCheckin.showTier') }}</p>
+                        <p class="mt-0.5 text-[11px] text-gray-400 dark:text-gray-500">{{ t('adminCheckin.showTierHint') }}</p>
+                      </div>
+                      <Toggle v-model="tier.visible" />
+                    </div>
+                    <div class="flex items-center justify-between gap-3 rounded-lg border border-gray-200 px-3 py-2.5 dark:border-dark-700">
+                      <div class="min-w-0">
+                        <p class="text-xs font-medium text-gray-700 dark:text-gray-300">{{ t('adminCheckin.qualifiedOnlyVisible') }}</p>
+                        <p class="mt-0.5 text-[11px] text-gray-400 dark:text-gray-500">{{ t('adminCheckin.qualifiedOnlyVisibleHint') }}</p>
+                      </div>
+                      <Toggle v-model="tier.qualified_only_visible" />
+                    </div>
+                    <div class="flex items-center justify-between gap-3 rounded-lg border border-gray-200 px-3 py-2.5 dark:border-dark-700">
+                      <div class="min-w-0">
+                        <p class="text-xs font-medium text-gray-700 dark:text-gray-300">{{ t('adminCheckin.showNextProgress') }}</p>
+                        <p class="mt-0.5 text-[11px] text-gray-400 dark:text-gray-500">{{ t('adminCheckin.showNextProgressHint') }}</p>
+                      </div>
+                      <Toggle v-model="tier.show_next_progress" />
+                    </div>
+                    <div class="flex items-center justify-between gap-3 rounded-lg border border-gray-200 px-3 py-2.5 dark:border-dark-700">
+                      <div class="min-w-0">
+                        <p class="text-xs font-medium text-gray-700 dark:text-gray-300">{{ t('adminCheckin.customButtonColor') }}</p>
+                        <p class="mt-0.5 text-[11px] text-gray-400 dark:text-gray-500">{{ t('adminCheckin.customButtonColorHint') }}</p>
+                      </div>
+                      <Toggle v-model="tier.custom_button_enabled" />
+                    </div>
+                    <div class="flex items-center justify-between gap-3 rounded-lg border border-gray-200 px-3 py-2.5 dark:border-dark-700">
+                      <div class="min-w-0">
+                        <p class="text-xs font-medium text-gray-700 dark:text-gray-300">{{ t('adminCheckin.tierBadge') }}</p>
+                        <p class="mt-0.5 text-[11px] text-gray-400 dark:text-gray-500">{{ t('adminCheckin.tierBadgeHint') }}</p>
+                      </div>
+                      <Toggle v-model="tier.tier_badge_enabled" />
+                    </div>
+                  </div>
+                  <div v-if="tier.custom_button_enabled" class="mt-3 flex flex-wrap items-center gap-2">
+                    <span class="mr-1 text-xs font-medium text-gray-600 dark:text-gray-400">{{ t('adminCheckin.buttonColor') }}</span>
+                    <button
+                      v-for="option in tierButtonColors"
+                      :key="option.value"
+                      type="button"
+                      class="flex h-8 w-8 items-center justify-center rounded-md ring-offset-2 transition-shadow dark:ring-offset-dark-800"
+                      :class="[option.swatchClass, tier.button_color === option.value && 'ring-2 ring-gray-900 dark:ring-white']"
+                      :title="option.label"
+                      :aria-label="option.label"
+                      @click="tier.button_color = option.value"
+                    >
+                      <Icon v-if="tier.button_color === option.value" name="check" size="xs" class="text-white" :stroke-width="2.5" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <div v-else class="mt-4 border-y border-gray-100 py-8 text-center text-sm text-gray-500 dark:border-dark-700 dark:text-gray-400">
+                {{ t('adminCheckin.noCustomTiers') }}
+              </div>
             </div>
 
             <div class="mt-6 flex justify-end border-t border-gray-100 pt-5 dark:border-dark-700">
@@ -301,8 +462,10 @@ import { computed, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { adminAPI } from '@/api/admin'
 import type {
+  CheckinButtonColor,
   CheckinConfig,
   CheckinRecord,
+  CheckinRewardTier,
   CheckinSummary,
   CheckinUserReport,
   Paginated
@@ -352,6 +515,14 @@ const qualificationOptions = computed(() => [
 
 const formatMoney = (value: number) => `$${Number(value || 0).toFixed(2)}`
 
+const tierButtonColors = computed<Array<{ value: CheckinButtonColor; label: string; swatchClass: string }>>(() => [
+  { value: 'emerald', label: t('adminCheckin.buttonColors.emerald'), swatchClass: 'bg-gradient-to-r from-emerald-400 to-teal-500' },
+  { value: 'blue', label: t('adminCheckin.buttonColors.blue'), swatchClass: 'bg-gradient-to-r from-sky-400 to-blue-500' },
+  { value: 'amber', label: t('adminCheckin.buttonColors.amber'), swatchClass: 'bg-gradient-to-r from-amber-400 to-orange-500' },
+  { value: 'rose', label: t('adminCheckin.buttonColors.rose'), swatchClass: 'bg-gradient-to-r from-rose-400 to-red-500' },
+  { value: 'violet', label: t('adminCheckin.buttonColors.violet'), swatchClass: 'bg-gradient-to-r from-violet-400 to-indigo-500' }
+])
+
 const overviewMetrics = computed(() => [
   { label: t('adminCheckin.todayUsers'), value: String(summary.value?.today_users || 0), icon: 'users' as const, iconClass: 'bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400' },
   { label: t('adminCheckin.todayReward'), value: formatMoney(summary.value?.today_reward || 0), icon: 'gift' as const, iconClass: 'bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400' },
@@ -370,10 +541,26 @@ const overviewDetails = computed(() => [
 ])
 const maxDailyReward = computed(() => Math.max(0, ...recentDaily.value.map((item) => item.reward_total)))
 const dailyBarWidth = (value: number) => value > 0 && maxDailyReward.value > 0 ? Math.max(2, (value / maxDailyReward.value) * 100) : 0
-const maxPeriodReward = computed(() => (config.value?.qualification_days || 0) * (config.value?.reward_max || 0))
+const highestRewardMax = computed(() => {
+  if (!config.value) return 0
+  return Math.max(config.value.reward_max, ...config.value.reward_tiers.filter((tier) => tier.enabled).map((tier) => Number(tier.reward_max) || 0))
+})
+const maxPeriodReward = computed(() => (config.value?.qualification_days || 0) * highestRewardMax.value)
+const tierConfigValid = computed(() => {
+  if (!config.value || !config.value.default_tier_name.trim()) return false
+  const thresholds = new Set<number>()
+  for (const tier of config.value.reward_tiers) {
+    const threshold = Math.round(Number(tier.min_recharge_amount) * 100)
+    if (!tier.name.trim() || !Number.isFinite(threshold) || threshold <= Math.round(config.value.min_recharge_amount * 100)) return false
+    if (thresholds.has(threshold)) return false
+    thresholds.add(threshold)
+    if (tier.reward_min <= 0 || tier.reward_max < tier.reward_min) return false
+  }
+  return true
+})
 const costGuardValid = computed(() => {
   const limit = config.value?.max_period_reward || 0
-  return limit > 0 && maxPeriodReward.value <= limit + 0.0000001
+  return tierConfigValid.value && limit > 0 && maxPeriodReward.value <= limit + 0.0000001
 })
 
 const loadOverview = async () => {
@@ -386,7 +573,36 @@ const loadOverview = async () => {
 }
 
 const loadConfig = async () => {
-  config.value = await adminAPI.checkin.getConfig()
+  const result = await adminAPI.checkin.getConfig()
+  result.reward_tiers ||= []
+  config.value = result
+}
+
+const addRewardTier = () => {
+  if (!config.value || config.value.reward_tiers.length >= 20) return
+  const previousThreshold = config.value.reward_tiers.reduce(
+    (maximum, tier) => Math.max(maximum, Number(tier.min_recharge_amount) || 0),
+    config.value.min_recharge_amount
+  )
+  const tier: CheckinRewardTier = {
+    id: `tier-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
+    name: t('adminCheckin.newTierName', { index: config.value.reward_tiers.length + 1 }),
+    min_recharge_amount: Math.round((previousThreshold + 10) * 100) / 100,
+    reward_min: config.value.reward_min,
+    reward_max: config.value.reward_max,
+    enabled: true,
+    visible: true,
+    qualified_only_visible: false,
+    show_next_progress: false,
+    custom_button_enabled: false,
+    button_color: 'emerald',
+    tier_badge_enabled: true
+  }
+  config.value.reward_tiers.push(tier)
+}
+
+const removeRewardTier = (index: number) => {
+  config.value?.reward_tiers.splice(index, 1)
 }
 
 const loadUsers = async () => {
