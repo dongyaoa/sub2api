@@ -2831,6 +2831,40 @@ func TestGatewayServiceCalculateRecordUsageCost_GroupImagePriceOverridesChannelI
 	require.InDelta(t, 0.042, cost.ActualCost, 1e-12)
 }
 
+func TestGatewayServiceCalculateRecordUsageCost_GeminiModelPriceOverridesFlatGroupImagePrice(t *testing.T) {
+	groupID := int64(130)
+	channelModelPrice := 0.25
+	groupImagePrice2K := 0.021
+
+	svc := &GatewayService{
+		billingService: NewBillingService(&config.Config{}, nil),
+		resolver:       newOpenAIImageChannelPricingResolverForTest(t, groupID, "gemini-3-pro-image", channelModelPrice),
+	}
+
+	cost := svc.calculateRecordUsageCost(
+		context.Background(),
+		&ForwardResult{Model: "gemini-3-pro-image", ImageCount: 2, ImageSize: ImageBillingSize2K},
+		&APIKey{
+			GroupID: i64p(groupID),
+			Group: &Group{
+				ID:           groupID,
+				Platform:     PlatformGemini,
+				ImagePrice2K: &groupImagePrice2K,
+			},
+		},
+		"gemini-3-pro-image",
+		1.0,
+		1.0,
+		time.Time{},
+		nil,
+	)
+
+	require.NotNil(t, cost)
+	require.Equal(t, string(BillingModeImage), cost.BillingMode)
+	require.InDelta(t, 0.50, cost.TotalCost, 1e-12)
+	require.InDelta(t, 0.50, cost.ActualCost, 1e-12)
+}
+
 func TestRecordUsageMarksCyberRequestType(t *testing.T) {
 	logStub := &openAIRecordUsageLogRepoStub{inserted: true}
 	userStub := &openAIRecordUsageUserRepoStub{}

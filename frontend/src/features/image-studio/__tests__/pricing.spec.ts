@@ -71,4 +71,31 @@ describe('image studio pricing', () => {
     expect(getImagePriceTiers(target, 'grok-imagine-image-2.0').map((item) => item.unitPrice))
       .toEqual([0.06, 0.08, 0.08])
   })
+
+  it('uses Gemini model-square image prices before flat group prices', () => {
+    const target = group({
+      platform: 'gemini',
+      image_price_1k: 0.9,
+      image_price_2k: 0.9,
+      image_price_4k: 0.9,
+      image_rate_independent: false,
+      rate_multiplier: 1,
+    })
+    const modelPricing = {
+      billing_mode: 'image' as const,
+      input_price: null,
+      output_price: null,
+      cache_write_price: null,
+      cache_read_price: null,
+      image_input_price: null,
+      image_output_price: null,
+      per_request_price: 0.11,
+      intervals: [
+        { min_tokens: 0, max_tokens: null, tier_label: '2K', input_price: null, output_price: null, cache_write_price: null, cache_read_price: null, per_request_price: 0.22 },
+      ],
+    }
+    expect(getImagePriceTiers(target, 'gemini-3-pro-image', undefined, modelPricing).map((item) => item.unitPrice))
+      .toEqual([0.11, 0.22, 0.11])
+    expect(estimateImageCost(target, 'gemini-3-pro-image', '2K', 2, undefined, modelPricing)).toBeCloseTo(0.44)
+  })
 })

@@ -548,6 +548,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
+import userChannelsAPI, { type UserAvailableChannel, type UserSupportedModelPricing } from '@/api/channels'
 import { userGroupsAPI } from '@/api/groups'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Select from '@/components/common/Select.vue'
@@ -618,6 +619,7 @@ const MAX_HISTORY_ITEMS = 10
 const MAX_SOURCE_IMAGE_BYTES = 20 * 1024 * 1024
 const SOURCE_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp'])
 const GEMINI_IMAGE_MODEL_NAMES: Record<string, string> = {
+  'gemini-3-pro-image': 'Nano banana Pro',
   'gemini-3-pro-image-preview': 'Nano banana Pro',
   'gemini-3.1-flash-image': 'Nano banana 2',
 }
@@ -632,6 +634,7 @@ const sourcePreviewUrls = ref<string[]>([])
 const sourceInput = ref<HTMLInputElement | null>(null)
 const sourceDragActive = ref(false)
 const apiKeys = ref<ApiKey[]>([])
+const availableChannels = ref<UserAvailableChannel[]>([])
 const userRates = ref<Record<number, number>>({})
 const selectedKeyId = ref<number | null>(null)
 const models = ref<Array<{ id: string; display_name?: string }>>([])
@@ -708,16 +711,33 @@ const openAI4KEnabled = computed(() => (
 ))
 const resolutionOptions = computed(() => getResolutionOptions(platform.value, openAI4KEnabled.value))
 const ratioOptions = computed(() => getAspectRatioOptions(platform.value))
+const modelSquarePricing = computed<UserSupportedModelPricing | null>(() => {
+  const group = selectedGroup.value
+  const modelName = model.value.trim().toLowerCase()
+  if (!group || group.platform !== 'gemini' || !modelName) return null
+  const candidates: UserSupportedModelPricing[] = []
+  for (const channel of availableChannels.value) {
+    for (const section of channel.platforms) {
+      if (section.platform !== group.platform || !section.groups.some((item) => item.id === group.id)) continue
+      for (const supported of section.supported_models) {
+        if (supported.name.trim().toLowerCase() === modelName && supported.pricing) {
+          candidates.push(supported.pricing)
+        }
+      }
+    }
+  }
+  return candidates.find((pricing) => pricing.billing_mode === 'image' || pricing.billing_mode === 'per_request') || null
+})
 const outputSizeLabel = computed(() => platform.value === 'openai'
   ? getOpenAIImageSize(ratio.value, resolution.value).replace('x', ' x ')
   : resolution.value + ' · ' + ratio.value)
 const priceTiers = computed(() => {
   if (!selectedGroup.value) return []
-  return getImagePriceTiers(selectedGroup.value, model.value, userRates.value[selectedGroup.value.id])
+  return getImagePriceTiers(selectedGroup.value, model.value, userRates.value[selectedGroup.value.id], modelSquarePricing.value)
 })
 const estimatedCost = computed(() => {
   if (!selectedGroup.value) return 0
-  return estimateImageCost(selectedGroup.value, model.value, resolution.value, quantity.value, userRates.value[selectedGroup.value.id])
+  return estimateImageCost(selectedGroup.value, model.value, resolution.value, quantity.value, userRates.value[selectedGroup.value.id], modelSquarePricing.value)
 })
 const images = computed(() => task.value ? extractTaskImageData(task.value) : [])
 const activeImage = computed(() => images.value[activeImageIndex.value] || images.value[0] || null)
@@ -1412,11 +1432,13 @@ async function restoreTask(stored: StoredImageTask) {
 onMounted(async () => {
   elapsedTimer = setInterval(() => { now.value = Date.now() }, 1000)
   try {
-    const [keys, rates] = await Promise.all([
+    const [keys, channels, rates] = await Promise.all([
       listEligibleImageKeys(),
+      userChannelsAPI.getAvailable().catch(() => [] as UserAvailableChannel[]),
       userGroupsAPI.getUserGroupRates().catch(() => ({})),
     ])
     apiKeys.value = keys
+    availableChannels.value = channels
     userRates.value = rates
     const stored = readPersistedTask()
     if (stored) {

@@ -33,6 +33,16 @@ func TestBuildGeminiStudioImageRequestGeneration(t *testing.T) {
 	require.Equal(t, "draw a city", firstPart["text"])
 }
 
+func TestBuildGeminiStudioImageRequestAcceptsGeminiProImage(t *testing.T) {
+	model, _, err := buildGeminiStudioImageRequest(
+		"/v1/images/generations",
+		"application/json",
+		[]byte(`{"model":"gemini-3-pro-image","prompt":"draw a banana","n":1,"resolution":"1K"}`),
+	)
+	require.NoError(t, err)
+	require.Equal(t, gemini3ProImageLegacyModel, model)
+}
+
 func TestBuildGeminiStudioImageRequestEdit(t *testing.T) {
 	var body bytes.Buffer
 	writer := multipart.NewWriter(&body)

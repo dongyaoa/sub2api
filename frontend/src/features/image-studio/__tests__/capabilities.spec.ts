@@ -31,10 +31,12 @@ describe('image studio capabilities', () => {
     expect(filterImageModels('gemini', [
       { id: 'gemini-2.5-flash-image' },
       { id: 'gemini-3.1-flash-image' },
+      { id: 'gemini-3-pro-image' },
       { id: 'gemini-3-pro-image-preview' },
       { id: 'gemini-3-pro-preview' },
     ])).toEqual([
       { id: 'gemini-3.1-flash-image' },
+      { id: 'gemini-3-pro-image' },
       { id: 'gemini-3-pro-image-preview' },
     ])
   })

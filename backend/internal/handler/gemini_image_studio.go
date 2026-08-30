@@ -18,9 +18,10 @@ import (
 )
 
 const (
-	gemini31FlashImageModel = "gemini-3.1-flash-image"
-	gemini3ProImageModel    = "gemini-3-pro-image-preview"
-	maxGeminiSourceImage    = 20 << 20
+	gemini31FlashImageModel    = "gemini-3.1-flash-image"
+	gemini3ProImageLegacyModel = "gemini-3-pro-image"
+	gemini3ProImageModel       = "gemini-3-pro-image-preview"
+	maxGeminiSourceImage       = 20 << 20
 )
 
 var geminiStudioAspectRatios = map[string]struct{}{
@@ -55,7 +56,7 @@ type geminiStudioRequest struct {
 
 func isGeminiStudioImageModel(model string) bool {
 	switch strings.ToLower(strings.TrimSpace(model)) {
-	case gemini31FlashImageModel, gemini3ProImageModel:
+	case gemini31FlashImageModel, gemini3ProImageLegacyModel, gemini3ProImageModel:
 		return true
 	default:
 		return false
@@ -66,7 +67,7 @@ func buildGeminiStudioImageRequest(path, contentType string, body []byte) (strin
 	metadata := parseAsyncImageTaskMetadata(path, contentType, body)
 	model := strings.ToLower(strings.TrimSpace(metadata.Model))
 	if !isGeminiStudioImageModel(model) {
-		return "", nil, fmt.Errorf("model must be %s or %s", gemini31FlashImageModel, gemini3ProImageModel)
+		return "", nil, fmt.Errorf("model must be %s, %s, or %s", gemini31FlashImageModel, gemini3ProImageLegacyModel, gemini3ProImageModel)
 	}
 	if strings.TrimSpace(metadata.Prompt) == "" {
 		return "", nil, errors.New("prompt is required")

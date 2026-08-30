@@ -1,4 +1,5 @@
 import { BILLING_MODE_IMAGE } from '@/constants/channel'
+import type { UserSupportedModelPricing } from '@/api/channels'
 import type { Group } from '@/types'
 import { resolveEffectiveMultiplier } from '@/utils/modelSquare'
 import type { ImageResolutionTier, ImageStudioPlatform } from './types'
@@ -47,6 +48,18 @@ function configuredPrice(group: Group, model: string, tier: ImageResolutionTier)
   return value == null || !Number.isFinite(Number(value)) ? null : Math.max(0, Number(value))
 }
 
+function modelSquarePrice(pricing: UserSupportedModelPricing | null | undefined, tier: ImageResolutionTier): number | null {
+  if (!pricing || (pricing.billing_mode !== BILLING_MODE_IMAGE && pricing.billing_mode !== 'per_request')) return null
+  const interval = pricing.intervals?.find((item) => (
+    item.tier_label?.trim().toUpperCase() === tier &&
+    item.per_request_price != null &&
+    Number.isFinite(Number(item.per_request_price))
+  ))
+  const value = interval?.per_request_price ?? pricing.per_request_price
+  if (value == null || !Number.isFinite(Number(value))) return null
+  return Math.max(0, Number(value))
+}
+
 export function getDefaultImagePrice(
   platform: ImageStudioPlatform,
   model: string,
@@ -65,11 +78,17 @@ export function getImagePriceTiers(
   group: Group,
   model: string,
   userRate?: number,
+  modelPricing?: UserSupportedModelPricing | null,
 ): ImagePriceTier[] {
   const platform = group.platform === 'grok' ? 'grok' : 'openai'
   const multiplier = resolveEffectiveMultiplier(group, userRate, BILLING_MODE_IMAGE).value
   return (['1K', '2K', '4K'] as ImageResolutionTier[]).map((tier) => {
-    const custom = configuredPrice(group, model, tier)
+    const groupPrice = configuredPrice(group, model, tier)
+    // Gemini model-square image prices are model-specific. Keep the legacy
+    // flat group fields for other platforms, but let the configured model
+    // price win for Gemini so the estimate matches actual billing.
+    const modelPrice = group.platform === 'gemini' ? modelSquarePrice(modelPricing, tier) : null
+    const custom = modelPrice ?? groupPrice
     const basePrice = custom ?? getDefaultImagePrice(platform, model, tier)
     return {
       tier,
@@ -86,8 +105,9 @@ export function estimateImageCost(
   tier: ImageResolutionTier,
   quantity: number,
   userRate?: number,
+  modelPricing?: UserSupportedModelPricing | null,
 ): number {
-  const selected = getImagePriceTiers(group, model, userRate).find((item) => item.tier === tier)
+  const selected = getImagePriceTiers(group, model, userRate, modelPricing).find((item) => item.tier === tier)
   return (selected?.unitPrice ?? 0) * Math.max(0, quantity)
 }
 

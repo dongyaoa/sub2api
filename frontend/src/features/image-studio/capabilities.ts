@@ -62,6 +62,7 @@ const OPENAI_4K_SIZES: Record<ImageAspectRatio, string> = {
 
 const GEMINI_IMAGE_MODELS = new Set([
   'gemini-3.1-flash-image',
+  'gemini-3-pro-image',
   'gemini-3-pro-image-preview',
 ])
 

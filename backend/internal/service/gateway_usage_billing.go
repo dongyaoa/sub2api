@@ -1089,6 +1089,23 @@ func (s *GatewayService) calculateImageCost(
 			return cost
 		}
 	}
+	// Gemini image models are priced per model in the model plaza/channel
+	// configuration. Their legacy group image_price_* fields are flat and
+	// cannot distinguish Nano Banana model variants, so the model pricing must
+	// take precedence when a channel price is available.
+	if apiKey != nil && apiKey.Group != nil && apiKey.Group.Platform == PlatformGemini &&
+		resolved != nil && resolved.Source == PricingSourceChannel &&
+		(resolved.Mode == BillingModeImage || resolved.Mode == BillingModePerRequest) {
+		gid := apiKey.Group.ID
+		cost, err := s.billingService.CalculateCostUnified(CostInput{
+			Ctx: ctx, Model: billingModel, GroupID: &gid, Group: apiKey.Group,
+			RequestCount: result.ImageCount, SizeTier: sizeTier,
+			RateMultiplier: multiplier, Resolver: s.resolver, Resolved: resolved,
+		})
+		if err == nil {
+			return cost
+		}
+	}
 	groupConfig := imagePriceConfigFromAPIKey(apiKey)
 	if apiKeyHasConfiguredImagePrice(apiKey, billingModel, sizeTier) {
 		return s.billingService.CalculateImageCost(billingModel, sizeTier, result.ImageCount, groupConfig, multiplier)

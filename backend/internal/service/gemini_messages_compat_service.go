@@ -1140,6 +1140,12 @@ func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.
 		return nil, s.writeGoogleError(c, http.StatusBadRequest, "Request body is empty")
 	}
 
+	if normalizedBody, changed, err := normalizeGeminiImageRequestBody(body); err != nil {
+		return nil, s.writeGoogleError(c, http.StatusBadRequest, "Invalid Gemini image request")
+	} else if changed {
+		body = normalizedBody
+	}
+
 	// 过滤掉 parts 为空的消息（Gemini API 不接受空 parts）
 	if filteredBody, err := filterEmptyPartsFromGeminiRequest(body); err == nil {
 		body = filteredBody
