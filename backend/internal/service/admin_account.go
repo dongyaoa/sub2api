@@ -474,6 +474,22 @@ func (s *adminServiceImpl) CreateAccount(ctx context.Context, input *CreateAccou
 	if err != nil {
 		return nil, err
 	}
+	if input.ProxyPool != nil {
+		pool, poolErr := normalizeAccountProxyPoolInput(ctx, s.proxyRepo, input.ProxyPool)
+		if poolErr != nil {
+			return nil, poolErr
+		}
+		if len(pool) > 0 && accountExtra == nil {
+			accountExtra = make(map[string]any)
+		}
+		SetAccountProxyPoolExtra(accountExtra, pool)
+		if len(pool) > 0 {
+			input.ProxyID = &pool[0].ProxyID
+			input.Concurrency = AccountProxyPoolConcurrency(pool)
+		} else {
+			input.ProxyID = nil
+		}
+	}
 
 	// 绑定分组
 	groupIDs := input.GroupIDs
@@ -553,6 +569,29 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	if err != nil {
 		return nil, err
 	}
+	previousProbeIdentity := upstreamBillingProbeIdentity(account)
+	previousOllamaUsageIdentity := ollamaCloudUsageIdentity(account)
+	if input.ProxyPool != nil && account.IsCredentialShadow() {
+		return nil, infraerrors.BadRequest("SPARK_SHADOW_PROXY_INHERITED", "spark shadow accounts inherit their proxy pool from the parent account")
+	}
+	var normalizedProxyPool []AccountProxyPoolEntry
+	if input.ProxyPool != nil {
+		normalizedProxyPool, err = normalizeAccountProxyPoolInput(ctx, s.proxyRepo, input.ProxyPool)
+		if err != nil {
+			return nil, err
+		}
+		if account.Extra == nil {
+			account.Extra = make(map[string]any)
+		}
+		SetAccountProxyPoolExtra(account.Extra, normalizedProxyPool)
+		if len(normalizedProxyPool) > 0 {
+			proxyID := normalizedProxyPool[0].ProxyID
+			account.ProxyID = &proxyID
+			account.Concurrency = AccountProxyPoolConcurrency(normalizedProxyPool)
+		} else {
+			account.ProxyID = nil
+		}
+	}
 	var normalizedExtra map[string]any
 	if input.Extra != nil {
 		normalizedExtra, err = normalizeOpenAILongContextBillingUpdateExtra(account, input)
@@ -572,8 +611,6 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 			return nil, err
 		}
 	}
-	previousProbeIdentity := upstreamBillingProbeIdentity(account)
-	previousOllamaUsageIdentity := ollamaCloudUsageIdentity(account)
 	// 安全/身份不变量(影子账号):通用更新路径被 edit/re-auth/refresh/batch 共用,
 	// 必须在此守住,否则仅在创建时的保证可被这些路径绕过。
 	if account.IsCredentialShadow() {
@@ -690,6 +727,12 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	if input.Extra == nil {
 		account.Extra = prepareCodexFingerprintExtraForUpdate(account, account.Extra)
 	}
+	if input.ProxyPool != nil {
+		if account.Extra == nil {
+			account.Extra = make(map[string]any)
+		}
+		SetAccountProxyPoolExtra(account.Extra, normalizedProxyPool)
+	}
 	if requestedRateSyncEnabledUpdate != nil && *requestedRateSyncEnabledUpdate {
 		if requestedProbeEnabledUpdate != nil && !*requestedProbeEnabledUpdate {
 			return nil, infraerrors.BadRequest(
@@ -721,7 +764,7 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 	}
 	// 影子代理恒继承母账号(由 propagateProxyToShadows 同步),不接受独立编辑——外审 B/P1;
 	// 否则要等母账号下次改 proxy 才被覆盖,期间影子会出现"有时继承、有时独立"的漂移。
-	if input.ProxyID != nil && !account.IsCredentialShadow() {
+	if input.ProxyID != nil && input.ProxyPool == nil && !account.IsCredentialShadow() {
 		// 0 表示清除代理（前端发送 0 而不是 null 来表达清除意图）
 		if *input.ProxyID == 0 {
 			account.ProxyID = nil
@@ -729,6 +772,12 @@ func (s *adminServiceImpl) UpdateAccount(ctx context.Context, id int64, input *U
 			account.ProxyID = input.ProxyID
 		}
 		account.Proxy = nil // 清除关联对象，防止 GORM Save 时根据 Proxy.ID 覆盖 ProxyID
+	}
+	// A proxy pool owns the account-wide concurrency value. Ignore a legacy
+	// concurrency field in the same request once a pool was supplied.
+	if input.ProxyPool != nil {
+		account.Concurrency = AccountProxyPoolConcurrency(normalizedProxyPool)
+		account.Proxy = nil
 	}
 	if !reflect.DeepEqual(previousProbeIdentity, upstreamBillingProbeIdentity(account)) && account.Extra != nil {
 		delete(account.Extra, UpstreamBillingProbeExtraKey)
@@ -907,6 +956,34 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 	delete(input.Extra, OllamaCloudUsageSessionExtraKey)
 	delete(input.Extra, OllamaCloudUsageAutoRefreshExtraKey)
 	delete(input.Extra, OllamaCloudUsageSnapshotExtraKey)
+	var normalizedProxyPool []AccountProxyPoolEntry
+	if input.ProxyPool != nil {
+		var poolErr error
+		normalizedProxyPool, poolErr = normalizeAccountProxyPoolInput(ctx, s.proxyRepo, input.ProxyPool)
+		if poolErr != nil {
+			return nil, poolErr
+		}
+		if input.Extra == nil {
+			input.Extra = make(map[string]any)
+		}
+		SetAccountProxyPoolExtra(input.Extra, normalizedProxyPool)
+		if len(normalizedProxyPool) == 0 {
+			// BulkUpdate uses JSONB key merges; an explicit null lets the
+			// repository remove a previously configured pool.
+			input.Extra[AccountProxyPoolExtraKey] = nil
+		}
+		if len(normalizedProxyPool) > 0 {
+			proxyID := normalizedProxyPool[0].ProxyID
+			input.ProxyID = &proxyID
+			concurrency := AccountProxyPoolConcurrency(normalizedProxyPool)
+			input.Concurrency = &concurrency
+		} else {
+			zero := int64(0)
+			input.ProxyID = &zero
+			concurrency := 0
+			input.Concurrency = &concurrency
+		}
+	}
 
 	if len(input.AccountIDs) == 0 && input.Filters != nil {
 		accountIDs, err := s.resolveBulkUpdateTargetIDs(ctx, input.Filters)
@@ -984,7 +1061,7 @@ func (s *adminServiceImpl) BulkUpdateAccounts(ctx context.Context, input *BulkUp
 	// 影子账号 proxy 恒继承母账号(与单账号 UpdateAccount 守卫对齐——外审第4轮 P1):批量携带 proxy
 	// 时目标不得含影子,否则影子会获得独立 proxy、破坏继承不变量(网关按所选影子自身 proxy 出站,
 	// 要等母账号下次改 proxy 才覆盖→漂移)。含影子即整体拒绝,提示从选择中剔除影子。
-	if input.ProxyID != nil {
+	if input.ProxyID != nil || input.ProxyPool != nil {
 		for _, acc := range cachedTargets {
 			if acc != nil && acc.IsCredentialShadow() {
 				return nil, infraerrors.Newf(http.StatusBadRequest, "SPARK_SHADOW_PROXY_INHERITED",

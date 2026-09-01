@@ -2874,13 +2874,15 @@
           <label class="input-label mb-0">{{ t('admin.accounts.proxy') }}</label>
           <ProxyAdBanner />
         </div>
-        <ProxySelector v-model="form.proxy_id" :proxies="proxies" />
+        <ProxySelector v-if="form.proxy_pool.length === 0" v-model="form.proxy_id" :proxies="proxies" />
+        <AccountProxyPoolEditor v-model="form.proxy_pool" :proxies="proxies" class="mt-3" />
       </div>
 
       <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <div>
           <label class="input-label">{{ t('admin.accounts.concurrency') }}</label>
           <input v-model.number="form.concurrency" type="number" min="1" class="input"
+            :disabled="form.proxy_pool.length > 0"
             @input="form.concurrency = Math.max(1, form.concurrency || 1)" />
         </div>
         <div>
@@ -3738,6 +3740,7 @@ import type {
   Proxy,
   AdminGroup,
   AccountPlatform,
+  AccountProxyPoolEntry,
   AccountType,
   CheckMixedChannelResponse,
   CreateAccountRequest,
@@ -3753,6 +3756,7 @@ import PlatformIcon from '@/components/common/PlatformIcon.vue'
 import Icon from '@/components/icons/Icon.vue'
 import ProxySelector from '@/components/common/ProxySelector.vue'
 import ProxyAdBanner from '@/components/common/ProxyAdBanner.vue'
+import AccountProxyPoolEditor from '@/components/account/AccountProxyPoolEditor.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
 import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
@@ -4455,6 +4459,7 @@ const form = reactive({
   type: 'oauth' as AccountType, // Will be 'oauth', 'setup-token', or 'apikey'
   credentials: {} as Record<string, unknown>,
   proxy_id: null as number | null,
+  proxy_pool: [] as AccountProxyPoolEntry[],
   concurrency: 10,
   load_factor: null as number | null,
   priority: 1,
@@ -4462,6 +4467,19 @@ const form = reactive({
   group_ids: [] as number[],
   expires_at: null as number | null
 })
+
+watch(
+  () => form.proxy_pool,
+  (pool, previousPool) => {
+    if (pool.length > 0) {
+      form.proxy_id = pool[0].proxy_id
+      form.concurrency = pool.reduce((total, entry) => total + Math.max(1, entry.concurrency || 1), 0)
+    } else if (previousPool.length > 0) {
+      form.proxy_id = null
+    }
+  },
+  { deep: true }
+)
 
 // Helper to check if current type needs OAuth flow
 const isOAuthFlow = computed(() => {
@@ -5009,6 +5027,7 @@ const resetForm = () => {
   form.type = 'oauth'
   form.credentials = {}
   form.proxy_id = null
+  form.proxy_pool = []
   form.concurrency = 10
   form.load_factor = null
   form.priority = 1
@@ -5683,6 +5702,7 @@ const createAccountAndFinish = async (
     credentials,
     extra: finalExtra,
     proxy_id: form.proxy_id,
+    proxy_pool: form.proxy_pool.length > 0 ? form.proxy_pool.map((entry) => ({ ...entry })) : undefined,
     concurrency: form.concurrency,
     load_factor: form.load_factor ?? undefined,
     priority: form.priority,
@@ -5750,6 +5770,7 @@ const handleGrokValidateRT = async (refreshTokenInput: string) => {
           credentials,
           extra,
           proxy_id: form.proxy_id,
+          proxy_pool: form.proxy_pool.length > 0 ? form.proxy_pool.map((entry) => ({ ...entry })) : undefined,
           concurrency: form.concurrency,
           load_factor: form.load_factor ?? undefined,
           priority: form.priority,
@@ -5816,6 +5837,7 @@ const handleGrokImportSSO = async (ssoInput: string) => {
       name: form.name || undefined,
       notes: form.notes || undefined,
       proxy_id: form.proxy_id,
+      proxy_pool: form.proxy_pool.length > 0 ? form.proxy_pool.map((entry) => ({ ...entry })) : undefined,
       group_ids: form.group_ids,
       credentials,
       concurrency: form.concurrency,
@@ -5927,6 +5949,7 @@ const handleGrokAuthorizePassword = async (emailPasswordInput: string) => {
           credentials,
           extra,
           proxy_id: form.proxy_id,
+          proxy_pool: form.proxy_pool.length > 0 ? form.proxy_pool.map((entry) => ({ ...entry })) : undefined,
           concurrency: form.concurrency,
           load_factor: form.load_factor ?? undefined,
           priority: form.priority,
@@ -6026,6 +6049,7 @@ const handleOpenAIExchange = async (authCode: string) => {
         credentials,
         extra,
         proxy_id: form.proxy_id,
+        proxy_pool: form.proxy_pool.length > 0 ? form.proxy_pool.map((entry) => ({ ...entry })) : undefined,
         concurrency: form.concurrency,
         load_factor: form.load_factor ?? undefined,
         priority: form.priority,
@@ -6131,6 +6155,7 @@ const handleOpenAIImportCodexSession = async (content: string) => {
       name: form.name,
       notes: form.notes || null,
       proxy_id: form.proxy_id,
+      proxy_pool: form.proxy_pool.length > 0 ? form.proxy_pool.map((entry) => ({ ...entry })) : undefined,
       concurrency: form.concurrency,
       load_factor: form.load_factor ?? undefined,
       priority: form.priority,
@@ -6209,6 +6234,7 @@ const handleOpenAIImportCodexPAT = async (accessToken: string) => {
       name: form.name,
       notes: form.notes || null,
       proxy_id: form.proxy_id,
+      proxy_pool: form.proxy_pool.length > 0 ? form.proxy_pool.map((entry) => ({ ...entry })) : undefined,
       concurrency: form.concurrency,
       load_factor: form.load_factor ?? undefined,
       priority: form.priority,
@@ -6307,6 +6333,7 @@ const handleOpenAIBatchRT = async (refreshTokenInput: string, clientId?: string)
             credentials,
             extra,
             proxy_id: form.proxy_id,
+            proxy_pool: form.proxy_pool.length > 0 ? form.proxy_pool.map((entry) => ({ ...entry })) : undefined,
             concurrency: form.concurrency,
             load_factor: form.load_factor ?? undefined,
             priority: form.priority,
@@ -6406,6 +6433,7 @@ const handleAntigravityValidateRT = async (refreshTokenInput: string) => {
           credentials,
           extra: {},
           proxy_id: form.proxy_id,
+          proxy_pool: form.proxy_pool.length > 0 ? form.proxy_pool.map((entry) => ({ ...entry })) : undefined,
           concurrency: form.concurrency,
           load_factor: form.load_factor ?? undefined,
           priority: form.priority,
@@ -6787,6 +6815,7 @@ const handleCookieAuth = async (sessionKey: string) => {
           credentials,
           extra,
           proxy_id: form.proxy_id,
+          proxy_pool: form.proxy_pool.length > 0 ? form.proxy_pool.map((entry) => ({ ...entry })) : undefined,
           concurrency: form.concurrency,
           load_factor: form.load_factor ?? undefined,
           priority: form.priority,

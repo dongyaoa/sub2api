@@ -34,6 +34,8 @@ type stubConcurrencyCacheForTest struct {
 	apiKeyReleaseErr     error
 	apiKeyConcurrency    map[int64]int
 	apiKeyConcurrencyErr error
+	proxyAcquireResult   bool
+	proxyAcquireErr      error
 
 	// 记录调用
 	releasedAccountIDs       []int64
@@ -43,6 +45,8 @@ type stubConcurrencyCacheForTest struct {
 	trackedAPIKeyRequestIDs  []string
 	releasedAPIKeyIDs        []int64
 	releasedAPIKeyRequestIDs []string
+	releasedProxyAccountIDs  []int64
+	releasedProxyIDs         []int64
 }
 
 type ingressLeaseCacheForTest struct {
@@ -94,6 +98,14 @@ func (c *stubConcurrencyCacheForTest) ReleaseAccountSlot(_ context.Context, acco
 	c.releasedAccountIDs = append(c.releasedAccountIDs, accountID)
 	c.releasedRequestIDs = append(c.releasedRequestIDs, requestID)
 	return c.releaseErr
+}
+func (c *stubConcurrencyCacheForTest) AcquireAccountProxySlot(_ context.Context, _, _ int64, _ int, _ string) (bool, error) {
+	return c.proxyAcquireResult, c.proxyAcquireErr
+}
+func (c *stubConcurrencyCacheForTest) ReleaseAccountProxySlot(_ context.Context, accountID, proxyID int64, _ string) error {
+	c.releasedProxyAccountIDs = append(c.releasedProxyAccountIDs, accountID)
+	c.releasedProxyIDs = append(c.releasedProxyIDs, proxyID)
+	return nil
 }
 func (c *stubConcurrencyCacheForTest) GetAccountConcurrency(_ context.Context, _ int64) (int, error) {
 	return c.concurrency, c.concurrencyErr
@@ -201,6 +213,21 @@ func TestAcquireAccountSlot_Success(t *testing.T) {
 	require.NoError(t, err)
 	require.True(t, result.Acquired)
 	require.NotNil(t, result.ReleaseFunc)
+}
+
+func TestAcquireAccountSlotForAccount_UsesProxySlot(t *testing.T) {
+	cache := &stubConcurrencyCacheForTest{acquireResult: true, proxyAcquireResult: true}
+	svc := NewConcurrencyService(cache)
+	account := &Account{ID: 77, Concurrency: 10, ProxyPool: []AccountProxyPoolEntry{{
+		ProxyID: 88, Concurrency: 10, Proxy: &Proxy{ID: 88, Status: StatusActive},
+	}}}
+
+	result, err := svc.AcquireAccountSlotForAccount(context.Background(), account)
+	require.NoError(t, err)
+	require.True(t, result.Acquired)
+	result.ReleaseFunc()
+	require.Equal(t, []int64{77}, cache.releasedProxyAccountIDs)
+	require.Equal(t, []int64{88}, cache.releasedProxyIDs)
 }
 
 func TestAcquireAccountSlot_Failure(t *testing.T) {

@@ -55,6 +55,14 @@ type ConcurrencyCache interface {
 	CleanupStaleProcessSlots(ctx context.Context, activeRequestPrefix string) error
 }
 
+// AccountProxyConcurrencyCache is optional so existing test doubles and
+// alternate cache implementations remain source-compatible. The production
+// Redis cache implements it to enforce each proxy pool entry independently.
+type AccountProxyConcurrencyCache interface {
+	AcquireAccountProxySlot(ctx context.Context, accountID, proxyID int64, maxConcurrency int, requestID string) (bool, error)
+	ReleaseAccountProxySlot(ctx context.Context, accountID, proxyID int64, requestID string) error
+}
+
 type APIKeyConcurrencyCache interface {
 	TrackAPIKeySlot(ctx context.Context, apiKeyID int64, requestID string) error
 	ReleaseAPIKeySlot(ctx context.Context, apiKeyID int64, requestID string) error
@@ -372,6 +380,64 @@ func (s *ConcurrencyService) AcquireAccountSlot(ctx context.Context, accountID i
 	return &AcquireResult{
 		Acquired:    false,
 		ReleaseFunc: nil,
+	}, nil
+}
+
+// AcquireAccountSlotForAccount acquires both the account-wide slot and the
+// selected proxy's independent slot. Caches without proxy-slot support fall
+// back to the legacy account-only behavior for compatibility.
+func (s *ConcurrencyService) AcquireAccountSlotForAccount(ctx context.Context, account *Account) (*AcquireResult, error) {
+	if account == nil {
+		return s.AcquireAccountSlot(ctx, 0, 0)
+	}
+	if !account.ProxyPoolSelected {
+		SelectAccountProxy(account)
+	}
+	if len(account.ProxyPool) > 0 && account.ProxyID == nil {
+		return &AcquireResult{Acquired: false}, nil
+	}
+	accountResult, err := s.AcquireAccountSlot(ctx, account.ID, account.Concurrency)
+	if err != nil || accountResult == nil || !accountResult.Acquired || len(account.ProxyPool) == 0 || account.ProxyID == nil || s == nil || s.cache == nil {
+		return accountResult, err
+	}
+	var capacity int
+	for _, entry := range account.ProxyPool {
+		if entry.ProxyID == *account.ProxyID {
+			capacity = entry.Concurrency
+			break
+		}
+	}
+	proxyCache, ok := s.cache.(AccountProxyConcurrencyCache)
+	if !ok || capacity <= 0 {
+		return accountResult, nil
+	}
+	proxyRequestID := generateRequestID()
+	proxyAcquired, err := proxyCache.AcquireAccountProxySlot(ctx, account.ID, *account.ProxyID, capacity, proxyRequestID)
+	if err != nil {
+		accountResult.ReleaseFunc()
+		return nil, err
+	}
+	if !proxyAcquired {
+		accountResult.ReleaseFunc()
+		return &AcquireResult{Acquired: false}, nil
+	}
+	proxyID := *account.ProxyID
+	accountRelease := accountResult.ReleaseFunc
+	var releaseOnce sync.Once
+	return &AcquireResult{
+		Acquired: true,
+		ReleaseFunc: func() {
+			releaseOnce.Do(func() {
+				bgCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+				defer cancel()
+				if releaseErr := proxyCache.ReleaseAccountProxySlot(bgCtx, account.ID, proxyID, proxyRequestID); releaseErr != nil {
+					logger.LegacyPrintf("service.concurrency", "Warning: failed to release account proxy slot for %d/%d (req=%s): %v", account.ID, proxyID, proxyRequestID, releaseErr)
+				}
+				if accountRelease != nil {
+					accountRelease()
+				}
+			})
+		},
 	}, nil
 }
 

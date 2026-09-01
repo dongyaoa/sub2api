@@ -1169,6 +1169,7 @@ export interface Account {
   created_at: string
   updated_at: string
   proxy?: Proxy
+  proxy_pool?: AccountProxyPoolEntry[]
   group_ids?: number[] // Groups this account belongs to
   groups?: Group[] // Preloaded group objects
 
@@ -1247,6 +1248,12 @@ export interface Account {
   parent_privacy_mode?: string
   parent_subscription_expires_at?: string
   parent_chatgpt_account_id?: string
+}
+
+export interface AccountProxyPoolEntry {
+  proxy_id: number
+  concurrency: number
+  proxy?: Proxy
 }
 
 export interface AccountSchedulerGroupScore {
@@ -1429,6 +1436,7 @@ export interface CreateAccountRequest {
   credentials: Record<string, unknown>
   extra?: Record<string, unknown>
   proxy_id?: number | null
+  proxy_pool?: AccountProxyPoolEntry[]
   concurrency?: number
   load_factor?: number | null
   priority?: number
@@ -1447,6 +1455,7 @@ export interface UpdateAccountRequest {
   credentials?: Record<string, unknown>
   extra?: Record<string, unknown>
   proxy_id?: number | null
+  proxy_pool?: AccountProxyPoolEntry[]
   concurrency?: number
   load_factor?: number | null
   priority?: number
@@ -1537,11 +1546,17 @@ export interface AdminDataAccount {
   credentials: Record<string, unknown>
   extra?: Record<string, unknown>
   proxy_key?: string | null
+  proxy_pool?: AdminDataProxyPoolEntry[]
   concurrency: number
   priority: number
   rate_multiplier?: number | null
   expires_at?: number | null
   auto_pause_on_expired?: boolean
+}
+
+export interface AdminDataProxyPoolEntry {
+  proxy_key: string
+  concurrency: number
 }
 
 export interface AdminDataImportError {
@@ -1567,6 +1582,7 @@ export interface CodexSessionImportRequest {
   notes?: string | null
   group_ids?: number[]
   proxy_id?: number | null
+  proxy_pool?: AccountProxyPoolEntry[]
   concurrency?: number
   priority?: number
   rate_multiplier?: number
@@ -1586,6 +1602,7 @@ export interface OpenAICodexPATCreateRequest {
   notes?: string | null
   group_ids?: number[]
   proxy_id?: number | null
+  proxy_pool?: AccountProxyPoolEntry[]
   concurrency?: number
   priority?: number
   rate_multiplier?: number

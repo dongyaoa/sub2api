@@ -61,10 +61,15 @@ type Account struct {
 	ParentAccountID *int64 // non-nil → 影子账号（不持凭据，透传母账号凭据）
 	QuotaDimension  string // 用量维度："" / "global" / "spark"
 
-	Proxy         *Proxy
-	AccountGroups []AccountGroup
-	GroupIDs      []int64
-	Groups        []*Group
+	Proxy *Proxy
+	// ProxyPool contains optional per-proxy capacities. It is hydrated from
+	// extra.proxy_pool and kept separate from the legacy Proxy field so all
+	// existing transport code remains backward compatible.
+	ProxyPool         []AccountProxyPoolEntry `json:"proxy_pool,omitempty"`
+	ProxyPoolSelected bool                    `json:"-"`
+	AccountGroups     []AccountGroup
+	GroupIDs          []int64
+	Groups            []*Group
 
 	// model_mapping 热路径缓存（非持久化字段）
 	modelMappingCache               map[string]string

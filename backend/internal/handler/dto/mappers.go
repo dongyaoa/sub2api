@@ -248,6 +248,7 @@ func AccountFromServiceShallow(a *service.Account) *Account {
 		ProxyID:                 a.ProxyID,
 		ProxyFallbackOriginID:   a.ProxyFallbackOriginID,
 		ProxyFallbackOriginName: a.ProxyFallbackOriginName,
+		ProxyPool:               accountProxyPoolFromService(a.ProxyPool),
 		Concurrency:             a.Concurrency,
 		LoadFactor:              a.LoadFactor,
 		Priority:                a.Priority,
@@ -438,6 +439,21 @@ func AccountFromService(a *service.Account) *Account {
 		for _, g := range a.Groups {
 			out.Groups = append(out.Groups, GroupFromServiceShallow(g))
 		}
+	}
+	return out
+}
+
+func accountProxyPoolFromService(entries []service.AccountProxyPoolEntry) []AccountProxyPoolEntry {
+	if len(entries) == 0 {
+		return nil
+	}
+	out := make([]AccountProxyPoolEntry, 0, len(entries))
+	for _, entry := range entries {
+		out = append(out, AccountProxyPoolEntry{
+			ProxyID:     entry.ProxyID,
+			Concurrency: entry.Concurrency,
+			Proxy:       ProxyFromService(entry.Proxy),
+		})
 	}
 	return out
 }

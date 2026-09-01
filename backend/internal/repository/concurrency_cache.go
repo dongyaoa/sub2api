@@ -25,7 +25,8 @@ import (
 const (
 	// 并发槽位键前缀（有序集合）
 	// 格式: concurrency:account:{accountID}
-	accountSlotKeyPrefix = "concurrency:account:"
+	accountSlotKeyPrefix      = "concurrency:account:"
+	accountProxySlotKeyPrefix = "concurrency:account_proxy:"
 	// 格式: concurrency:user:{userID}
 	userSlotKeyPrefix = "concurrency:user:"
 	// 格式: concurrency:api_key:{apiKeyID}
@@ -104,6 +105,27 @@ var (
 		end
 
 		return {0, now}
+	`)
+
+	accountProxyAcquireScript = redis.NewScript(`
+		redis.replicate_commands()
+		local key = KEYS[1]
+		local maxConcurrency = tonumber(ARGV[1])
+		local ttl = tonumber(ARGV[2])
+		local requestID = ARGV[3]
+		local now = tonumber(redis.call('TIME')[1])
+		redis.call('ZREMRANGEBYSCORE', key, '-inf', now - ttl)
+		if redis.call('ZSCORE', key, requestID) ~= false then
+			redis.call('ZADD', key, now, requestID)
+			redis.call('EXPIRE', key, ttl)
+			return 1
+		end
+		if redis.call('ZCARD', key) < maxConcurrency then
+			redis.call('ZADD', key, now, requestID)
+			redis.call('EXPIRE', key, ttl)
+			return 1
+		end
+		return 0
 	`)
 
 	// getCountScript 统计有序集合中的槽位数量并清理过期条目
@@ -382,6 +404,10 @@ func accountSlotKey(accountID int64) string {
 	return fmt.Sprintf("%s%d", accountSlotKeyPrefix, accountID)
 }
 
+func accountProxySlotKey(accountID, proxyID int64) string {
+	return fmt.Sprintf("%s%d:%d", accountProxySlotKeyPrefix, accountID, proxyID)
+}
+
 func userSlotKey(userID int64) string {
 	return fmt.Sprintf("%s%d", userSlotKeyPrefix, userID)
 }
@@ -642,6 +668,17 @@ func (c *concurrencyCache) AcquireAccountSlot(ctx context.Context, accountID int
 	return result == 1, nil
 }
 
+func (c *concurrencyCache) AcquireAccountProxySlot(ctx context.Context, accountID, proxyID int64, maxConcurrency int, requestID string) (bool, error) {
+	if maxConcurrency <= 0 {
+		return true, nil
+	}
+	if c == nil || c.rdb == nil || accountID <= 0 || proxyID <= 0 || requestID == "" {
+		return false, errors.New("invalid account proxy slot arguments")
+	}
+	result, err := accountProxyAcquireScript.Run(ctx, c.rdb, []string{accountProxySlotKey(accountID, proxyID)}, maxConcurrency, c.slotTTLSeconds, requestID).Int()
+	return result == 1, err
+}
+
 func (c *concurrencyCache) ReleaseAccountSlot(ctx context.Context, accountID int64, requestID string) error {
 	key := accountSlotKey(accountID)
 	if err := c.rdb.ZRem(ctx, key, requestID).Err(); err != nil {
@@ -649,6 +686,20 @@ func (c *concurrencyCache) ReleaseAccountSlot(ctx context.Context, accountID int
 	}
 	// 释放后用真实负载刷新索引；若没有槽位和等待计数，会移除索引 member。
 	c.refreshAccountActiveIndex(ctx, accountID)
+	return nil
+}
+
+func (c *concurrencyCache) ReleaseAccountProxySlot(ctx context.Context, accountID, proxyID int64, requestID string) error {
+	if c == nil || c.rdb == nil || accountID <= 0 || proxyID <= 0 || requestID == "" {
+		return nil
+	}
+	key := accountProxySlotKey(accountID, proxyID)
+	if err := c.rdb.ZRem(ctx, key, requestID).Err(); err != nil {
+		return err
+	}
+	if count, err := c.rdb.ZCard(ctx, key).Result(); err == nil && count == 0 {
+		return c.rdb.Del(ctx, key).Err()
+	}
 	return nil
 }
 

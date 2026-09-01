@@ -146,7 +146,7 @@
                   <template v-if="isRequestBasedPricing">
                     <td class="px-2 py-3 font-semibold tabular-nums" :class="priceTextClass">
                       {{ primaryPrice(interval.per_request_price, 1) }}
-                      <span class="ml-1 font-normal text-gray-400 dark:text-gray-500">{{ t('modelSquare.perRequest') }}</span>
+                      <span class="ml-1 font-normal text-gray-400 dark:text-gray-500">{{ tierPriceUnit }}</span>
                     </td>
                   </template>
                   <template v-else>
@@ -178,6 +178,7 @@ import {
   BILLING_MODE_IMAGE,
   BILLING_MODE_PER_REQUEST,
   BILLING_MODE_TOKEN,
+  BILLING_MODE_VIDEO,
 } from '@/constants/channel'
 import type { GroupPlatform } from '@/types'
 
@@ -197,11 +198,18 @@ const showAdjustedPrice = computed(
   () => props.showMultiplier && pricing.value?.billing_mode !== BILLING_MODE_IMAGE)
 const isRequestBasedPricing = computed(() =>
   pricing.value?.billing_mode === BILLING_MODE_IMAGE ||
-  pricing.value?.billing_mode === BILLING_MODE_PER_REQUEST)
+  pricing.value?.billing_mode === BILLING_MODE_PER_REQUEST ||
+  pricing.value?.billing_mode === BILLING_MODE_VIDEO)
 const tierPriceLabel = computed(() =>
   pricing.value?.billing_mode === BILLING_MODE_IMAGE
     ? t('modelSquare.imageOutput')
-    : t('modelSquare.requestPrice'))
+    : pricing.value?.billing_mode === BILLING_MODE_VIDEO
+      ? t('modelSquare.videoOutput')
+      : t('modelSquare.requestPrice'))
+const tierPriceUnit = computed(() =>
+  pricing.value?.billing_mode === BILLING_MODE_VIDEO
+    ? t('modelSquare.perSecond')
+    : t('modelSquare.perRequest'))
 
 const billingModeLabel = computed(() => {
   switch (pricing.value?.billing_mode) {
@@ -211,6 +219,8 @@ const billingModeLabel = computed(() => {
       return t('modelSquare.billingRequest')
     case BILLING_MODE_TOKEN:
       return t('modelSquare.billingToken')
+    case BILLING_MODE_VIDEO:
+      return t('modelSquare.billingVideo')
     default:
       return t('modelSquare.billingUnknown')
   }
@@ -294,6 +304,36 @@ const priceRows = computed<PriceRow[]>(() => {
         unit: t('modelSquare.perRequest'),
         icon: 'bolt',
         toneClass: 'text-amber-500 dark:text-amber-400',
+      },
+    ]
+  }
+
+  if (value.billing_mode === BILLING_MODE_VIDEO) {
+    const intervalRows = value.intervals.flatMap<PriceRow>((interval, index) =>
+      interval.per_request_price == null
+        ? []
+        : [{
+            key: `video-${index}`,
+            label: t('modelSquare.videoOutput'),
+            tier: interval.tier_label || intervalRange(interval.min_tokens, interval.max_tokens),
+            value: interval.per_request_price,
+            scale: 1,
+            unit: t('modelSquare.perSecond'),
+            icon: 'sparkles',
+            toneClass: 'text-pink-500 dark:text-pink-400',
+          }],
+    )
+    if (intervalRows.length > 0) return intervalRows
+
+    return [
+      {
+        key: 'video',
+        label: t('modelSquare.videoOutput'),
+        value: value.per_request_price,
+        scale: 1,
+        unit: t('modelSquare.perSecond'),
+        icon: 'sparkles',
+        toneClass: 'text-pink-500 dark:text-pink-400',
       },
     ]
   }

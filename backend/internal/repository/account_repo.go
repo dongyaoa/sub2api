@@ -306,10 +306,24 @@ func (r *accountRepository) GetByIDs(ctx context.Context, ids []int64) ([]*servi
 	}
 
 	accountIDs := make([]int64, 0, len(entAccounts))
+	proxyIDs := make([]int64, 0, len(entAccounts))
 	entByID := make(map[int64]*dbent.Account, len(entAccounts))
 	for _, acc := range entAccounts {
 		entByID[acc.ID] = acc
 		accountIDs = append(accountIDs, acc.ID)
+		if acc.ProxyID != nil {
+			proxyIDs = append(proxyIDs, *acc.ProxyID)
+		}
+		if acc.ProxyFallbackOriginID != nil {
+			proxyIDs = append(proxyIDs, *acc.ProxyFallbackOriginID)
+		}
+		for _, entry := range service.AccountProxyPoolFromExtra(acc.Extra) {
+			proxyIDs = append(proxyIDs, entry.ProxyID)
+		}
+	}
+	proxyMap, err := r.loadProxies(ctx, proxyIDs)
+	if err != nil {
+		return nil, err
 	}
 
 	groupsByAccount, groupIDsByAccount, accountGroupsByAccount, err := r.loadAccountGroups(ctx, accountIDs)
@@ -327,6 +341,23 @@ func (r *accountRepository) GetByIDs(ctx context.Context, ids []int64) ([]*servi
 		// Prefer the preloaded proxy edge when available.
 		if entAcc.Edges.Proxy != nil {
 			out.Proxy = proxyEntityToService(entAcc.Edges.Proxy)
+		}
+		pool := service.AccountProxyPoolFromExtra(out.Extra)
+		if len(pool) > 0 {
+			validPool := make([]service.AccountProxyPoolEntry, 0, len(pool))
+			for i := range pool {
+				pool[i].Proxy = proxyMap[pool[i].ProxyID]
+				if pool[i].Proxy != nil {
+					validPool = append(validPool, pool[i])
+				}
+			}
+			pool = validPool
+			out.ProxyPool = pool
+			if len(pool) > 0 && out.ProxyID == nil {
+				proxyID := pool[0].ProxyID
+				out.ProxyID = &proxyID
+				out.Proxy = pool[0].Proxy
+			}
 		}
 
 		if groups, ok := groupsByAccount[entAcc.ID]; ok {
@@ -2934,6 +2965,9 @@ func (r *accountRepository) BulkUpdate(ctx context.Context, ids []int64, updates
 			if ollamaCloudUsageSnapshotClearRequested(updates.Extra) {
 				extraExpression = "(" + extraExpression + ") - 'ollama_cloud_usage_snapshot'"
 			}
+			if value, exists := updates.Extra[service.AccountProxyPoolExtraKey]; exists && value == nil {
+				extraExpression = "(" + extraExpression + ") - '" + service.AccountProxyPoolExtraKey + "'"
+			}
 		}
 		eligibleAccount := "platform IN ('openai', 'anthropic') AND type = 'apikey'"
 		groupIdentityChanged := ""
@@ -3123,6 +3157,7 @@ func (r *accountRepository) accountsToService(ctx context.Context, accounts []*d
 
 	accountIDs := make([]int64, 0, len(accounts))
 	proxyIDs := make([]int64, 0, len(accounts))
+	proxyPoolByAccount := make(map[int64][]service.AccountProxyPoolEntry, len(accounts))
 	for _, acc := range accounts {
 		accountIDs = append(accountIDs, acc.ID)
 		if acc.ProxyID != nil {
@@ -3130,6 +3165,13 @@ func (r *accountRepository) accountsToService(ctx context.Context, accounts []*d
 		}
 		if acc.ProxyFallbackOriginID != nil {
 			proxyIDs = append(proxyIDs, *acc.ProxyFallbackOriginID)
+		}
+		pool := service.AccountProxyPoolFromExtra(acc.Extra)
+		if len(pool) > 0 {
+			proxyPoolByAccount[acc.ID] = pool
+			for _, entry := range pool {
+				proxyIDs = append(proxyIDs, entry.ProxyID)
+			}
 		}
 	}
 
@@ -3151,6 +3193,24 @@ func (r *accountRepository) accountsToService(ctx context.Context, accounts []*d
 		if acc.ProxyID != nil {
 			if proxy, ok := proxyMap[*acc.ProxyID]; ok {
 				out.Proxy = proxy
+			}
+		}
+		if pool := proxyPoolByAccount[acc.ID]; len(pool) > 0 {
+			validPool := make([]service.AccountProxyPoolEntry, 0, len(pool))
+			for i := range pool {
+				pool[i].Proxy = proxyMap[pool[i].ProxyID]
+				if pool[i].Proxy != nil {
+					validPool = append(validPool, pool[i])
+				}
+			}
+			pool = validPool
+			out.ProxyPool = pool
+			// The first entry is the legacy compatibility binding until a
+			// request-level weighted selection chooses another proxy.
+			if len(pool) > 0 && out.ProxyID == nil {
+				proxyID := pool[0].ProxyID
+				out.ProxyID = &proxyID
+				out.Proxy = pool[0].Proxy
 			}
 		}
 		out.ProxyFallbackOriginID = acc.ProxyFallbackOriginID

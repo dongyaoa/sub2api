@@ -322,7 +322,8 @@ const routes: RouteRecordRaw[] = [
     meta: {
       requiresAuth: true,
       requiresAdmin: false,
-      title: 'Model Square'
+      title: '模型广场',
+      titleKey: 'modelSquare.title'
     }
   },
   {

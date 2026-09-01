@@ -9,6 +9,7 @@ import mediaStudio from './mediaStudio'
 import videoStudio from './videoStudio'
 import admin from './admin'
 import misc from './misc'
+import modelSquare from '../../modelSquare'
 
 export default {
   ...landing,
@@ -20,6 +21,7 @@ export default {
   ...checkin,
   ...mediaStudio,
   ...videoStudio,
+  ...modelSquare.en,
   admin,
   ...misc,
 }

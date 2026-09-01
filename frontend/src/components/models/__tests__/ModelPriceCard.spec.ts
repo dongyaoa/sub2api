@@ -169,3 +169,88 @@ describe('ModelPriceCard image pricing', () => {
   })
 
 })
+
+function videoVariant(
+  perSecondPrice: number | null,
+  intervals: UserPricingInterval[] = [],
+): ModelPricingVariant {
+  return {
+    channelName: 'SuperGrok Heavy',
+    groupIds: [1],
+    pricing: {
+      billing_mode: 'video',
+      input_price: null,
+      output_price: null,
+      cache_write_price: null,
+      cache_read_price: null,
+      image_input_price: null,
+      image_output_price: null,
+      per_request_price: perSecondPrice,
+      intervals,
+    },
+  }
+}
+
+function mountVideoCard(
+  perSecondPrice: number | null,
+  intervals: UserPricingInterval[] = [],
+) {
+  return mount(ModelPriceCard, {
+    props: {
+      model: {
+        ...model,
+        name: 'grok-imagine-video-1.5',
+        platform: 'grok',
+      },
+      variant: videoVariant(perSecondPrice, intervals),
+      showMultiplier: false,
+      multiplier: null,
+    },
+    global: {
+      stubs: {
+        Icon: true,
+        PlatformIcon: true,
+        Teleport: true,
+      },
+    },
+  })
+}
+
+describe('ModelPriceCard video pricing', () => {
+  it('shows the configured default video price per second', () => {
+    const wrapper = mountVideoCard(0.1)
+
+    expect(wrapper.get('.price').text()).toBe('$0.1')
+    expect(wrapper.get('.unit').text()).toBe('modelSquare.perSecond')
+    expect(wrapper.get('.type-badge').text()).toBe('modelSquare.billingVideo')
+  })
+
+  it('shows configured video resolution tiers instead of token placeholders', () => {
+    const wrapper = mountVideoCard(null, [
+      {
+        min_tokens: 0,
+        max_tokens: null,
+        tier_label: '480p',
+        input_price: null,
+        output_price: null,
+        cache_write_price: null,
+        cache_read_price: null,
+        per_request_price: 0.1,
+      },
+      {
+        min_tokens: 0,
+        max_tokens: null,
+        tier_label: '720p',
+        input_price: null,
+        output_price: null,
+        cache_write_price: null,
+        cache_read_price: null,
+        per_request_price: 0.2,
+      },
+    ])
+
+    expect(wrapper.findAll('.metric-tier').map((tier) => tier.text())).toEqual(['480p', '720p'])
+    expect(wrapper.findAll('.price').map((price) => price.text())).toEqual(['$0.1', '$0.2'])
+    expect(wrapper.text()).not.toContain('modelSquare.input')
+  })
+})

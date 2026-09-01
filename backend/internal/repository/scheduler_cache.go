@@ -887,11 +887,28 @@ func buildSchedulerMetadataAccount(account service.Account) service.Account {
 		SessionWindowStatus:     account.SessionWindowStatus,
 		ParentAccountID:         account.ParentAccountID,
 		QuotaDimension:          account.QuotaDimension,
+		ProxyPool:               filterSchedulerProxyPool(account.ProxyPool),
 		AccountGroups:           filterSchedulerAccountGroups(account.AccountGroups),
 		GroupIDs:                filterSchedulerGroupIDs(account.GroupIDs, account.AccountGroups),
 		Credentials:             filterSchedulerCredentials(account.Credentials),
 		Extra:                   filterSchedulerExtra(account.Extra),
 	}
+}
+
+func filterSchedulerProxyPool(entries []service.AccountProxyPoolEntry) []service.AccountProxyPoolEntry {
+	if len(entries) == 0 {
+		return nil
+	}
+	filtered := make([]service.AccountProxyPoolEntry, 0, len(entries))
+	for _, entry := range entries {
+		if entry.ProxyID > 0 && entry.Concurrency > 0 {
+			filtered = append(filtered, service.AccountProxyPoolEntry{ProxyID: entry.ProxyID, Concurrency: entry.Concurrency})
+		}
+	}
+	if len(filtered) == 0 {
+		return nil
+	}
+	return filtered
 }
 
 func filterSchedulerAccountGroups(accountGroups []service.AccountGroup) []service.AccountGroup {
@@ -1014,6 +1031,7 @@ func filterSchedulerExtra(extra map[string]any) map[string]any {
 		"auto_pause_5h_disabled",
 		"auto_pause_7d_disabled",
 		"model_rate_limits",
+		service.AccountProxyPoolExtraKey,
 		service.UpstreamBillingProbeExtraKey,
 		service.GrokMediaEligibleExtraKey,
 		"grok_billing_snapshot",

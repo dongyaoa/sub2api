@@ -1511,13 +1511,15 @@
           <label class="input-label mb-0">{{ t('admin.accounts.proxy') }}</label>
           <ProxyAdBanner />
         </div>
-        <ProxySelector v-model="form.proxy_id" :proxies="proxies" />
+        <ProxySelector v-if="form.proxy_pool.length === 0" v-model="form.proxy_id" :proxies="proxies" />
+        <AccountProxyPoolEditor v-model="form.proxy_pool" :proxies="proxies" class="mt-3" />
       </div>
 
       <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <div>
           <label class="input-label">{{ t('admin.accounts.concurrency') }}</label>
           <input v-model.number="form.concurrency" type="number" min="1" class="input"
+            :disabled="form.proxy_pool.length > 0"
             @input="form.concurrency = Math.max(1, form.concurrency || 1)" />
         </div>
         <div>
@@ -2843,6 +2845,7 @@ import { adminAPI } from '@/api/admin'
 import { useQuotaNotifyState } from '@/composables/useQuotaNotifyState'
 import type {
   Account,
+  AccountProxyPoolEntry,
   Proxy,
   AdminGroup,
   CheckMixedChannelResponse,
@@ -2858,6 +2861,7 @@ import Toggle from '@/components/common/Toggle.vue'
 import Icon from '@/components/icons/Icon.vue'
 import ProxySelector from '@/components/common/ProxySelector.vue'
 import ProxyAdBanner from '@/components/common/ProxyAdBanner.vue'
+import AccountProxyPoolEditor from '@/components/account/AccountProxyPoolEditor.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
 import QuotaLimitCard from '@/components/account/QuotaLimitCard.vue'
@@ -3547,6 +3551,7 @@ const form = reactive({
   name: '',
   notes: '',
   proxy_id: null as number | null,
+  proxy_pool: [] as AccountProxyPoolEntry[],
   concurrency: 1,
   load_factor: null as number | null,
   priority: 1,
@@ -3555,6 +3560,19 @@ const form = reactive({
   group_ids: [] as number[],
   expires_at: null as number | null
 })
+
+watch(
+  () => form.proxy_pool,
+  (pool, previousPool) => {
+    if (pool.length > 0) {
+      form.proxy_id = pool[0].proxy_id
+      form.concurrency = pool.reduce((total, entry) => total + Math.max(1, entry.concurrency || 1), 0)
+    } else if (previousPool.length > 0) {
+      form.proxy_id = null
+    }
+  },
+  { deep: true }
+)
 
 const handleUpstreamBillingRateSyncChange = (enabled: boolean) => {
   upstreamBillingRateSyncEnabled.value = enabled
@@ -3655,6 +3673,10 @@ const syncFormFromAccount = (newAccount: Account | null) => {
   form.name = newAccount.name
   form.notes = newAccount.notes || ''
   form.proxy_id = newAccount.proxy_id
+  form.proxy_pool = (newAccount.proxy_pool || []).map((entry) => ({
+    proxy_id: entry.proxy_id,
+    concurrency: entry.concurrency
+  }))
   form.concurrency = newAccount.concurrency
   form.load_factor = newAccount.load_factor ?? null
   form.priority = newAccount.priority
@@ -4599,6 +4621,13 @@ const handleSubmit = async () => {
     // 后端期望 proxy_id: 0 表示清除代理，而不是 null
     if (updatePayload.proxy_id === null) {
       updatePayload.proxy_id = 0
+    }
+    if (form.proxy_pool.length > 0) {
+      updatePayload.proxy_pool = form.proxy_pool.map((entry) => ({ ...entry }))
+      updatePayload.proxy_id = form.proxy_pool[0].proxy_id
+      updatePayload.concurrency = form.proxy_pool.reduce((total, entry) => total + entry.concurrency, 0)
+    } else if ((props.account.proxy_pool?.length || 0) > 0) {
+      updatePayload.proxy_pool = []
     }
     if (form.expires_at === null) {
       updatePayload.expires_at = 0
