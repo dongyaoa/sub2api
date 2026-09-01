@@ -97,7 +97,6 @@
                     </div>
                   </div>
                 </div>
-
                 <aside class="space-y-6 xl:sticky xl:top-6 xl:flex xl:self-stretch xl:flex-col">
                   <div class="overflow-hidden rounded-2xl border border-white/70 bg-white/95 shadow-[0_18px_50px_rgba(15,23,42,0.10)] dark:border-dark-700 dark:bg-dark-800/95 dark:shadow-black/20 xl:flex xl:flex-1 xl:flex-col">
                     <div class="border-b border-gray-100 bg-gray-50/70 px-5 py-4 dark:border-dark-700 dark:bg-dark-900/40">
@@ -158,7 +157,7 @@
                       </div>
 
                       <p v-if="balanceRechargeMultiplier !== 1" class="rounded-xl bg-primary-50 px-3 py-2 text-xs text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">
-                        {{ t('payment.rechargeRatePreview', { usd: balanceRechargeMultiplier.toFixed(2) }) }}
+                        {{ t('payment.rechargeRatePreview', { currency: selectedCurrency, usd: balanceRechargeMultiplier.toFixed(2) }) }}
                       </p>
 
                       <button :class="['btn mt-auto w-full py-3 text-base font-medium shadow-lg shadow-primary-500/15', paymentButtonClass]" :disabled="!canSubmit || submitting" @click="handleSubmitRecharge">
