@@ -339,25 +339,6 @@
                 <span class="text-gray-600 dark:text-gray-300">{{ formatDateTime(row.proxy.expires_at) }}</span>
                 <span :class="proxyExpiryBadge(row.proxy)">{{ proxyExpiryText(row.proxy) }}</span>
               </div>
-              <span
-                v-if="row.proxy_pool && row.proxy_pool.length > 1"
-                class="inline-flex w-fit items-center rounded bg-primary-50 px-1.5 py-0.5 text-xs text-primary-700 dark:bg-primary-900/20 dark:text-primary-300"
-                :title="t('admin.accounts.proxyPool.totalWithCount', { count: row.proxy_pool.length, total: row.concurrency })"
-              >
-                {{ t('admin.accounts.proxyPool.badge', { count: row.proxy_pool.length }) }}
-              </span>
-              <div v-if="row.proxy_pool && row.proxy_pool.length" class="flex flex-wrap gap-1">
-                <span
-                  v-for="entry in row.proxy_pool"
-                  :key="entry.proxy_id"
-                  class="inline-flex items-center rounded bg-gray-100 px-1.5 py-0.5 text-xs text-gray-700 dark:bg-dark-600 dark:text-gray-300"
-                >
-                  {{ t('admin.accounts.proxyPool.entry', {
-                    name: entry.proxy?.name || `#${entry.proxy_id}`,
-                    concurrency: entry.concurrency
-                  }) }}
-                </span>
-              </div>
               <div v-if="row.proxy_fallback_origin_id" class="flex items-center gap-1">
                 <span class="inline-flex items-center px-1.5 py-0.5 rounded text-xs font-medium bg-yellow-100 text-yellow-800 dark:bg-yellow-900 dark:text-yellow-200" :title="t('admin.accounts.fallbackActiveTip', { origin: row.proxy_fallback_origin_name })">
                   {{ t('admin.accounts.fallbackActive') }}

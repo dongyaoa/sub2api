@@ -944,9 +944,6 @@ export default {
         selectProxy: 'Select a proxy',
         concurrency: 'Concurrency',
         total: 'Total concurrency',
-        totalWithCount: '{count} proxies, total concurrency {total}',
-        badge: '{count} proxies',
-        entry: '{name}: {concurrency} concurrent',
         empty: 'No proxy pool configured. The single proxy above will be used.'
       },
       concurrency: 'Concurrency',

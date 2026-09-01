@@ -1015,9 +1015,6 @@ export default {
         selectProxy: '请选择代理',
         concurrency: '并发数',
         total: '总并发',
-        totalWithCount: '{count} 个代理，总并发 {total}',
-        badge: '{count} 个代理',
-        entry: '{name}：{concurrency} 并发',
         empty: '未配置代理池，使用上方单代理设置。'
       },
       concurrency: '并发数',
