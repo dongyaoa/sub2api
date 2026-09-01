@@ -61,6 +61,7 @@ type ConcurrencyCache interface {
 type AccountProxyConcurrencyCache interface {
 	AcquireAccountProxySlot(ctx context.Context, accountID, proxyID int64, maxConcurrency int, requestID string) (bool, error)
 	ReleaseAccountProxySlot(ctx context.Context, accountID, proxyID int64, requestID string) error
+	GetAccountProxyConcurrency(ctx context.Context, accountID, proxyID int64) (int, error)
 }
 
 type APIKeyConcurrencyCache interface {
@@ -439,6 +440,20 @@ func (s *ConcurrencyService) AcquireAccountSlotForAccount(ctx context.Context, a
 			})
 		},
 	}, nil
+}
+
+// GetAccountProxyConcurrency returns the active slot count for one account
+// proxy. Caches without proxy-level support report zero so the account list
+// remains compatible with older cache implementations.
+func (s *ConcurrencyService) GetAccountProxyConcurrency(ctx context.Context, accountID, proxyID int64) (int, error) {
+	if s == nil || s.cache == nil || accountID <= 0 || proxyID <= 0 {
+		return 0, nil
+	}
+	proxyCache, ok := s.cache.(AccountProxyConcurrencyCache)
+	if !ok {
+		return 0, nil
+	}
+	return proxyCache.GetAccountProxyConcurrency(ctx, accountID, proxyID)
 }
 
 // AcquireUserSlot attempts to acquire a concurrency slot for a user.

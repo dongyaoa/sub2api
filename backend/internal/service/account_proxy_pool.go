@@ -22,9 +22,10 @@ const (
 // own capacity. Proxy is hydrated from the proxy repository and is omitted
 // from the durable extra JSON.
 type AccountProxyPoolEntry struct {
-	ProxyID     int64  `json:"proxy_id"`
-	Concurrency int    `json:"concurrency"`
-	Proxy       *Proxy `json:"proxy,omitempty"`
+	ProxyID            int64  `json:"proxy_id"`
+	Concurrency        int    `json:"concurrency"`
+	CurrentConcurrency int    `json:"current_concurrency,omitempty"`
+	Proxy              *Proxy `json:"proxy,omitempty"`
 }
 
 var accountProxyPoolRoundRobin atomic.Uint64

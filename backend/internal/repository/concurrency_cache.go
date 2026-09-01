@@ -128,6 +128,21 @@ var (
 		return 0
 	`)
 
+	accountProxyCountScript = redis.NewScript(`
+		redis.replicate_commands()
+		local key = KEYS[1]
+		local ttl = tonumber(ARGV[1])
+		local now = tonumber(redis.call('TIME')[1])
+		redis.call('ZREMRANGEBYSCORE', key, '-inf', now - ttl)
+		local count = redis.call('ZCARD', key)
+		if count == 0 then
+			redis.call('DEL', key)
+		else
+			redis.call('EXPIRE', key, ttl)
+		end
+		return count
+	`)
+
 	// getCountScript 统计有序集合中的槽位数量并清理过期条目
 	// 使用 Redis TIME 命令获取服务器时间
 	// KEYS[1] = 普通槽位键，KEYS[2] = 对应 Live 槽位键
@@ -701,6 +716,14 @@ func (c *concurrencyCache) ReleaseAccountProxySlot(ctx context.Context, accountI
 		return c.rdb.Del(ctx, key).Err()
 	}
 	return nil
+}
+
+func (c *concurrencyCache) GetAccountProxyConcurrency(ctx context.Context, accountID, proxyID int64) (int, error) {
+	if c == nil || c.rdb == nil || accountID <= 0 || proxyID <= 0 {
+		return 0, nil
+	}
+	count, err := accountProxyCountScript.Run(ctx, c.rdb, []string{accountProxySlotKey(accountID, proxyID)}, c.slotTTLSeconds).Int()
+	return count, err
 }
 
 func (c *concurrencyCache) GetAccountConcurrency(ctx context.Context, accountID int64) (int, error) {

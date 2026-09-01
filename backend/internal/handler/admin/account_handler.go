@@ -227,6 +227,9 @@ func (h *AccountHandler) accountResponseFromService(account *service.Account) *d
 }
 
 func (h *AccountHandler) buildAccountResponseWithRuntime(ctx context.Context, account *service.Account) AccountWithConcurrency {
+	if account != nil {
+		h.enrichAccountProxyPoolConcurrency(ctx, account)
+	}
 	item := AccountWithConcurrency{
 		Account:            h.accountResponseFromService(account),
 		CurrentConcurrency: 0,
@@ -270,6 +273,18 @@ func (h *AccountHandler) buildAccountResponseWithRuntime(ctx context.Context, ac
 	h.enrichShadowParents(ctx, []AccountWithConcurrency{item})
 
 	return item
+}
+
+func (h *AccountHandler) enrichAccountProxyPoolConcurrency(ctx context.Context, account *service.Account) {
+	if h == nil || h.concurrencyService == nil || account == nil {
+		return
+	}
+	for index := range account.ProxyPool {
+		entry := &account.ProxyPool[index]
+		if current, err := h.concurrencyService.GetAccountProxyConcurrency(ctx, account.ID, entry.ProxyID); err == nil {
+			entry.CurrentConcurrency = current
+		}
+	}
 }
 
 // scoreOpenAIAccountSchedulerPool 对池内 OpenAI 账号计算调度分数快照。
@@ -581,6 +596,20 @@ func (h *AccountHandler) List(c *gin.Context) {
 	if h.concurrencyService != nil {
 		if cc, ccErr := h.concurrencyService.GetAccountConcurrencyBatch(c.Request.Context(), accountIDs); ccErr == nil && cc != nil {
 			concurrencyCounts = cc
+		}
+		// Each proxy pool entry has an independent Redis slot set. Populate its
+		// current count so the capacity column can render proxy-level usage as
+		// current/limit, including the idle 0/limit state.
+		for accountIndex := range accounts {
+			for proxyIndex := range accounts[accountIndex].ProxyPool {
+				entry := &accounts[accountIndex].ProxyPool[proxyIndex]
+				current, countErr := h.concurrencyService.GetAccountProxyConcurrency(
+					c.Request.Context(), accounts[accountIndex].ID, entry.ProxyID,
+				)
+				if countErr == nil {
+					entry.CurrentConcurrency = current
+				}
+			}
 		}
 	}
 

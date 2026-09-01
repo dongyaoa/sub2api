@@ -1268,6 +1268,7 @@ export interface Account {
 export interface AccountProxyPoolEntry {
   proxy_id: number
   concurrency: number
+  current_concurrency?: number
   proxy?: Proxy
 }
 

@@ -452,9 +452,10 @@ func accountProxyPoolFromService(entries []service.AccountProxyPoolEntry) []Acco
 	out := make([]AccountProxyPoolEntry, 0, len(entries))
 	for _, entry := range entries {
 		out = append(out, AccountProxyPoolEntry{
-			ProxyID:     entry.ProxyID,
-			Concurrency: entry.Concurrency,
-			Proxy:       ProxyFromService(entry.Proxy),
+			ProxyID:            entry.ProxyID,
+			Concurrency:        entry.Concurrency,
+			CurrentConcurrency: entry.CurrentConcurrency,
+			Proxy:              ProxyFromService(entry.Proxy),
 		})
 	}
 	return out

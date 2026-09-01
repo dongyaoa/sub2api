@@ -7,6 +7,21 @@
       </svg>
     </CapacityBadge>
 
+    <!-- 每个代理池槽位的独立并发：当前使用数 / 配置容量。 -->
+    <CapacityBadge
+      v-for="entry in proxyPoolEntries"
+      :key="entry.proxy_id"
+      color-class="bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400"
+      :current="entry.current_concurrency ?? 0"
+      :max="entry.concurrency"
+      :tooltip="proxyPoolTooltip(entry)"
+    >
+      <svg class="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M12 21s7-6.1 7-12a7 7 0 10-14 0c0 5.9 7 12 7 12z" />
+        <path stroke-linecap="round" stroke-linejoin="round" d="M12 11.5a2.25 2.25 0 100-4.5 2.25 2.25 0 000 4.5z" />
+      </svg>
+    </CapacityBadge>
+
     <!-- 5h窗口费用限制 -->
     <CapacityBadge v-if="showWindowCost" :color-class="windowCostClass" :tooltip="windowCostTooltip" :current="'$' + formatCost(currentWindowCost)" :max="'$' + formatCost(account.window_cost_limit)">
       <svg class="h-2.5 w-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
@@ -58,6 +73,17 @@ const concurrencyClass = computed(() => {
   if (current > 0) return 'bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400'
   return 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400'
 })
+
+const proxyPoolEntries = computed(() => props.account.proxy_pool ?? [])
+
+const proxyPoolTooltip = (entry: NonNullable<Account['proxy_pool']>[number]) => {
+  const name = entry.proxy?.name || `#${entry.proxy_id}`
+  return t('admin.accounts.capacity.proxy', {
+    name,
+    current: entry.current_concurrency ?? 0,
+    max: entry.concurrency
+  })
+}
 
 // ====== 窗口费用 ======
 const isAnthropicOAuthOrSetupToken = computed(() =>

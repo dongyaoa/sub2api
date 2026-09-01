@@ -107,6 +107,9 @@ func (c *stubConcurrencyCacheForTest) ReleaseAccountProxySlot(_ context.Context,
 	c.releasedProxyIDs = append(c.releasedProxyIDs, proxyID)
 	return nil
 }
+func (c *stubConcurrencyCacheForTest) GetAccountProxyConcurrency(_ context.Context, _, _ int64) (int, error) {
+	return 0, nil
+}
 func (c *stubConcurrencyCacheForTest) GetAccountConcurrency(_ context.Context, _ int64) (int, error) {
 	return c.concurrency, c.concurrencyErr
 }
