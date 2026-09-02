@@ -936,6 +936,7 @@
             <tr>
               <th class="px-4 py-2 text-left">{{ t('admin.proxies.accountName') }}</th>
               <th class="px-4 py-2 text-left">{{ t('admin.accounts.columns.platformType') }}</th>
+              <th class="px-4 py-2 text-left">{{ t('admin.proxies.proxyPool') }}</th>
               <th class="px-4 py-2 text-left">{{ t('admin.proxies.accountNotes') }}</th>
             </tr>
           </thead>
@@ -944,6 +945,15 @@
               <td class="px-4 py-2 font-medium text-gray-900 dark:text-white">{{ account.name }}</td>
               <td class="px-4 py-2">
                 <PlatformTypeBadge :platform="account.platform" :type="account.type" />
+              </td>
+              <td class="px-4 py-2">
+                <span
+                  class="inline-flex items-center rounded-md bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700 dark:bg-dark-700 dark:text-gray-300"
+                  :class="(account.proxy_pool_size || 1) > 1 ? 'bg-primary-50 text-primary-700 dark:bg-primary-900/20 dark:text-primary-300' : ''"
+                  :title="t('admin.proxies.proxyPoolHint', { count: account.proxy_pool_size || 1 })"
+                >
+                  {{ t('admin.proxies.proxyPoolCount', { count: account.proxy_pool_size || 1 }) }}
+                </span>
               </td>
               <td class="px-4 py-2 text-gray-600 dark:text-gray-300">
                 {{ account.notes || '-' }}

@@ -114,10 +114,30 @@ func AccountProxyPoolConcurrency(entries []AccountProxyPoolEntry) int {
 	return total
 }
 
+// EffectiveAccountConcurrency returns the actual account-wide slot limit.
+// A configured proxy pool owns the capacity for the account, including for
+// legacy records whose accounts.concurrency still contains the first proxy's
+// old value.
+func EffectiveAccountConcurrency(account *Account) int {
+	if account == nil {
+		return 0
+	}
+	if poolConcurrency := AccountProxyPoolConcurrency(account.ProxyPool); poolConcurrency > 0 {
+		return poolConcurrency
+	}
+	return account.Concurrency
+}
+
 // SelectAccountProxy chooses a proxy with weighted round-robin semantics. It
 // preserves the account-wide concurrency cap while distributing requests in
 // proportion to each proxy's configured capacity.
 func SelectAccountProxy(account *Account) {
+	selectAccountProxy(account, nil)
+}
+
+// selectAccountProxy chooses one configured proxy, optionally skipping IDs
+// that were already rejected while trying to acquire a slot for this request.
+func selectAccountProxy(account *Account, excluded map[int64]struct{}) {
 	if account == nil || len(account.ProxyPool) == 0 {
 		return
 	}
@@ -125,6 +145,11 @@ func SelectAccountProxy(account *Account) {
 	for _, entry := range account.ProxyPool {
 		if entry.Concurrency <= 0 {
 			continue
+		}
+		if excluded != nil {
+			if _, skip := excluded[entry.ProxyID]; skip {
+				continue
+			}
 		}
 		if entry.Proxy == nil || (entry.Proxy.Status == "" || entry.Proxy.IsActive()) && !entry.Proxy.IsExpired(time.Now()) {
 			valid = append(valid, entry)
@@ -149,6 +174,14 @@ func SelectAccountProxy(account *Account) {
 		}
 		remaining -= entry.Concurrency
 	}
+}
+
+func selectNextAccountProxy(account *Account, excluded map[int64]struct{}) bool {
+	if account == nil {
+		return false
+	}
+	selectAccountProxy(account, excluded)
+	return account.ProxyID != nil
 }
 
 // CarryAccountProxySelection preserves a proxy chosen before a scheduler

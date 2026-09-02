@@ -397,11 +397,12 @@ type AdminProxyWithAccountCount struct {
 }
 
 type ProxyAccountSummary struct {
-	ID       int64   `json:"id"`
-	Name     string  `json:"name"`
-	Platform string  `json:"platform"`
-	Type     string  `json:"type"`
-	Notes    *string `json:"notes,omitempty"`
+	ID            int64   `json:"id"`
+	Name          string  `json:"name"`
+	Platform      string  `json:"platform"`
+	Type          string  `json:"type"`
+	Notes         *string `json:"notes,omitempty"`
+	ProxyPoolSize int     `json:"proxy_pool_size"`
 }
 
 type RedeemCode struct {

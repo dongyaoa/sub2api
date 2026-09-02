@@ -177,6 +177,9 @@ func (a *Account) EffectiveLoadFactor() int {
 	if a.LoadFactor != nil && *a.LoadFactor > 0 {
 		return *a.LoadFactor
 	}
+	if poolConcurrency := AccountProxyPoolConcurrency(a.ProxyPool); poolConcurrency > 0 {
+		return poolConcurrency
+	}
 	if a.Concurrency > 0 {
 		return a.Concurrency
 	}

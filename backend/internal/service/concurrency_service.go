@@ -391,55 +391,84 @@ func (s *ConcurrencyService) AcquireAccountSlotForAccount(ctx context.Context, a
 	if account == nil {
 		return s.AcquireAccountSlot(ctx, 0, 0)
 	}
+	proxyCache, ok := s.cache.(AccountProxyConcurrencyCache)
+	if len(account.ProxyPool) == 0 || !ok {
+		return s.AcquireAccountSlot(ctx, account.ID, account.Concurrency)
+	}
 	if !account.ProxyPoolSelected {
 		SelectAccountProxy(account)
 	}
-	if len(account.ProxyPool) > 0 && account.ProxyID == nil {
-		return &AcquireResult{Acquired: false}, nil
-	}
-	accountResult, err := s.AcquireAccountSlot(ctx, account.ID, account.Concurrency)
-	if err != nil || accountResult == nil || !accountResult.Acquired || len(account.ProxyPool) == 0 || account.ProxyID == nil || s == nil || s.cache == nil {
-		return accountResult, err
-	}
-	var capacity int
-	for _, entry := range account.ProxyPool {
-		if entry.ProxyID == *account.ProxyID {
-			capacity = entry.Concurrency
+	// The pool is the source of truth for a multi-IP account. Older records may
+	// still carry the first proxy's legacy concurrency in accounts.concurrency;
+	// use the sum of pool capacities so those accounts can actually use every
+	// configured IP instead of being capped by the first entry.
+	accountConcurrency := EffectiveAccountConcurrency(account)
+
+	// A proxy can be full while the account still has capacity. Try each pool
+	// entry once before returning false so a busy IP never pins the request to
+	// one address while other configured IPs sit idle.
+	excluded := make(map[int64]struct{}, len(account.ProxyPool))
+	for attempts := 0; attempts < len(account.ProxyPool); attempts++ {
+		if account.ProxyID == nil {
+			break
+		}
+		proxyID := *account.ProxyID
+		capacity := accountProxyPoolCapacity(account.ProxyPool, proxyID)
+		if capacity <= 0 {
+			excluded[proxyID] = struct{}{}
+			account.ProxyPoolSelected = false
+			if !selectNextAccountProxy(account, excluded) {
+				break
+			}
+			continue
+		}
+
+		accountResult, err := s.AcquireAccountSlot(ctx, account.ID, accountConcurrency)
+		if err != nil || accountResult == nil || !accountResult.Acquired {
+			return accountResult, err
+		}
+		proxyRequestID := generateRequestID()
+		proxyAcquired, err := proxyCache.AcquireAccountProxySlot(ctx, account.ID, proxyID, capacity, proxyRequestID)
+		if err != nil {
+			accountResult.ReleaseFunc()
+			return nil, err
+		}
+		if proxyAcquired {
+			accountRelease := accountResult.ReleaseFunc
+			var releaseOnce sync.Once
+			return &AcquireResult{
+				Acquired: true,
+				ReleaseFunc: func() {
+					releaseOnce.Do(func() {
+						bgCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+						defer cancel()
+						if releaseErr := proxyCache.ReleaseAccountProxySlot(bgCtx, account.ID, proxyID, proxyRequestID); releaseErr != nil {
+							logger.LegacyPrintf("service.concurrency", "Warning: failed to release account proxy slot for %d/%d (req=%s): %v", account.ID, proxyID, proxyRequestID, releaseErr)
+						}
+						accountRelease()
+					})
+				},
+			}, nil
+		}
+
+		accountResult.ReleaseFunc()
+		excluded[proxyID] = struct{}{}
+		account.ProxyPoolSelected = false
+		if !selectNextAccountProxy(account, excluded) {
 			break
 		}
 	}
-	proxyCache, ok := s.cache.(AccountProxyConcurrencyCache)
-	if !ok || capacity <= 0 {
-		return accountResult, nil
+	account.ProxyPoolSelected = false
+	return &AcquireResult{Acquired: false}, nil
+}
+
+func accountProxyPoolCapacity(entries []AccountProxyPoolEntry, proxyID int64) int {
+	for _, entry := range entries {
+		if entry.ProxyID == proxyID {
+			return entry.Concurrency
+		}
 	}
-	proxyRequestID := generateRequestID()
-	proxyAcquired, err := proxyCache.AcquireAccountProxySlot(ctx, account.ID, *account.ProxyID, capacity, proxyRequestID)
-	if err != nil {
-		accountResult.ReleaseFunc()
-		return nil, err
-	}
-	if !proxyAcquired {
-		accountResult.ReleaseFunc()
-		return &AcquireResult{Acquired: false}, nil
-	}
-	proxyID := *account.ProxyID
-	accountRelease := accountResult.ReleaseFunc
-	var releaseOnce sync.Once
-	return &AcquireResult{
-		Acquired: true,
-		ReleaseFunc: func() {
-			releaseOnce.Do(func() {
-				bgCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-				defer cancel()
-				if releaseErr := proxyCache.ReleaseAccountProxySlot(bgCtx, account.ID, proxyID, proxyRequestID); releaseErr != nil {
-					logger.LegacyPrintf("service.concurrency", "Warning: failed to release account proxy slot for %d/%d (req=%s): %v", account.ID, proxyID, proxyRequestID, releaseErr)
-				}
-				if accountRelease != nil {
-					accountRelease()
-				}
-			})
-		},
-	}, nil
+	return 0
 }
 
 // GetAccountProxyConcurrency returns the active slot count for one account

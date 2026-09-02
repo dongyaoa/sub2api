@@ -155,6 +155,9 @@ export default {
       accountsFailed: '获取账号列表失败',
       accountName: '账号名称',
       accountPlatform: '所属平台',
+      proxyPool: '绑定 IP',
+      proxyPoolCount: '{count} 个 IP',
+      proxyPoolHint: '该账号共绑定 {count} 个代理 IP',
       accountNotes: '备注',
       // Batch import
       standardAdd: '标准添加',

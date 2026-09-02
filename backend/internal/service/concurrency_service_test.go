@@ -36,6 +36,7 @@ type stubConcurrencyCacheForTest struct {
 	apiKeyConcurrencyErr error
 	proxyAcquireResult   bool
 	proxyAcquireErr      error
+	proxyAcquireFn       func(context.Context, int64, int64, int, string) (bool, error)
 
 	// 记录调用
 	releasedAccountIDs       []int64
@@ -99,7 +100,11 @@ func (c *stubConcurrencyCacheForTest) ReleaseAccountSlot(_ context.Context, acco
 	c.releasedRequestIDs = append(c.releasedRequestIDs, requestID)
 	return c.releaseErr
 }
-func (c *stubConcurrencyCacheForTest) AcquireAccountProxySlot(_ context.Context, _, _ int64, _ int, _ string) (bool, error) {
+
+func (c *stubConcurrencyCacheForTest) AcquireAccountProxySlot(ctx context.Context, accountID, proxyID int64, maxConcurrency int, requestID string) (bool, error) {
+	if c.proxyAcquireFn != nil {
+		return c.proxyAcquireFn(ctx, accountID, proxyID, maxConcurrency, requestID)
+	}
 	return c.proxyAcquireResult, c.proxyAcquireErr
 }
 func (c *stubConcurrencyCacheForTest) ReleaseAccountProxySlot(_ context.Context, accountID, proxyID int64, _ string) error {
@@ -231,6 +236,39 @@ func TestAcquireAccountSlotForAccount_UsesProxySlot(t *testing.T) {
 	result.ReleaseFunc()
 	require.Equal(t, []int64{77}, cache.releasedProxyAccountIDs)
 	require.Equal(t, []int64{88}, cache.releasedProxyIDs)
+}
+
+func TestAcquireAccountSlotForAccount_SkipsFullProxyAndUsesNext(t *testing.T) {
+	firstProxyID := int64(88)
+	cache := &stubConcurrencyCacheForTest{
+		acquireResult: true,
+		proxyAcquireFn: func(_ context.Context, _, proxyID int64, _ int, _ string) (bool, error) {
+			return proxyID != firstProxyID, nil
+		},
+	}
+	svc := NewConcurrencyService(cache)
+	account := &Account{
+		ID:                77,
+		Concurrency:       20,
+		ProxyID:           &firstProxyID,
+		ProxyPoolSelected: true,
+		ProxyPool: []AccountProxyPoolEntry{
+			{ProxyID: firstProxyID, Concurrency: 10, Proxy: &Proxy{ID: firstProxyID, Status: StatusActive}},
+			{ProxyID: 89, Concurrency: 10, Proxy: &Proxy{ID: 89, Status: StatusActive}},
+		},
+	}
+
+	result, err := svc.AcquireAccountSlotForAccount(context.Background(), account)
+	require.NoError(t, err)
+	require.True(t, result.Acquired)
+	require.NotNil(t, account.ProxyID)
+	require.Equal(t, int64(89), *account.ProxyID)
+	result.ReleaseFunc()
+
+	// The failed first attempt is released before trying the next proxy; only
+	// the successful second proxy remains in the proxy-slot release list.
+	require.Equal(t, []int64{77, 77}, cache.releasedAccountIDs)
+	require.Equal(t, []int64{89}, cache.releasedProxyIDs)
 }
 
 func TestAcquireAccountSlot_Failure(t *testing.T) {

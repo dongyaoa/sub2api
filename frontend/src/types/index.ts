@@ -938,6 +938,7 @@ export interface ProxyAccountSummary {
   platform: AccountPlatform
   type: AccountType
   notes?: string | null
+  proxy_pool_size?: number
 }
 
 export interface ProxyQualityCheckItem {

@@ -353,6 +353,11 @@ func (r *accountRepository) GetByIDs(ctx context.Context, ids []int64) ([]*servi
 			}
 			pool = validPool
 			out.ProxyPool = pool
+			if len(pool) > 0 {
+				// Keep legacy account capacity in sync with the pool total. This
+				// repairs records created before multi-IP capacity was persisted.
+				out.Concurrency = service.AccountProxyPoolConcurrency(pool)
+			}
 			if len(pool) > 0 && out.ProxyID == nil {
 				proxyID := pool[0].ProxyID
 				out.ProxyID = &proxyID
@@ -3205,6 +3210,11 @@ func (r *accountRepository) accountsToService(ctx context.Context, accounts []*d
 			}
 			pool = validPool
 			out.ProxyPool = pool
+			if len(pool) > 0 {
+				// Keep legacy account capacity in sync with the pool total. This
+				// repairs records created before multi-IP capacity was persisted.
+				out.Concurrency = service.AccountProxyPoolConcurrency(pool)
+			}
 			// The first entry is the legacy compatibility binding until a
 			// request-level weighted selection chooses another proxy.
 			if len(pool) > 0 && out.ProxyID == nil {

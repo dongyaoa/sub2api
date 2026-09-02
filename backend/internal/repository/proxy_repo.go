@@ -472,7 +472,24 @@ func (r *proxyRepository) ExistsByHostPortAuth(ctx context.Context, host string,
 // CountAccountsByProxyID returns the number of accounts using a specific proxy
 func (r *proxyRepository) CountAccountsByProxyID(ctx context.Context, proxyID int64) (int64, error) {
 	var count int64
-	if err := scanSingleRow(ctx, r.sql, "SELECT COUNT(*) FROM accounts WHERE proxy_id = $1 AND deleted_at IS NULL", []any{proxyID}, &count); err != nil {
+	const query = `
+		SELECT COUNT(*)
+		FROM accounts AS a
+		WHERE a.deleted_at IS NULL
+		  AND (
+			 a.proxy_id = $1
+			 OR EXISTS (
+				SELECT 1
+				FROM jsonb_array_elements(
+					CASE
+						WHEN jsonb_typeof(a.extra -> 'proxy_pool') = 'array' THEN a.extra -> 'proxy_pool'
+						ELSE '[]'::jsonb
+					END
+				) AS pool_entry
+				WHERE pool_entry ->> 'proxy_id' = $1::text
+			 )
+		  )`
+	if err := scanSingleRow(ctx, r.sql, query, []any{proxyID}, &count); err != nil {
 		return 0, err
 	}
 	return count, nil
@@ -480,9 +497,28 @@ func (r *proxyRepository) CountAccountsByProxyID(ctx context.Context, proxyID in
 
 func (r *proxyRepository) ListAccountSummariesByProxyID(ctx context.Context, proxyID int64) ([]service.ProxyAccountSummary, error) {
 	rows, err := r.sql.QueryContext(ctx, `
-		SELECT id, name, platform, type, notes
+		SELECT id, name, platform, type, notes,
+			CASE
+				WHEN jsonb_typeof(extra -> 'proxy_pool') = 'array'
+					THEN jsonb_array_length(extra -> 'proxy_pool')
+				WHEN proxy_id IS NOT NULL THEN 1
+				ELSE 0
+			END AS proxy_pool_size
 		FROM accounts
-		WHERE proxy_id = $1 AND deleted_at IS NULL
+		WHERE deleted_at IS NULL
+		  AND (
+			 proxy_id = $1
+			 OR EXISTS (
+				SELECT 1
+				FROM jsonb_array_elements(
+					CASE
+						WHEN jsonb_typeof(extra -> 'proxy_pool') = 'array' THEN extra -> 'proxy_pool'
+						ELSE '[]'::jsonb
+					END
+				) AS pool_entry
+				WHERE pool_entry ->> 'proxy_id' = $1::text
+			 )
+		  )
 		ORDER BY id DESC
 	`, proxyID)
 	if err != nil {
@@ -493,13 +529,14 @@ func (r *proxyRepository) ListAccountSummariesByProxyID(ctx context.Context, pro
 	out := make([]service.ProxyAccountSummary, 0)
 	for rows.Next() {
 		var (
-			id       int64
-			name     string
-			platform string
-			accType  string
-			notes    sql.NullString
+			id            int64
+			name          string
+			platform      string
+			accType       string
+			notes         sql.NullString
+			proxyPoolSize int
 		)
-		if err := rows.Scan(&id, &name, &platform, &accType, &notes); err != nil {
+		if err := rows.Scan(&id, &name, &platform, &accType, &notes, &proxyPoolSize); err != nil {
 			return nil, err
 		}
 		var notesPtr *string
@@ -507,11 +544,12 @@ func (r *proxyRepository) ListAccountSummariesByProxyID(ctx context.Context, pro
 			notesPtr = &notes.String
 		}
 		out = append(out, service.ProxyAccountSummary{
-			ID:       id,
-			Name:     name,
-			Platform: platform,
-			Type:     accType,
-			Notes:    notesPtr,
+			ID:            id,
+			Name:          name,
+			Platform:      platform,
+			Type:          accType,
+			Notes:         notesPtr,
+			ProxyPoolSize: proxyPoolSize,
 		})
 	}
 	if err := rows.Err(); err != nil {
@@ -522,7 +560,31 @@ func (r *proxyRepository) ListAccountSummariesByProxyID(ctx context.Context, pro
 
 // GetAccountCountsForProxies returns a map of proxy ID to account count for all proxies
 func (r *proxyRepository) GetAccountCountsForProxies(ctx context.Context) (counts map[int64]int64, err error) {
-	rows, err := r.sql.QueryContext(ctx, "SELECT proxy_id, COUNT(*) AS count FROM accounts WHERE proxy_id IS NOT NULL AND deleted_at IS NULL GROUP BY proxy_id")
+	rows, err := r.sql.QueryContext(ctx, `
+		WITH account_proxy_pairs AS (
+			SELECT a.id AS account_id, a.proxy_id
+			FROM accounts AS a
+			WHERE a.proxy_id IS NOT NULL AND a.deleted_at IS NULL
+			UNION
+			SELECT a.id AS account_id,
+			       CASE
+					WHEN pool_entry ->> 'proxy_id' ~ '^[0-9]+$' THEN (pool_entry ->> 'proxy_id')::bigint
+					ELSE NULL
+				END AS proxy_id
+			FROM accounts AS a
+			CROSS JOIN LATERAL jsonb_array_elements(
+				CASE
+					WHEN jsonb_typeof(a.extra -> 'proxy_pool') = 'array' THEN a.extra -> 'proxy_pool'
+					ELSE '[]'::jsonb
+				END
+			) AS pool_entry
+			WHERE a.deleted_at IS NULL
+		)
+		SELECT proxy_id, COUNT(*) AS count
+		FROM account_proxy_pairs
+		WHERE proxy_id IS NOT NULL
+		GROUP BY proxy_id
+	`)
 	if err != nil {
 		return nil, err
 	}

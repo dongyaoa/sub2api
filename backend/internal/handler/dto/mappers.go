@@ -577,11 +577,12 @@ func ProxyAccountSummaryFromService(a *service.ProxyAccountSummary) *ProxyAccoun
 		return nil
 	}
 	return &ProxyAccountSummary{
-		ID:       a.ID,
-		Name:     a.Name,
-		Platform: a.Platform,
-		Type:     a.Type,
-		Notes:    a.Notes,
+		ID:            a.ID,
+		Name:          a.Name,
+		Platform:      a.Platform,
+		Type:          a.Type,
+		Notes:         a.Notes,
+		ProxyPoolSize: a.ProxyPoolSize,
 	}
 }
 

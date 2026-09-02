@@ -4,6 +4,7 @@ package repository
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -203,6 +204,36 @@ func (s *ProxyRepoSuite) TestCountAccountsByProxyID_Zero() {
 	count, err := s.repo.CountAccountsByProxyID(s.ctx, proxy.ID)
 	s.Require().NoError(err)
 	s.Require().Zero(count)
+}
+
+func (s *ProxyRepoSuite) TestProxyPoolAccountCountsIncludeEveryProxy() {
+	p1 := s.mustCreateProxy(&service.Proxy{Name: "pool-p1", Protocol: "http", Host: "127.0.0.1", Port: 8080, Status: service.StatusActive})
+	p2 := s.mustCreateProxy(&service.Proxy{Name: "pool-p2", Protocol: "http", Host: "127.0.0.1", Port: 8081, Status: service.StatusActive})
+	p3 := s.mustCreateProxy(&service.Proxy{Name: "pool-p3", Protocol: "http", Host: "127.0.0.1", Port: 8082, Status: service.StatusActive})
+
+	_, err := s.tx.ExecContext(s.ctx, `
+		INSERT INTO accounts (name, platform, type, proxy_id, extra)
+		VALUES ($1, $2, $3, $4, $5::jsonb)
+	`, "multi-proxy-account", service.PlatformAnthropic, service.AccountTypeOAuth, p1.ID,
+		`{"proxy_pool":[{"proxy_id":`+fmt.Sprint(p1.ID)+`,"concurrency":10},{"proxy_id":`+fmt.Sprint(p2.ID)+`,"concurrency":10},{"proxy_id":`+fmt.Sprint(p3.ID)+`,"concurrency":10}]}`)
+	s.Require().NoError(err, "insert proxy pool account")
+
+	for _, proxyID := range []int64{p1.ID, p2.ID, p3.ID} {
+		count, countErr := s.repo.CountAccountsByProxyID(s.ctx, proxyID)
+		s.Require().NoError(countErr)
+		s.Require().Equal(int64(1), count, "proxy %d account count", proxyID)
+	}
+
+	counts, err := s.repo.GetAccountCountsForProxies(s.ctx)
+	s.Require().NoError(err)
+	s.Require().Equal(int64(1), counts[p1.ID])
+	s.Require().Equal(int64(1), counts[p2.ID])
+	s.Require().Equal(int64(1), counts[p3.ID])
+
+	summaries, err := s.repo.ListAccountSummariesByProxyID(s.ctx, p2.ID)
+	s.Require().NoError(err)
+	s.Require().Len(summaries, 1)
+	s.Require().Equal(3, summaries[0].ProxyPoolSize)
 }
 
 // --- GetAccountCountsForProxies ---

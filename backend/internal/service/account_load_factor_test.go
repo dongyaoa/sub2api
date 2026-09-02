@@ -44,3 +44,15 @@ func TestEffectiveLoadFactor_ZeroLoadFactor_ZeroConcurrency(t *testing.T) {
 	a := &Account{Concurrency: 0, LoadFactor: intPtrHelper(0)}
 	require.Equal(t, 1, a.EffectiveLoadFactor())
 }
+
+func TestEffectiveLoadFactor_ProxyPoolUsesTotalCapacity(t *testing.T) {
+	a := &Account{
+		Concurrency: 10,
+		ProxyPool: []AccountProxyPoolEntry{
+			{ProxyID: 1, Concurrency: 10},
+			{ProxyID: 2, Concurrency: 10},
+			{ProxyID: 3, Concurrency: 10},
+		},
+	}
+	require.Equal(t, 30, a.EffectiveLoadFactor())
+}
