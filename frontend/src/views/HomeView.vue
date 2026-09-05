@@ -703,15 +703,15 @@ const toolProducts = [
 
 const pricingModels = [
   {
-    name: 'GPT-5.6-Sol',
+    name: 'GPT-6 Astra',
     badge: 'HOT',
-    officialInput: 5,
-    officialOutput: 30,
+    officialInput: 10,
+    officialOutput: 50,
     ourInput: 0.45,
     ourOutput: 2.7
   },
   {
-    name: 'Claude-Fable-5',
+    name: 'Claude-Fable-5.1',
     badge: '',
     officialInput: 10,
     officialOutput: 50,
@@ -753,13 +753,9 @@ function toggleTheme() {
 
 function initTheme() {
   const savedTheme = localStorage.getItem('theme')
-  if (
-    savedTheme === 'dark' ||
-    (!savedTheme && window.matchMedia('(prefers-color-scheme: dark)').matches)
-  ) {
-    isDark.value = true
-    document.documentElement.classList.add('dark')
-  }
+  const shouldUseDark = savedTheme ? savedTheme === 'dark' : true
+  isDark.value = shouldUseDark
+  document.documentElement.classList.toggle('dark', shouldUseDark)
 }
 
 function setupHeroMotion(): () => void {

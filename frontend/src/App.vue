@@ -27,6 +27,21 @@ function updateDocumentTitle() {
   document.title = resolveRouteDocumentTitle(route, appStore.siteName, customMenuItems)
 }
 
+function applyRouteTheme(path: string) {
+  // Respect an explicit user choice; otherwise keep the landing page dark and
+  // application/admin pages light by default.
+  const savedTheme = localStorage.getItem('theme')
+  if (savedTheme) return
+  const isHomepage = path === '/' || path === '/home'
+  document.documentElement.classList.toggle('dark', isHomepage)
+}
+
+watch(
+  () => route.path,
+  (path) => applyRouteTheme(path),
+  { immediate: true }
+)
+
 // Watch for site settings changes and update favicon/title
 watch(
   () => appStore.siteLogo,
