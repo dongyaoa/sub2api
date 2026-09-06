@@ -285,6 +285,9 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 			reqBody["prompt_cache_key"] = promptCacheKey
 		}
 		applyCodexAccountIdentityClientMetadataMap(reqBody, codexAccountIdentitySource(c, account), getAPIKeyIDFromContext(c))
+		if isCodexMultiWindowAccount(codexAccountIdentitySource(c, account)) {
+			applyCodexMultiWindowRequest(c, account, reqBody)
+		}
 		responsesBody, err = json.Marshal(reqBody)
 		if err != nil {
 			return nil, fmt.Errorf("remarshal after codex transform: %w", err)
@@ -344,6 +347,9 @@ func (s *OpenAIGatewayService) forwardAsChatCompletions(
 			sessionKey = isolateOpenAIUpstreamSessionID(apiKeyID, codexAccountIdentitySource(c, account), promptCacheKey)
 		}
 		upstreamReq.Header.Set("session_id", generateSessionUUID(sessionKey))
+	}
+	if isCodexMultiWindowAccount(codexAccountIdentitySource(c, account)) {
+		applyStagedCodexFingerprintHeaders(c, account, upstreamReq.Header)
 	}
 
 	// 7. Send request

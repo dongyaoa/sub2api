@@ -958,6 +958,9 @@ func (m *PluginManager) ShouldRouteOpenAIOAuth(account *Account) bool {
 	if m == nil || account == nil || account.Platform != PlatformOpenAI || account.Type != AccountTypeOAuth {
 		return false
 	}
+	if account.IsTLSFingerprintEnabled() {
+		return false
+	}
 	route := m.route.Load()
 	return route != nil && route.rolloutPercent > 0 && int(stablePluginBucket(account.ID)) < route.rolloutPercent
 }

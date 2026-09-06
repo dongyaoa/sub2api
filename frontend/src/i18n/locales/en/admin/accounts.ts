@@ -640,11 +640,15 @@ export default {
         codexCLIOnlyAppServerDesc:
           "Effective only when the switch above is on. When enabled, this account also allows third-party clients that embed the Codex engine over the app-server protocol (e.g. Claude Code's codex plugin); they still pass the global engine-fingerprint gate. OR-combined with the global app-server toggle.",
         codexFingerprintMode: 'Codex fingerprint convergence',
-        codexFingerprintModeDesc: 'When multiple users share the same OAuth account, converge device/session identifiers to account-level stable values to reduce upstream-visible device and session count. Off by default (client identifiers pass through as-is); opt in explicitly when needed. Some accounts reported quota shrinkage after enabling convergence, so choose based on your own measurements.',
+        codexFingerprintModeDesc: 'Off by default; enable manually. Single device, multiple windows shares one device identity while keeping stable, isolated pseudonyms for each client session and window. Non-Codex clients only get pseudonymous cache keys, without synthetic Codex window identifiers. Legacy device+session and full convergence merge sessions; some accounts reported reduced quotas.',
         codexFingerprintOff: 'Off (passthrough, default)',
+        codexFingerprintSingleDeviceMultiWindow: 'Single device, multiple windows',
         codexFingerprintDevice: 'Device only',
         codexFingerprintSession: 'Device + Session',
         codexFingerprintFull: 'Full convergence',
+        tlsFingerprintHint: 'Off by default. When enabled, the selected TLS profile takes precedence over the OAuth transport plugin. The built-in Node.js 24 profile is not a verified Codex TLS fingerprint.',
+        tlsFingerprintProfile: 'TLS fingerprint profile',
+        tlsFingerprintBuiltIn: 'Built-in default (Node.js 24)',
         codexImageTool: 'Codex image bridge policy',
         codexImageToolDesc:
           'Controls the hosted image_generation bridge and client-declared image tools on Codex /responses text requests. Hosted auto-injection applies only to non-Responses Lite requests. Account policy takes precedence over channel and global settings; standalone image-generation endpoints are unaffected.',

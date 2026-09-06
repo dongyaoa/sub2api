@@ -51,7 +51,7 @@ vi.mock('@/api/admin', () => ({
       getSettings: vi.fn().mockResolvedValue({}),
     },
     tlsFingerprintProfiles: {
-      list: vi.fn().mockResolvedValue([]),
+      list: vi.fn().mockResolvedValue([{ id: 7, name: 'Custom TLS profile' }]),
     },
   },
 }))
@@ -544,6 +544,37 @@ describe('CreateAccountModal OpenAI long-context billing', () => {
 
     expect(importCodexSessionMock).toHaveBeenCalledTimes(1)
     expect(importCodexSessionMock.mock.calls[0]?.[0]?.extra?.openai_long_context_billing_enabled).toBeUndefined()
+    expect(importCodexSessionMock.mock.calls[0]?.[0]?.extra?.codex_fingerprint_mode).toBeUndefined()
+    expect(importCodexSessionMock.mock.calls[0]?.[0]?.extra?.enable_tls_fingerprint).toBeUndefined()
+  })
+
+  it('persists an explicitly selected multi-window mode and TLS profile for Codex session import', async () => {
+    const wrapper = mountModal()
+    await wrapper.setProps({ show: false })
+    await wrapper.setProps({ show: true })
+    await selectButtonByText(wrapper, 'OpenAI')
+    await flushPromises()
+    const fingerprintSelect = wrapper.getComponent('[data-testid="create-codex-fingerprint-mode-select"]')
+    expect(fingerprintSelect.props('modelValue')).toBe('off')
+    expect(fingerprintSelect.props('options')).toEqual(expect.arrayContaining([
+      expect.objectContaining({ value: 'single_device_multi_window' })
+    ]))
+    fingerprintSelect.vm.$emit('update:modelValue', 'single_device_multi_window')
+    const tlsField = wrapper.get('[data-testid="create-openai-tls-fingerprint"]')
+    expect(tlsField.get('[role="switch"]').attributes('aria-checked')).toBe('false')
+    await tlsField.get('[role="switch"]').trigger('click')
+    expect(tlsField.find('option[value="7"]').exists()).toBe(true)
+    await tlsField.get('select').setValue('7')
+    await wrapper.get('form#create-account-form input[type="text"]').setValue('Codex multi-window')
+    await wrapper.get('form#create-account-form').trigger('submit.prevent')
+    await wrapper.get('[data-testid="import-codex-session"]').trigger('click')
+    await flushPromises()
+
+    expect(importCodexSessionMock.mock.calls[0]?.[0]?.extra).toMatchObject({
+      codex_fingerprint_mode: 'single_device_multi_window',
+      enable_tls_fingerprint: true,
+      tls_fingerprint_profile_id: 7
+    })
   })
 
   it('leaves Codex PAT import billing ownership to the backend', async () => {

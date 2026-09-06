@@ -20,11 +20,19 @@ func TestAccountHandlerListLiteUsesCompactDTOAndETag(t *testing.T) {
 	router, adminSvc := setupAccountListRouter()
 	now := time.Now().UTC()
 	groupID := int64(77)
+	firstProxy := &service.Proxy{ID: 81, Name: "proxy-81", Status: service.StatusActive}
+	secondProxy := &service.Proxy{ID: 82, Name: "proxy-82", Status: service.StatusActive}
+	thirdProxy := &service.Proxy{ID: 83, Name: "proxy-83", Status: service.StatusActive}
 	adminSvc.accounts = []service.Account{{
 		ID: 501, Name: "compact-account", Platform: service.PlatformOpenAI, Type: service.AccountTypeOAuth,
 		Credentials: map[string]any{"email": "compact@example.com", "access_token": strings.Repeat("x", 4096)},
 		Extra:       map[string]any{"privacy_mode": "training_off"}, Status: service.StatusActive,
-		Schedulable: true, Concurrency: 4, GroupIDs: []int64{groupID},
+		Schedulable: true, Concurrency: 30, GroupIDs: []int64{groupID},
+		ProxyPool: []service.AccountProxyPoolEntry{
+			{ProxyID: firstProxy.ID, Concurrency: 10, Proxy: firstProxy},
+			{ProxyID: secondProxy.ID, Concurrency: 10, Proxy: secondProxy},
+			{ProxyID: thirdProxy.ID, Concurrency: 10, Proxy: thirdProxy},
+		},
 		Groups:        []*service.Group{{ID: groupID, Name: "codex", Platform: service.PlatformOpenAI}},
 		AccountGroups: []service.AccountGroup{{AccountID: 501, GroupID: groupID, Priority: 2, Group: &service.Group{ID: groupID, Name: "codex", Platform: service.PlatformOpenAI}}},
 		CreatedAt:     now, UpdatedAt: now,
@@ -49,6 +57,21 @@ func TestAccountHandlerListLiteUsesCompactDTOAndETag(t *testing.T) {
 	require.Equal(t, true, liteItem["schedulable"])
 	require.NotContains(t, liteItem, "groups")
 	require.NotContains(t, liteItem, "account_groups")
+	proxyPool, ok := liteItem["proxy_pool"].([]any)
+	require.True(t, ok)
+	require.Len(t, proxyPool, 3)
+	for index, expectedID := range []int64{firstProxy.ID, secondProxy.ID, thirdProxy.ID} {
+		entry, entryOK := proxyPool[index].(map[string]any)
+		require.True(t, entryOK)
+		require.Equal(t, float64(expectedID), entry["proxy_id"])
+		require.Equal(t, float64(10), entry["concurrency"])
+		// Zero is omitted by the DTO, and the frontend deliberately treats an
+		// absent current count as zero so idle proxies remain visible as 0/10.
+		require.NotContains(t, entry, "current_concurrency")
+		proxy, proxyOK := entry["proxy"].(map[string]any)
+		require.True(t, proxyOK)
+		require.Equal(t, "proxy-"+strconv.FormatInt(expectedID, 10), proxy["name"])
+	}
 	credentials, ok := liteItem["credentials"].(map[string]any)
 	require.True(t, ok)
 	require.Equal(t, "compact@example.com", credentials["email"])

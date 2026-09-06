@@ -24,6 +24,9 @@ vi.mock('@/api/admin', () => ({
     accounts: {
       bulkUpdate: vi.fn(),
       checkMixedChannelRisk: vi.fn()
+    },
+    tlsFingerprintProfiles: {
+      list: vi.fn().mockResolvedValue([{ id: 7, name: 'Custom TLS profile' }])
     }
   }
 }))
@@ -953,7 +956,7 @@ describe('BulkEditAccountModal', () => {
   })
 
   // 与兄弟字段 codex_cli_only 的写法对齐：关闭态同样落显式值，不靠省略表达。
-  it('OpenAI OAuth 批量编辑显式 opt-in 模式仍原样提交', async () => {
+  it.each(['session', 'single_device_multi_window'])('OpenAI OAuth 批量编辑显式 opt-in 模式 %s 原样提交', async (mode) => {
     const wrapper = mountModal({
       selectedPlatforms: ['openai'],
       selectedTypes: ['oauth']
@@ -962,14 +965,35 @@ describe('BulkEditAccountModal', () => {
     await wrapper.get('#bulk-edit-openai-codex-fingerprint-mode-enabled').setValue(true)
     await wrapper
       .get('[data-testid="bulk-codex-fingerprint-mode-select"]')
-      .setValue('session')
+      .setValue(mode)
     await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
     await flushPromises()
 
     expect(adminAPI.accounts.bulkUpdate).toHaveBeenCalledWith([1, 2], {
       extra: {
-        codex_fingerprint_mode: 'session'
+        codex_fingerprint_mode: mode
       }
+    })
+  })
+
+  it('批量 TLS 开启保存模板，关闭时显式清除模板', async () => {
+    const wrapper = mountModal({ selectedPlatforms: ['openai'], selectedTypes: ['oauth'] })
+    await flushPromises()
+    await wrapper.get('#bulk-edit-openai-tls-fingerprint-enabled').setValue(true)
+    const tlsField = wrapper.get('[data-testid="bulk-openai-tls-fingerprint"]')
+    await tlsField.get('[role="switch"]').trigger('click')
+    await tlsField.get('select').setValue('7')
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenLastCalledWith([1, 2], {
+      extra: { enable_tls_fingerprint: true, tls_fingerprint_profile_id: 7 }
+    })
+
+    await tlsField.get('[role="switch"]').trigger('click')
+    await wrapper.get('#bulk-edit-account-form').trigger('submit.prevent')
+    await flushPromises()
+    expect(adminAPI.accounts.bulkUpdate).toHaveBeenLastCalledWith([1, 2], {
+      extra: { enable_tls_fingerprint: false, tls_fingerprint_profile_id: null }
     })
   })
 

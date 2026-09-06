@@ -37,6 +37,25 @@ func TestSchedulerMetadataAccountKeepsOpenAISubscriptionIdentity(t *testing.T) {
 	require.Empty(t, metadata.GetCredential("access_token"))
 }
 
+func TestSchedulerMetadataAccountKeepsProxyPoolCapacities(t *testing.T) {
+	account := service.Account{
+		ID:          25,
+		Concurrency: 30,
+		ProxyPool: []service.AccountProxyPoolEntry{
+			{ProxyID: 81, Concurrency: 10, CurrentConcurrency: 3, Proxy: &service.Proxy{ID: 81}},
+			{ProxyID: 82, Concurrency: 20, CurrentConcurrency: 4, Proxy: &service.Proxy{ID: 82}},
+		},
+	}
+
+	metadata := buildSchedulerMetadataAccount(account)
+
+	require.Equal(t, []service.AccountProxyPoolEntry{
+		{ProxyID: 81, Concurrency: 10},
+		{ProxyID: 82, Concurrency: 20},
+	}, metadata.ProxyPool)
+	require.Equal(t, 30, service.EffectiveAccountConcurrency(&metadata))
+}
+
 func TestSchedulerMetadataAccountProjectsUpstreamBillingProbe(t *testing.T) {
 	lastError := strings.Repeat("upstream diagnostic ", 512)
 	probe := map[string]any{

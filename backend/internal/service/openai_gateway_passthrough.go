@@ -193,7 +193,15 @@ func (s *OpenAIGatewayService) forwardOpenAIPassthrough(
 		// 一次性解析收敛 ID：请求体 client_metadata 在此改写（raw 字节外科
 		// 手术，透传热路径禁全量 Unmarshal），出站头改写由请求构造器读取
 		// context 中的同一份 IDs 完成（turn_id 等随机字段两侧必须一致）。
-		if !isOpenAIResponsesCompactPath(c) {
+		if isCodexMultiWindowAccount(codexAccountIdentitySource(c, account)) {
+			fpBody, fpChanged, fpErr := applyCodexMultiWindowRequestRaw(c, account, body)
+			if fpErr != nil {
+				return nil, fpErr
+			}
+			if fpChanged {
+				body = fpBody
+			}
+		} else if !isOpenAIResponsesCompactPath(c) {
 			var clientHeaders http.Header
 			if c != nil && c.Request != nil {
 				clientHeaders = c.Request.Header

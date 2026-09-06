@@ -77,6 +77,8 @@ const (
 	// codexFingerprintFull 收敛所有标识：installation_id + session_id + thread_id。
 	// 上游看到 1 台设备 + 1 会话 + 1 线程，最激进。
 	codexFingerprintFull codexFingerprintMode = "full"
+	// Keep one installation while preserving each downstream session and window.
+	codexFingerprintMultiWindow codexFingerprintMode = "single_device_multi_window"
 )
 
 const (
@@ -116,7 +118,7 @@ func codexFingerprintModeFromExtra(extra map[string]any) codexFingerprintMode {
 	}
 	raw, _ := extra[codexFingerprintModeExtraKey].(string)
 	switch codexFingerprintMode(strings.TrimSpace(raw)) {
-	case codexFingerprintOff, codexFingerprintDevice, codexFingerprintSession, codexFingerprintFull:
+	case codexFingerprintOff, codexFingerprintDevice, codexFingerprintSession, codexFingerprintFull, codexFingerprintMultiWindow:
 		return codexFingerprintMode(strings.TrimSpace(raw))
 	default:
 		return codexFingerprintOff
@@ -125,7 +127,7 @@ func codexFingerprintModeFromExtra(extra map[string]any) codexFingerprintMode {
 
 func codexFingerprintModeRequiresSeed(mode codexFingerprintMode) bool {
 	switch mode {
-	case codexFingerprintDevice, codexFingerprintSession, codexFingerprintFull:
+	case codexFingerprintDevice, codexFingerprintSession, codexFingerprintFull, codexFingerprintMultiWindow:
 		return true
 	default:
 		return false
@@ -272,6 +274,7 @@ type codexFingerprintIDs struct {
 	turnStartedAtUnixMs           int64
 	originalBodySessionID         string
 	originalBodySessionIDCaptured bool
+	multiWindow                   *codexMultiWindowIdentity
 }
 
 // resolveCodexFingerprintIDs 按收敛模式计算出站 ID 集合。
@@ -358,6 +361,10 @@ func applyCodexFingerprintHeaders(h http.Header, ids *codexFingerprintIDs) {
 	if h == nil || ids == nil {
 		return
 	}
+	if ids.mode == codexFingerprintMultiWindow {
+		applyCodexMultiWindowHeaders(h, ids)
+		return
+	}
 
 	// 所有非 off 模式都收敛 installation_id
 	h.Set("x-codex-installation-id", ids.installationID)
@@ -414,6 +421,9 @@ func rewriteCodexTurnMetadataFields(h http.Header, fields map[string]any) {
 func applyCodexFingerprintClientMetadata(reqBody map[string]any, ids *codexFingerprintIDs) bool {
 	if reqBody == nil || ids == nil {
 		return false
+	}
+	if ids.mode == codexFingerprintMultiWindow {
+		return applyCodexMultiWindowBody(reqBody, ids)
 	}
 
 	captureCodexFingerprintOriginalBodySessionID(ids, reqBody["client_metadata"])
@@ -535,6 +545,9 @@ func applyCodexFingerprintPromptCacheKey(reqBody map[string]any, ids *codexFinge
 func applyCodexFingerprintClientMetadataRaw(body []byte, ids *codexFingerprintIDs) ([]byte, bool, error) {
 	if len(body) == 0 || ids == nil {
 		return body, false, nil
+	}
+	if ids.mode == codexFingerprintMultiWindow {
+		return applyCodexMultiWindowBodyRaw(body, ids)
 	}
 	// 非 JSON 对象的 body（数组/标量/畸形）没有 client_metadata 语义，
 	// sjson 在这类根上写字段会改写整体结构，直接放行保持原样。

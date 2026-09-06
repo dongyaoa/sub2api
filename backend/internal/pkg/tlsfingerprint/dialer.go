@@ -5,12 +5,14 @@ package tlsfingerprint
 import (
 	"bufio"
 	"context"
+	"crypto/tls"
 	"encoding/base64"
 	"fmt"
 	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
+	"strings"
 
 	utls "github.com/refraction-networking/utls"
 	"golang.org/x/net/proxy"
@@ -41,8 +43,9 @@ type Dialer struct {
 // HTTPProxyDialer creates TLS connections through HTTP/HTTPS proxies with custom fingerprints.
 // It handles the CONNECT tunnel establishment before performing TLS handshake.
 type HTTPProxyDialer struct {
-	profile  *Profile
-	proxyURL *url.URL
+	profile        *Profile
+	proxyURL       *url.URL
+	proxyTLSConfig *tls.Config
 }
 
 // SOCKS5ProxyDialer creates TLS connections through SOCKS5 proxies with custom fingerprints.
@@ -160,7 +163,7 @@ func (d *SOCKS5ProxyDialer) DialTLSContext(ctx context.Context, network, addr st
 		proxyAddr = net.JoinHostPort(d.proxyURL.Hostname(), "1080") // Default SOCKS5 port
 	}
 
-	socksDialer, err := proxy.SOCKS5("tcp", proxyAddr, auth, proxy.Direct)
+	socksDialer, err := proxy.SOCKS5("tcp", proxyAddr, auth, &net.Dialer{})
 	if err != nil {
 		slog.Debug("tls_fingerprint_socks5_dialer_failed", "error", err)
 		return nil, fmt.Errorf("create SOCKS5 dialer: %w", err)
@@ -168,7 +171,11 @@ func (d *SOCKS5ProxyDialer) DialTLSContext(ctx context.Context, network, addr st
 
 	// Step 2: Establish SOCKS5 tunnel to target
 	slog.Debug("tls_fingerprint_socks5_establishing_tunnel", "target", addr)
-	conn, err := socksDialer.Dial("tcp", addr)
+	contextDialer, ok := socksDialer.(proxy.ContextDialer)
+	if !ok {
+		return nil, fmt.Errorf("SOCKS5 dialer does not support cancellation")
+	}
+	conn, err := contextDialer.DialContext(ctx, "tcp", addr)
 	if err != nil {
 		slog.Debug("tls_fingerprint_socks5_connect_failed", "error", err)
 		return nil, fmt.Errorf("SOCKS5 connect: %w", err)
@@ -190,7 +197,7 @@ func (d *HTTPProxyDialer) DialTLSContext(ctx context.Context, network, addr stri
 		proxyAddr = d.proxyURL.Host
 	} else {
 		// Default ports
-		if d.proxyURL.Scheme == "https" {
+		if strings.EqualFold(d.proxyURL.Scheme, "https") {
 			proxyAddr = net.JoinHostPort(d.proxyURL.Hostname(), "443")
 		} else {
 			proxyAddr = net.JoinHostPort(d.proxyURL.Hostname(), "80")
@@ -204,6 +211,23 @@ func (d *HTTPProxyDialer) DialTLSContext(ctx context.Context, network, addr stri
 		return nil, fmt.Errorf("connect to proxy: %w", err)
 	}
 	slog.Debug("tls_fingerprint_http_proxy_connected", "proxy_addr", proxyAddr)
+	// CONNECT reads/writes must stop when the dial context is cancelled.
+	rawConn := conn
+	stopCancel := context.AfterFunc(ctx, func() { _ = rawConn.Close() })
+	defer stopCancel()
+	if strings.EqualFold(d.proxyURL.Scheme, "https") {
+		proxyTLSConfig := &tls.Config{ServerName: d.proxyURL.Hostname(), MinVersion: tls.VersionTLS12}
+		if d.proxyTLSConfig != nil {
+			proxyTLSConfig = d.proxyTLSConfig.Clone()
+			proxyTLSConfig.ServerName = d.proxyURL.Hostname()
+		}
+		proxyConn := tls.Client(conn, proxyTLSConfig)
+		if err := proxyConn.HandshakeContext(ctx); err != nil {
+			_ = conn.Close()
+			return nil, fmt.Errorf("TLS handshake with proxy: %w", err)
+		}
+		conn = proxyConn
+	}
 
 	// Step 2: Send CONNECT request to establish tunnel
 	req := &http.Request{

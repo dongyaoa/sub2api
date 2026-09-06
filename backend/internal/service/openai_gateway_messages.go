@@ -235,6 +235,9 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 			promptCacheKey = codexResult.PromptCacheKey
 		}
 		applyCodexAccountIdentityClientMetadataMap(reqBody, codexAccountIdentitySource(c, account), apiKeyID)
+		if isCodexMultiWindowAccount(codexAccountIdentitySource(c, account)) {
+			applyCodexMultiWindowRequest(c, account, reqBody)
+		}
 		delete(reqBody, "prompt_cache_key")
 		if shouldAutoInjectPromptCacheKeyForCompat(upstreamModel) {
 			compatTurnState = s.getOpenAICompatSessionTurnState(ctx, c, account, promptCacheKey)
@@ -370,6 +373,9 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	}
 	if compatTurnState != "" && upstreamReq.Header.Get("x-codex-turn-state") == "" {
 		upstreamReq.Header.Set("x-codex-turn-state", compatTurnState)
+	}
+	if isCodexMultiWindowAccount(codexAccountIdentitySource(c, account)) {
+		applyStagedCodexFingerprintHeaders(c, account, upstreamReq.Header)
 	}
 
 	// 7. Send request

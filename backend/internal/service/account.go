@@ -2334,11 +2334,9 @@ func (a *Account) IsAnthropicOAuthOrSetupToken() bool {
 }
 
 // IsTLSFingerprintEnabled 检查是否启用 TLS 指纹伪装
-// 仅适用于 Anthropic OAuth/SetupToken 类型账号
-// 启用后将模拟 Claude Code (Node.js) 客户端的 TLS 握手特征
+// Applies to Anthropic OAuth/SetupToken and OpenAI OAuth-like accounts.
 func (a *Account) IsTLSFingerprintEnabled() bool {
-	// 仅支持 Anthropic OAuth/SetupToken 账号
-	if !a.IsAnthropicOAuthOrSetupToken() {
+	if a == nil || (!a.IsAnthropicOAuthOrSetupToken() && !a.IsOpenAIOAuthLike()) {
 		return false
 	}
 	if a.Extra == nil {

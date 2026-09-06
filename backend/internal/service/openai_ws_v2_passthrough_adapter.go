@@ -761,6 +761,13 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 			firstClientMessage = aliasedBody
 		}
 	}
+	multiWindowFirst, multiWindowChanged, multiWindowErr := applyCodexMultiWindowRequestRaw(c, account, firstClientMessage)
+	if multiWindowErr != nil {
+		return NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket identity metadata", multiWindowErr)
+	}
+	if multiWindowChanged {
+		firstClientMessage = multiWindowFirst
+	}
 	accountScopedFirst, accountScoped, scopeErr := applyCodexAccountIdentityClientMetadataRaw(firstClientMessage, codexAccountIdentitySource(c, account), getAPIKeyIDFromContext(c))
 	if scopeErr != nil {
 		return NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket identity metadata", scopeErr)
@@ -876,7 +883,7 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 			return fmt.Errorf("refresh ws authentication headers: %w", err)
 		}
 		dialCtx, cancelDial := context.WithTimeout(ctx, s.openAIWSDialTimeout())
-		upstreamConn, statusCode, handshakeHeaders, err = dialer.Dial(dialCtx, wsURL, headers, proxyURL)
+		upstreamConn, statusCode, handshakeHeaders, err = dialer.Dial(withOpenAIWSTLSProfile(dialCtx, s.tlsFPProfileService.ResolveTLSProfile(account)), wsURL, headers, proxyURL)
 		cancelDial()
 		if err == nil {
 			break
@@ -1015,6 +1022,13 @@ func (s *OpenAIGatewayService) proxyResponsesWebSocketV2Passthrough(
 				}
 			}
 			if isResponseCreate || eventType == "session.update" {
+				multiWindowPayload, multiWindowChanged, multiWindowErr := applyCodexMultiWindowRequestRaw(c, account, payload)
+				if multiWindowErr != nil {
+					return payload, nil, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket identity metadata", multiWindowErr)
+				}
+				if multiWindowChanged {
+					payload = multiWindowPayload
+				}
 				accountScopedPayload, accountScoped, scopeErr := applyCodexAccountIdentityClientMetadataRaw(payload, codexAccountIdentitySource(c, account), getAPIKeyIDFromContext(c))
 				if scopeErr != nil {
 					return payload, nil, NewOpenAIWSClientCloseError(coderws.StatusPolicyViolation, "invalid websocket identity metadata", scopeErr)

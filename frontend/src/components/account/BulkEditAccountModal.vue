@@ -973,6 +973,28 @@
         </div>
       </div>
 
+      <div v-if="allOpenAIOAuth" class="border-t border-gray-200 pt-4 dark:border-dark-600">
+        <div class="mb-3 flex items-center justify-between">
+          <label for="bulk-edit-openai-tls-fingerprint-enabled" class="input-label mb-0">
+            {{ t('admin.accounts.quotaControl.tlsFingerprint.label') }}
+          </label>
+          <input
+            id="bulk-edit-openai-tls-fingerprint-enabled"
+            v-model="enableTLSFingerprint"
+            type="checkbox"
+            class="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+          />
+        </div>
+        <fieldset :disabled="!enableTLSFingerprint" :class="!enableTLSFingerprint && 'opacity-50'">
+          <OpenAITLSFingerprintSettings
+            v-model:enabled="tlsFingerprintEnabled"
+            v-model:profile-id="tlsFingerprintProfileId"
+            :profiles="tlsFingerprintProfiles"
+            data-testid="bulk-openai-tls-fingerprint"
+          />
+        </fieldset>
+      </div>
+
       <!-- Codex 指纹收敛模式（仅 OpenAI OAuth） -->
       <div v-if="allOpenAIOAuth" class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <div class="mb-3 flex items-center justify-between">
@@ -1489,6 +1511,7 @@ import type {
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import ConfirmDialog from '@/components/common/ConfirmDialog.vue'
 import Select from '@/components/common/Select.vue'
+import OpenAITLSFingerprintSettings from '@/components/account/OpenAITLSFingerprintSettings.vue'
 import ProxySelector from '@/components/common/ProxySelector.vue'
 import GroupSelector from '@/components/common/GroupSelector.vue'
 import ModelWhitelistSelector from '@/components/account/ModelWhitelistSelector.vue'
@@ -1706,11 +1729,16 @@ const openaiAPIKeyResponsesWebSocketV2Mode = ref<OpenAIWSMode>(OPENAI_WS_MODE_OF
 const upstreamBillingAutoProbeMode = ref<'enabled' | 'disabled'>('enabled')
 const codexCLIOnlyEnabled = ref(false)
 const codexCLIOnlyAppServerEnabled = ref(false)
-type CodexFingerprintMode = 'off' | 'device' | 'session' | 'full'
+type CodexFingerprintMode = 'off' | 'single_device_multi_window' | 'device' | 'session' | 'full'
+const enableTLSFingerprint = ref(false)
+const tlsFingerprintEnabled = ref(false)
+const tlsFingerprintProfileId = ref<number | null>(null)
+const tlsFingerprintProfiles = ref<{ id: number; name: string }[]>([])
 const enableCodexFingerprintMode = ref(false)
 const codexFingerprintMode = ref<CodexFingerprintMode>('off')
 const codexFingerprintModeOptions = computed(() => [
   { value: 'off' as CodexFingerprintMode, label: t('admin.accounts.openai.codexFingerprintOff') },
+  { value: 'single_device_multi_window' as CodexFingerprintMode, label: t('admin.accounts.openai.codexFingerprintSingleDeviceMultiWindow') },
   { value: 'device' as CodexFingerprintMode, label: t('admin.accounts.openai.codexFingerprintDevice') },
   { value: 'session' as CodexFingerprintMode, label: t('admin.accounts.openai.codexFingerprintSession') },
   { value: 'full' as CodexFingerprintMode, label: t('admin.accounts.openai.codexFingerprintFull') },
@@ -2088,6 +2116,12 @@ const buildUpdatePayload = (): Record<string, unknown> | null => {
     extra.codex_cli_only_allow_app_server = codexCLIOnlyAppServerEnabled.value
   }
 
+  if (enableTLSFingerprint.value && allOpenAIOAuth.value) {
+    const extra = ensureExtra()
+    extra.enable_tls_fingerprint = tlsFingerprintEnabled.value
+    extra.tls_fingerprint_profile_id = tlsFingerprintEnabled.value ? tlsFingerprintProfileId.value : null
+  }
+
   if (enableCodexFingerprintMode.value) {
     const extra = ensureExtra()
     // off 必须显式落键，不能靠删本地键表达。批量更新走 JSONB 顶层合并
@@ -2223,6 +2257,7 @@ const handleSubmit = async () => {
     enableCodexCLIOnly.value ||
     enableCodexCLIOnlyAppServer.value ||
     enableCodexFingerprintMode.value ||
+    (enableTLSFingerprint.value && allOpenAIOAuth.value) ||
     enableOpenAICompactMode.value ||
     enableOpenAICompactModelMapping.value ||
     enableRpmLimit.value ||
@@ -2347,6 +2382,20 @@ const handleMixedChannelCancel = () => {
 
 // Reset form when modal closes
 watch(
+  () => props.show && allOpenAIOAuth.value,
+  async (visible) => {
+    if (!visible) return
+    try {
+      const profiles = await adminAPI.tlsFingerprintProfiles.list()
+      tlsFingerprintProfiles.value = profiles.map(({ id, name }) => ({ id, name }))
+    } catch {
+      tlsFingerprintProfiles.value = []
+    }
+  },
+  { immediate: true }
+)
+
+watch(
   () => props.show,
   (newShow) => {
     if (!newShow) {
@@ -2375,6 +2424,9 @@ watch(
       enableCodexCLIOnlyAppServer.value = false
       enableCodexFingerprintMode.value = false
       codexFingerprintMode.value = 'off'
+      enableTLSFingerprint.value = false
+      tlsFingerprintEnabled.value = false
+      tlsFingerprintProfileId.value = null
       enableOpenAICompactMode.value = false
       enableOpenAICompactModelMapping.value = false
       enableRpmLimit.value = false

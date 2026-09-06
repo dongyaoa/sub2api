@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { defineComponent } from 'vue'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 
 const { updateAccountMock, checkMixedChannelRiskMock, authIsSimpleMode } = vi.hoisted(() => ({
   updateAccountMock: vi.fn(),
@@ -35,7 +35,7 @@ vi.mock('@/api/admin', () => ({
       getSettings: vi.fn().mockResolvedValue({})
     },
     tlsFingerprintProfiles: {
-      list: vi.fn().mockResolvedValue([])
+      list: vi.fn().mockResolvedValue([{ id: 7, name: 'Custom TLS profile' }])
     }
   }
 }))
@@ -326,6 +326,57 @@ function mountModal(account = buildAccount()) {
 describe('EditAccountModal', () => {
   beforeEach(() => {
     authIsSimpleMode.value = true
+  })
+
+  it.each(['oauth', 'setup-token'])('loads and preserves multi-window mode and TLS profile for %s', async (type) => {
+    const account = buildOpenAIOAuthParentAccount()
+    account.type = type
+    account.extra = {
+      codex_fingerprint_mode: 'single_device_multi_window',
+      enable_tls_fingerprint: true,
+      tls_fingerprint_profile_id: 7,
+      unrelated_setting: 'keep'
+    }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+    await flushPromises()
+
+    expect((wrapper.get('[data-testid="edit-codex-fingerprint-mode-select"]').element as HTMLSelectElement).value).toBe('single_device_multi_window')
+    const tlsField = wrapper.get('[data-testid="edit-openai-tls-fingerprint"]')
+    expect(tlsField.get('[role="switch"]').attributes('aria-checked')).toBe('true')
+    expect((tlsField.get('select').element as HTMLSelectElement).value).toBe('7')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+    expect(updateAccountMock.mock.calls[0]?.[1]?.extra).toMatchObject(account.extra)
+  })
+
+  it('clears explicitly disabled OpenAI fingerprint settings while keeping unrelated account data', async () => {
+    const account = buildOpenAIOAuthParentAccount()
+    account.enable_tls_fingerprint = true
+    account.tls_fingerprint_profile_id = 7
+    account.extra = {
+      codex_fingerprint_mode: 'single_device_multi_window',
+      enable_tls_fingerprint: true,
+      tls_fingerprint_profile_id: 7,
+      unrelated_setting: 'keep'
+    }
+    updateAccountMock.mockReset().mockResolvedValue(account)
+    checkMixedChannelRiskMock.mockReset().mockResolvedValue({ has_risk: false })
+    const wrapper = mountModal(account)
+    await wrapper.get('[data-testid="edit-codex-fingerprint-mode-select"]').setValue('off')
+    await wrapper.get('[data-testid="edit-openai-tls-fingerprint"] [role="switch"]').trigger('click')
+    await wrapper.get('form#edit-account-form').trigger('submit.prevent')
+
+    const extra = updateAccountMock.mock.calls[0]?.[1]?.extra
+    expect(extra).not.toHaveProperty('codex_fingerprint_mode')
+    expect(extra).not.toHaveProperty('enable_tls_fingerprint')
+    expect(extra).not.toHaveProperty('tls_fingerprint_profile_id')
+    expect(extra.unrelated_setting).toBe('keep')
+  })
+
+  it('hides OpenAI TLS fingerprint controls for API-key accounts', () => {
+    const wrapper = mountModal()
+    expect(wrapper.find('[data-testid="edit-openai-tls-fingerprint"]').exists()).toBe(false)
   })
 
   it('reopening the same account rehydrates the OpenAI whitelist from props', async () => {
