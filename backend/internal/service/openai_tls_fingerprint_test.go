@@ -171,7 +171,7 @@ func TestOpenAITLSFingerprintModelsManifestUsesSelectedProfile(t *testing.T) {
 		"enable_tls_fingerprint": true,
 	}}
 	gateway := &OpenAIGatewayService{httpUpstream: upstream}
-	manifest, err := gateway.fetchCodexModelsManifestUpstream(t.Context(), codexModelsManifestRequest{
+	manifest, err := gateway.fetchCodexModelsManifestUpstream(t.Context(), openAIModelsRequest{
 		url: "https://example.com/models", headers: make(http.Header), credentialAccount: account, accountID: account.ID,
 	}, "")
 	require.NoError(t, err)

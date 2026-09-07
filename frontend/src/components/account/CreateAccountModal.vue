@@ -2963,6 +2963,14 @@
       <div class="border-t border-gray-200 pt-4 dark:border-dark-600">
         <label class="input-label">{{ t('admin.accounts.expiresAt') }}</label>
         <input v-model="expiresAtInput" type="datetime-local" class="input" />
+        <div class="mt-2 flex gap-2">
+          <button type="button" class="btn btn-secondary btn-sm" @click="form.expires_at = getAccountExpiryTimestamp(1)">
+            {{ t('payment.oneMonth') }}
+          </button>
+          <button type="button" class="btn btn-secondary btn-sm" @click="form.expires_at = getAccountExpiryTimestamp(12)">
+            {{ t('payment.oneYear') }}
+          </button>
+        </div>
         <p class="input-hint">
           {{ t('admin.accounts.expiresAtHint') }}
           {{ t('admin.accounts.expiresAtTimezoneHint', { timezone: browserTimeZone }) }}
@@ -3443,7 +3451,6 @@
 
         <!-- Group Selection - 仅标准模式显示 -->
         <GroupSelector
-          v-if="!authStore.isSimpleMode"
           v-model="form.group_ids"
           :groups="groups"
           :platform="form.platform"
@@ -3809,6 +3816,7 @@
 import { ref, reactive, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useAppStore } from '@/stores/app'
+
 import {
   claudeModels,
   getPresetMappingsByPlatform,
@@ -3818,7 +3826,6 @@ import {
   fetchAntigravityDefaultMappings,
   isValidWildcardPattern
 } from '@/composables/useModelWhitelist'
-import { useAuthStore } from '@/stores/auth'
 import { adminAPI } from '@/api/admin'
 import { useQuotaNotifyState } from '@/composables/useQuotaNotifyState'
 import {
@@ -3882,6 +3889,7 @@ import {
   parseDateTimeLocalInput
 } from '@/utils/format'
 import { createStableObjectKeyResolver } from '@/utils/stableObjectKey'
+import { getAccountExpiryTimestamp } from '@/components/account/accountExpiry'
 import { VERTEX_LOCATION_OPTIONS } from '@/constants/account'
 import {
   OPENAI_WS_MODE_CTX_POOL,
@@ -3911,7 +3919,6 @@ interface OAuthFlowExposed {
 }
 
 const { t } = useI18n()
-const authStore = useAuthStore()
 const browserTimeZone = getBrowserTimeZone()
 
 const oauthStepTitle = computed(() => {
@@ -6416,7 +6423,7 @@ const handleOpenAIImportCodexPAT = async (accessToken: string) => {
       extra: withUpstreamRequestIdHeader(extra)
     })
 
-    appStore.showSuccess(t('admin.accounts.messages.accountCreated'))
+    appStore.showSuccess(t('admin.accounts.accountCreated'))
     emit('created')
     handleClose()
   } catch (error: any) {
