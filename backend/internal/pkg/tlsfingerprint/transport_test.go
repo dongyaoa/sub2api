@@ -32,7 +32,7 @@ func TestConfigureTransportRejectsUnsupportedALPN(t *testing.T) {
 func TestDefaultDialerEmitsConfiguredClientHello(t *testing.T) {
 	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	require.NoError(t, err)
-	defer listener.Close()
+	defer func() { _ = listener.Close() }()
 	hellos := make(chan *tls.ClientHelloInfo, 1)
 	done := make(chan struct{})
 	go func() {
@@ -41,7 +41,7 @@ func TestDefaultDialerEmitsConfiguredClientHello(t *testing.T) {
 		if err != nil {
 			return
 		}
-		defer conn.Close()
+		defer func() { _ = conn.Close() }()
 		_ = conn.SetDeadline(time.Now().Add(3 * time.Second))
 		server := tls.Server(conn, &tls.Config{GetConfigForClient: func(info *tls.ClientHelloInfo) (*tls.Config, error) {
 			hellos <- info

@@ -692,7 +692,7 @@ func (s *CheckinService) queryEffectiveRecharge(ctx context.Context, client *dbe
 	if err != nil {
 		return 0, fmt.Errorf("query effective recharge: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	var amount float64
 	if !rows.Next() {
 		return 0, fmt.Errorf("query effective recharge returned no rows")

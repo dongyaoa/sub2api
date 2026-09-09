@@ -26,9 +26,11 @@ func TestNormalizeGeminiImageRequestBody(t *testing.T) {
 
 			var payload map[string]any
 			require.NoError(t, json.Unmarshal(normalized, &payload))
-			generationConfig := payload["generationConfig"].(map[string]any)
+			generationConfig, ok := payload["generationConfig"].(map[string]any)
+			require.True(t, ok)
 			require.NotContains(t, generationConfig, "responseFormat")
-			imageConfig := generationConfig["imageConfig"].(map[string]any)
+			imageConfig, ok := generationConfig["imageConfig"].(map[string]any)
+			require.True(t, ok)
 			require.Equal(t, "16:9", imageConfig["aspectRatio"])
 			require.Equal(t, "4K", imageConfig["imageSize"])
 		})
@@ -44,8 +46,10 @@ func TestNormalizeGeminiImageRequestBodyPreservesStandardConfig(t *testing.T) {
 
 	var payload map[string]any
 	require.NoError(t, json.Unmarshal(normalized, &payload))
-	generationConfig := payload["generationConfig"].(map[string]any)
-	imageConfig := generationConfig["imageConfig"].(map[string]any)
+	generationConfig, ok := payload["generationConfig"].(map[string]any)
+	require.True(t, ok)
+	imageConfig, ok := generationConfig["imageConfig"].(map[string]any)
+	require.True(t, ok)
 	require.Equal(t, "1:1", imageConfig["aspectRatio"])
 	require.Equal(t, "2K", imageConfig["imageSize"])
 }

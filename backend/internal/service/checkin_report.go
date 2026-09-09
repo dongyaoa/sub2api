@@ -133,7 +133,7 @@ func (s *CheckinService) GetDailyStats(ctx context.Context, start, end time.Time
 	if err != nil {
 		return nil, fmt.Errorf("query daily checkin report: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	found := make(map[string]CheckinDailyStat)
 	for rows.Next() {
 		var item CheckinDailyStat
@@ -186,7 +186,7 @@ func (s *CheckinService) ListAdminRecords(ctx context.Context, page, pageSize in
 	if err != nil {
 		return nil, 0, fmt.Errorf("list checkin records: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items := make([]CheckinAdminRecord, 0, pageSize)
 	for rows.Next() {
 		var item CheckinAdminRecord

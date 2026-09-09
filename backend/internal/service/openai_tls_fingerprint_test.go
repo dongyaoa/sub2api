@@ -71,13 +71,13 @@ func TestOpenAITLSFingerprintOverridesPluginForForwardAndAccountTest(t *testing.
 	gateway := &OpenAIGatewayService{httpUpstream: upstream, pluginManager: manager, tlsFPProfileService: profiles}
 	resp, err := gateway.doOpenAIUpstream(req, "", account)
 	require.NoError(t, err)
-	resp.Body.Close()
+	require.NoError(t, resp.Body.Close())
 	require.Equal(t, []uint16{29, 23}, upstream.profile.Curves)
 	testService := &AccountTestService{httpUpstream: upstream, pluginManager: manager, tlsFPProfileService: profiles}
 	upstream.profile = nil
 	resp, err = testService.doOpenAIAccountTestUpstream(req, "", account, false)
 	require.NoError(t, err)
-	resp.Body.Close()
+	require.NoError(t, resp.Body.Close())
 	require.Equal(t, "custom", upstream.profile.Name)
 	account.Extra["enable_tls_fingerprint"] = false
 	require.True(t, manager.ShouldRouteOpenAIOAuth(account))
