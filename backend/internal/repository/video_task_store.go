@@ -102,7 +102,12 @@ func (s *videoTaskStore) List(ctx context.Context, owner service.VideoTaskOwner,
 	}
 	fetchLimit := int64(min(limit*3, maxVideoTaskHistoryItems))
 	historyKey := videoTaskHistoryKey(owner)
-	ids, err := s.rdb.ZRevRange(ctx, historyKey, 0, fetchLimit-1).Result()
+	ids, err := s.rdb.ZRangeArgs(ctx, redis.ZRangeArgs{
+		Key:   historyKey,
+		Start: "0",
+		Stop:  strconv.FormatInt(fetchLimit-1, 10),
+		Rev:   true,
+	}).Result()
 	if err != nil || len(ids) == 0 {
 		return nil, err
 	}

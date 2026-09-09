@@ -291,7 +291,7 @@ func (s *CheckinService) ListUserReports(ctx context.Context, page, pageSize int
 	if err != nil {
 		return nil, 0, fmt.Errorf("list checkin user report: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	items := make([]CheckinUserReport, 0, pageSize)
 	for rows.Next() {
 		var item CheckinUserReport
@@ -358,7 +358,7 @@ func (s *CheckinService) countEligibleUsersByThresholds(
 	if err != nil {
 		return nil, fmt.Errorf("count eligible checkin users by tier: %w", err)
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	if !rows.Next() {
 		if err := rows.Err(); err != nil {
 			return nil, err
@@ -380,7 +380,7 @@ func scanCheckinScalar(ctx context.Context, client checkinQueryClient, query str
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 	if !rows.Next() {
 		if err := rows.Err(); err != nil {
 			return err

@@ -106,7 +106,8 @@ func TestTLSFingerprintHTTPSProxyUsesFingerprintTunnel(t *testing.T) {
 }
 
 func TestTLSFingerprintPoolSeparatesProfileChanges(t *testing.T) {
-	upstream := NewHTTPUpstream(nil).(*httpUpstreamService)
+	upstream, ok := NewHTTPUpstream(nil).(*httpUpstreamService)
+	require.True(t, ok)
 	first := &tlsfingerprint.Profile{Name: "same template", Curves: []uint16{29}}
 	updated := &tlsfingerprint.Profile{Name: "same template", Curves: []uint16{29, 23}}
 	a, err := upstream.getClientEntryWithTLS("", 1, 1, first, service.HTTPUpstreamProfileOpenAI, false, false)

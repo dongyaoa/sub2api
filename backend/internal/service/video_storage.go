@@ -127,6 +127,8 @@ func transcodeVideoWithFFmpeg(ctx context.Context, contentType string, data []by
 
 	runCtx, cancel := context.WithTimeout(ctx, defaultVideoTranscodeTimeout)
 	defer cancel()
+	// ffmpegPath comes only from an operator-controlled environment variable or exec.LookPath.
+	//nolint:gosec // G702: request data cannot control the executable path.
 	cmd := exec.CommandContext(runCtx, ffmpegPath,
 		"-hide_banner", "-loglevel", "error", "-y",
 		"-fflags", "+genpts",
