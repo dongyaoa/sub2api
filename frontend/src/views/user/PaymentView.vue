@@ -91,8 +91,12 @@
                         :min="globalMinAmount"
                         :max="globalMaxAmount"
                         :currency="selectedCurrency"
-                        :help-text="checkout.help_text"
                       />
+                      <div
+                        v-if="checkout.help_text"
+                        class="markdown-body mt-3 overflow-x-auto break-words rounded-xl border border-primary-100 bg-primary-50/70 px-3 py-2 text-xs font-medium leading-relaxed text-primary-700 dark:border-primary-900/40 dark:bg-primary-950/30 dark:text-primary-200"
+                        v-html="renderedHelpText"
+                      ></div>
                       <p v-if="amountError" class="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700 dark:border-amber-900/50 dark:bg-amber-950/40 dark:text-amber-300">{{ amountError }}</p>
                     </div>
                   </div>
