@@ -587,7 +587,10 @@ func (s *GeminiMessagesCompatService) SelectAccountForAIStudioEndpoints(ctx cont
 	return s.hydrateSelectedAccount(ctx, selected)
 }
 
-func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Context, account *Account, body []byte) (*ForwardResult, error) {
+func (s *GeminiMessagesCompatService) Forward(ctx context.Context, c *gin.Context, account *Account, body []byte) (recentResult *ForwardResult, recentErr error) {
+	finishRecentRequest := beginAccountRecentRequest(ctx, c, s.cache, account, recentRequestModel(body))
+	defer func() { finishRecentRequest(recentResult != nil, recentErr) }()
+
 	beginUpstreamResponseModelObservation(c)
 	beginGeminiImageOutputObservation(c)
 	startTime := time.Now()
@@ -1145,7 +1148,10 @@ func isGeminiSignatureRelatedError(respBody []byte) bool {
 	return strings.Contains(msg, "thought_signature") || strings.Contains(msg, "signature")
 }
 
-func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.Context, account *Account, originalModel string, action string, stream bool, body []byte) (*ForwardResult, error) {
+func (s *GeminiMessagesCompatService) ForwardNative(ctx context.Context, c *gin.Context, account *Account, originalModel string, action string, stream bool, body []byte) (recentResult *ForwardResult, recentErr error) {
+	finishRecentRequest := beginAccountRecentRequest(ctx, c, s.cache, account, originalModel)
+	defer func() { finishRecentRequest(recentResult != nil, recentErr) }()
+
 	beginUpstreamResponseModelObservation(c)
 	beginGeminiImageOutputObservation(c)
 	startTime := time.Now()
@@ -2101,6 +2107,7 @@ func (s *GeminiMessagesCompatService) handleNonStreamingResponse(c *gin.Context,
 		observer = beginUpstreamResponseModelObservation(c)
 	}
 	observer.ObserveGemini(unwrappedBody)
+	observeRecentResponseError(c, unwrappedBody, resp.StatusCode)
 	observeGeminiImageOutputs(c, unwrappedBody)
 
 	var geminiResp map[string]any
@@ -2189,6 +2196,7 @@ func (s *GeminiMessagesCompatService) handleStreamingResponse(c *gin.Context, re
 		if observer == nil {
 			observer = beginUpstreamResponseModelObservation(c)
 		}
+		observeRecentResponseError(c, unwrappedBytes, resp.StatusCode)
 		observer.ObserveGemini(unwrappedBytes)
 		observeGeminiImageOutputs(c, unwrappedBytes)
 
@@ -2696,6 +2704,7 @@ func (s *GeminiMessagesCompatService) handleNativeNonStreamingResponse(c *gin.Co
 	if observer == nil {
 		observer = beginUpstreamResponseModelObservation(c)
 	}
+	observeRecentResponseError(c, respBody, resp.StatusCode)
 	observer.ObserveGemini(respBody)
 	observeGeminiImageOutputs(c, respBody)
 
@@ -2780,6 +2789,7 @@ func (s *GeminiMessagesCompatService) handleNativeStreamingResponse(c *gin.Conte
 					if u := extractGeminiUsage(rawBytes); u != nil {
 						usage = u
 					}
+					observeRecentResponseError(c, rawBytes, resp.StatusCode)
 					observer.ObserveGemini(rawBytes)
 					observeGeminiImageOutputs(c, rawBytes)
 

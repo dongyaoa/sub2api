@@ -58,7 +58,10 @@ func (s *AntigravityGatewayService) ForwardAsChatCompletions(
 	account *Account,
 	body []byte,
 	_ *ParsedRequest,
-) (*ForwardResult, error) {
+) (recentResult *ForwardResult, recentErr error) {
+	finishRecentRequest := beginAccountRecentRequest(ctx, c, s.cache, account, recentRequestModel(body))
+	defer func() { finishRecentRequest(recentResult != nil, recentErr) }()
+
 	if err := s.validateAntigravityCompatAccount(c, account); err != nil {
 		return nil, err
 	}
@@ -105,7 +108,10 @@ func (s *AntigravityGatewayService) ForwardAsResponses(
 	account *Account,
 	body []byte,
 	_ *ParsedRequest,
-) (*ForwardResult, error) {
+) (recentResult *ForwardResult, recentErr error) {
+	finishRecentRequest := beginAccountRecentRequest(ctx, c, s.cache, account, recentRequestModel(body))
+	defer func() { finishRecentRequest(recentResult != nil, recentErr) }()
+
 	if err := s.validateAntigravityCompatAccount(c, account); err != nil {
 		return nil, err
 	}

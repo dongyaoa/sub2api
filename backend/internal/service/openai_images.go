@@ -565,7 +565,10 @@ func (s *OpenAIGatewayService) ForwardImages(
 	body []byte,
 	parsed *OpenAIImagesRequest,
 	channelMappedModel string,
-) (*OpenAIForwardResult, error) {
+) (recentResult *OpenAIForwardResult, recentErr error) {
+	finishRecentRequest := beginAccountRecentRequest(ctx, c, s.cache, account, recentRequestModel(body))
+	defer func() { finishRecentRequest(recentResult != nil && recentResult.SucceededForScheduling(), recentErr) }()
+
 	if parsed == nil {
 		return nil, fmt.Errorf("parsed images request is required")
 	}

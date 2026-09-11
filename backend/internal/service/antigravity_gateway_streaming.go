@@ -22,6 +22,34 @@ type antigravityStreamResult struct {
 	clientDisconnect bool // 客户端是否在流式传输过程中断开
 }
 
+// markAntigravityRecentSSEError observes upstream error payloads without changing
+// forwarding or usage accounting. Gemini can wrap the error under response.
+func markAntigravityRecentSSEError(c *gin.Context, payload string, status int) bool {
+	if !strings.Contains(payload, `"error"`) {
+		return false
+	}
+	var event struct {
+		Type     string          `json:"type"`
+		Error    json.RawMessage `json:"error"`
+		Response struct {
+			Error json.RawMessage `json:"error"`
+		} `json:"response"`
+	}
+	if json.Unmarshal([]byte(payload), &event) != nil {
+		return false
+	}
+	errBody := event.Error
+	if len(errBody) == 0 {
+		errBody = event.Response.Error
+	}
+	if len(errBody) == 0 || string(errBody) == "null" {
+		return false
+	}
+	message := RecentRequestErrorMessage(`{"error":` + string(errBody) + `}`)
+	markRecentRequestFailure(c, status, message)
+	return true
+}
+
 func (s *AntigravityGatewayService) observeAntigravityGeminiSSELine(c *gin.Context, line string) {
 	observer := upstreamResponseModelObserverFromContext(c)
 	if observer == nil {
@@ -35,6 +63,7 @@ func (s *AntigravityGatewayService) observeAntigravityGeminiSSELine(c *gin.Conte
 	if payload == "" || payload == "[DONE]" {
 		return
 	}
+	markAntigravityRecentSSEError(c, payload, http.StatusOK)
 	// Observe the original payload: ObserveGemini supports both the v1internal
 	// wrapper and direct Gemini response shapes. The main stream handler will
 	// unwrap the same line for business processing, so unwrapping here would be
@@ -228,6 +257,7 @@ func (s *AntigravityGatewayService) handleGeminiStreamingResponse(c *gin.Context
 				return &antigravityStreamResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: cw.Disconnected()}, nil
 			}
 			if ev.err != nil {
+				markRecentRequestFailure(c, resp.StatusCode, ev.err.Error())
 				if disconnect, handled := handleStreamReadError(ev.err, cw.Disconnected(), "antigravity gemini"); handled {
 					return &antigravityStreamResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: disconnect}, nil
 				}
@@ -295,6 +325,7 @@ func (s *AntigravityGatewayService) handleGeminiStreamingResponse(c *gin.Context
 			if time.Since(lastRead) < streamInterval {
 				continue
 			}
+			markRecentRequestFailure(c, resp.StatusCode, "Upstream stream data interval timeout")
 			if cw.Disconnected() {
 				logger.LegacyPrintf("service.antigravity_gateway", "Upstream timeout after client disconnect (antigravity gemini), returning collected usage")
 				return &antigravityStreamResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: true}, nil
@@ -893,6 +924,7 @@ func (s *AntigravityGatewayService) collectClaudeStreamResponse(c *gin.Context, 
 			if parseErr != nil {
 				continue
 			}
+			markAntigravityRecentSSEError(c, payload, resp.StatusCode)
 			upstreamResponseModelObserverFromContext(c).ObserveGemini(inner)
 
 			var parsed map[string]any
@@ -1142,6 +1174,7 @@ func (s *AntigravityGatewayService) handleClaudeStreamingResponse(c *gin.Context
 			}
 			if ev.err != nil {
 				if disconnect, handled := handleStreamReadError(ev.err, cw.Disconnected(), "antigravity claude"); handled {
+					markRecentRequestFailure(c, resp.StatusCode, ev.err.Error())
 					return &antigravityStreamResult{usage: finishUsage(), firstTokenMs: firstTokenMs, clientDisconnect: disconnect}, nil
 				}
 				if errors.Is(ev.err, bufio.ErrTooLong) {
@@ -1173,6 +1206,7 @@ func (s *AntigravityGatewayService) handleClaudeStreamingResponse(c *gin.Context
 			}
 			if cw.Disconnected() {
 				logger.LegacyPrintf("service.antigravity_gateway", "Upstream timeout after client disconnect (antigravity claude), returning collected usage")
+				markRecentRequestFailure(c, resp.StatusCode, "Upstream stream data interval timeout")
 				return &antigravityStreamResult{usage: finishUsage(), firstTokenMs: firstTokenMs, clientDisconnect: true}, nil
 			}
 			logger.LegacyPrintf("service.antigravity_gateway", "Stream data interval timeout (antigravity)")

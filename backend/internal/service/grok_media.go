@@ -635,7 +635,10 @@ func (s *OpenAIGatewayService) ForwardGrokMedia(
 	requestID string,
 	body []byte,
 	contentType string,
-) (*OpenAIForwardResult, error) {
+) (recentResult *OpenAIForwardResult, recentErr error) {
+	finishRecentRequest := beginAccountRecentRequest(ctx, c, s.cache, account, recentRequestModel(body))
+	defer func() { finishRecentRequest(recentResult != nil && recentResult.SucceededForScheduling(), recentErr) }()
+
 	startTime := time.Now()
 	if account == nil {
 		return nil, fmt.Errorf("grok account is required")

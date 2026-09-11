@@ -18,7 +18,11 @@ import (
 )
 
 // ForwardUpstream 使用 base_url + /v1/messages + 双 header 认证透传上游 Claude 请求
-func (s *AntigravityGatewayService) ForwardUpstream(ctx context.Context, c *gin.Context, account *Account, body []byte) (*ForwardResult, error) {
+func (s *AntigravityGatewayService) ForwardUpstream(ctx context.Context, c *gin.Context, account *Account, body []byte) (recentResult *ForwardResult, recentErr error) {
+	upstreamHTTPError := false
+	finishRecentRequest := beginAccountRecentRequest(ctx, c, s.cache, account, recentRequestModel(body))
+	defer func() { finishRecentRequest(recentResult != nil && !upstreamHTTPError, recentErr) }()
+
 	beginUpstreamResponseModelObservation(c)
 	startTime := time.Now()
 	sessionID := getSessionID(c)
@@ -89,6 +93,8 @@ func (s *AntigravityGatewayService) ForwardUpstream(ctx context.Context, c *gin.
 	// 处理错误响应
 	if resp.StatusCode >= 400 {
 		respBody := s.readUpstreamErrorBody(resp)
+		upstreamHTTPError = true
+		appendOpsUpstreamHTTPError(c, account, resp, extractUpstreamErrorMessage(respBody))
 
 		// 429 错误时标记账号限流
 		if resp.StatusCode == http.StatusTooManyRequests {
@@ -164,6 +170,7 @@ func (s *AntigravityGatewayService) ForwardUpstream(ctx context.Context, c *gin.
 func (s *AntigravityGatewayService) streamUpstreamResponse(c *gin.Context, resp *http.Response, startTime time.Time) *antigravityStreamResult {
 	usage := &ClaudeUsage{}
 	var firstTokenMs *int
+	terminalSeen := false
 
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
@@ -239,9 +246,13 @@ func (s *AntigravityGatewayService) streamUpstreamResponse(c *gin.Context, resp 
 		select {
 		case ev, ok := <-events:
 			if !ok {
+				if !terminalSeen {
+					markRecentRequestFailure(c, resp.StatusCode, "Upstream stream ended before a completion event")
+				}
 				return &antigravityStreamResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: cw.Disconnected()}
 			}
 			if ev.err != nil {
+				markRecentRequestFailure(c, resp.StatusCode, ev.err.Error())
 				if disconnect, handled := handleStreamReadError(ev.err, cw.Disconnected(), "antigravity upstream"); handled {
 					return &antigravityStreamResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: disconnect}
 				}
@@ -253,7 +264,16 @@ func (s *AntigravityGatewayService) streamUpstreamResponse(c *gin.Context, resp 
 
 			line := ev.line
 			if data, ok := extractAnthropicSSEDataLine(line); ok {
+				if anthropicStreamEventIsTerminal("", data) {
+					terminalSeen = true
+				}
+				if markAntigravityRecentSSEError(c, data, resp.StatusCode) {
+					terminalSeen = true
+				}
 				upstreamResponseModelObserverFromContext(c).ObserveAnthropic([]byte(strings.TrimSpace(data)))
+			}
+			if strings.TrimSpace(line) == "event: message_stop" {
+				terminalSeen = true
 			}
 
 			// 记录首 token 时间
@@ -273,6 +293,7 @@ func (s *AntigravityGatewayService) streamUpstreamResponse(c *gin.Context, resp 
 			if time.Since(lastRead) < streamInterval {
 				continue
 			}
+			markRecentRequestFailure(c, resp.StatusCode, "Upstream stream data interval timeout")
 			if cw.Disconnected() {
 				logger.LegacyPrintf("service.antigravity_gateway", "Upstream timeout after client disconnect (antigravity upstream), returning collected usage")
 				return &antigravityStreamResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: true}

@@ -870,8 +870,10 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 		}
 
 		if eventName == "error" {
+			markRecentRequestFailure(c, resp.StatusCode, dataLine)
 			return nil, dataLine, nil, &sseStreamErrorEventError{RawData: dataLine}
 		}
+		observeRecentResponseError(c, []byte(dataLine), resp.StatusCode)
 
 		if dataLine == "" {
 			return []string{strings.Join(lines, "\n") + "\n\n"}, "", nil, nil
@@ -1018,6 +1020,7 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 			if !ok {
 				// 上游完成，返回结果
 				if !sawTerminalEvent {
+					markRecentRequestFailure(c, resp.StatusCode, "Upstream stream ended before a completion event")
 					return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnected}, fmt.Errorf("stream usage incomplete: missing terminal event")
 				}
 				return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnected}, nil
@@ -1026,6 +1029,7 @@ func (s *GatewayService) handleStreamingResponse(ctx context.Context, resp *http
 				if sawTerminalEvent {
 					return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: clientDisconnected}, nil
 				}
+				markRecentRequestFailure(c, resp.StatusCode, ev.err.Error())
 				// 检测 context 取消（客户端断开会导致 context 取消，进而影响上游读取）
 				if errors.Is(ev.err, context.Canceled) || errors.Is(ev.err, context.DeadlineExceeded) {
 					return &streamingResult{usage: usage, firstTokenMs: firstTokenMs, clientDisconnect: true}, fmt.Errorf("stream usage incomplete: %w", ev.err)

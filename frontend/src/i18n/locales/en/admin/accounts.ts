@@ -220,9 +220,24 @@ export default {
         usageWindows: 'Usage Windows',
         proxy: 'Proxy',
         lastUsed: 'Last Used',
+        recentRequests: 'Recent Requests',
         createdAt: 'Created',
         expiresAt: 'Expires At',
         actions: 'Actions'
+      },
+      recentRequests: {
+        account: 'Account',
+        empty: 'No requests',
+        loadFailed: 'Failed to load request history',
+        copyDetails: 'Copy request details',
+        ariaLabel: 'Recent request status',
+        statusCode: 'Status code',
+        model: 'Model',
+        proxy: 'Proxy',
+        attempts: 'Attempts: {count}',
+        unknownStatus: 'Unknown status',
+        unknownTime: 'Unknown time',
+        noDetails: 'No further details'
       },
       schedulerScore: {
         baseShort: 'Base',
@@ -1479,6 +1494,13 @@ export default {
       testFailed: 'Test failed',
       connectedToApi: 'Connected to API',
       usingModel: 'Using model: {model}',
+      testProxy: 'Test proxy',
+      testProxySelected: 'Test proxy: {name} (ID: {id})',
+      testProxyRoute: {
+        direct: 'Direct connection',
+        unknown: 'Actual route unknown',
+        managed: 'Configured proxy'
+      },
       sendingTestMessage: 'Sending test message: "hi"',
       sendingImageRequest: 'Sending image generation test request...',
       response: 'Response:',

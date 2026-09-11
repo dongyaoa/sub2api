@@ -27,7 +27,10 @@ func (s *GeminiMessagesCompatService) ForwardAsChatCompletions(
 	c *gin.Context,
 	account *Account,
 	body []byte,
-) (*ForwardResult, error) {
+) (recentResult *ForwardResult, recentErr error) {
+	finishRecentRequest := beginAccountRecentRequest(ctx, c, s.cache, account, recentRequestModel(body))
+	defer func() { finishRecentRequest(recentResult != nil, recentErr) }()
+
 	startTime := time.Now()
 
 	var ccReq apicompat.ChatCompletionsRequest
@@ -471,6 +474,7 @@ func (s *GeminiMessagesCompatService) handleChatCompletionsNonStreamingResponseF
 	}
 
 	var geminiResp map[string]any
+	observeRecentResponseError(c, respBody, resp.StatusCode)
 	if err := json.Unmarshal(respBody, &geminiResp); err != nil {
 		return nil, s.writeChatCompletionsError(c, http.StatusBadGateway, "upstream_error", "Failed to parse upstream response")
 	}
@@ -632,6 +636,7 @@ func (s *GeminiMessagesCompatService) handleChatCompletionsStreamingResponseFrom
 					}
 
 					var geminiResp map[string]any
+					observeRecentResponseError(c, rawBytes, resp.StatusCode)
 					if err := json.Unmarshal(rawBytes, &geminiResp); err == nil {
 						if firstChunk {
 							firstChunk = false

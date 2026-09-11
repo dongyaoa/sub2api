@@ -303,6 +303,13 @@
               :error="todayStatsError"
             />
           </template>
+          <template #cell-recent_requests="{ row }">
+            <AccountRecentRequestsCell
+              :requests="recentRequestsByAccountId[String(row.id)] ?? []"
+              :loading="recentRequestsLoading"
+              :error="recentRequestsError"
+            />
+          </template>
           <template #cell-groups="{ row }">
             <AccountGroupsCell :groups="accountGroupsForRow(row)" :max-display="4" />
           </template>
@@ -519,6 +526,7 @@ import AccountUsageCell from '@/components/account/AccountUsageCell.vue'
 import AccountTodayStatsCell from '@/components/account/AccountTodayStatsCell.vue'
 import AccountGroupsCell from '@/components/account/AccountGroupsCell.vue'
 import AccountCapacityCell from '@/components/account/AccountCapacityCell.vue'
+import AccountRecentRequestsCell from '@/components/account/AccountRecentRequestsCell.vue'
 import UpstreamBillingRateCell from '@/components/account/UpstreamBillingRateCell.vue'
 import PlatformTypeBadge from '@/components/common/PlatformTypeBadge.vue'
 import Icon from '@/components/icons/Icon.vue'
@@ -533,6 +541,7 @@ import { sanitizeUrl } from '@/utils/url'
 import { getFloatingPanelPosition } from '@/utils/floatingPanel'
 import { formatMultiplier } from '@/utils/formatters'
 import type { Account, AccountListItem, AccountPlatform, AccountSchedulerGroupScore, AccountType, AccountUsageInfo, Proxy as AccountProxy, AdminGroup, WindowStats, ClaudeModel, UpstreamBillingProbeSnapshot } from '@/types'
+import type { AccountRecentRequest } from '@/api/admin/accounts'
 
 const { t } = useI18n()
 const appStore = useAppStore()
@@ -704,6 +713,10 @@ const todayStatsError = ref<string | null>(null)
 const todayStatsReqSeq = ref(0)
 const pendingTodayStatsRefresh = ref(false)
 const usageManualRefreshToken = ref(0)
+const recentRequestsByAccountId = ref<Record<string, AccountRecentRequest[]>>({})
+const recentRequestsLoading = ref(false)
+const recentRequestsError = ref(false)
+const recentRequestsReqSeq = ref(0)
 
 const desktopViewportQuery = '(min-width: 768px)'
 const isDesktopViewport = ref(
@@ -907,6 +920,47 @@ const refreshTodayStatsBatch = async () => {
   }
 }
 
+const refreshRecentRequestsBatch = async () => {
+  const reqSeq = ++recentRequestsReqSeq.value
+  if (hiddenColumns.has('recent_requests')) {
+    recentRequestsLoading.value = false
+    recentRequestsError.value = false
+    recentRequestsByAccountId.value = {}
+    return
+  }
+
+  const accountIDs = accounts.value.map(account => account.id)
+  if (accountIDs.length === 0) {
+    recentRequestsByAccountId.value = {}
+    recentRequestsLoading.value = false
+    recentRequestsError.value = false
+    return
+  }
+
+  recentRequestsLoading.value = Object.keys(recentRequestsByAccountId.value).length === 0
+  // Keep the last result visible during refresh, including a failed read.
+  // Clearing the hint here makes it blink on every retry of an unavailable API.
+  try {
+    const result = await adminAPI.accounts.getBatchRecentRequests(accountIDs)
+    if (reqSeq !== recentRequestsReqSeq.value) return
+    const serverRequests = result.requests ?? {}
+    const nextRequests: Record<string, AccountRecentRequest[]> = {}
+    for (const accountID of accountIDs) {
+      const rows = serverRequests[String(accountID)]
+      nextRequests[String(accountID)] = Array.isArray(rows) ? rows : []
+    }
+    recentRequestsByAccountId.value = nextRequests
+    recentRequestsError.value = false
+  } catch (error) {
+    if (reqSeq !== recentRequestsReqSeq.value) return
+    // Recent request telemetry is auxiliary and must not block account list use.
+    recentRequestsError.value = true
+    console.error('Failed to load account recent requests:', error)
+  } finally {
+    if (reqSeq === recentRequestsReqSeq.value) recentRequestsLoading.value = false
+  }
+}
+
 const autoRefreshIntervalLabel = (sec: number) => {
   if (sec === 5) return t('admin.accounts.refreshInterval5s')
   if (sec === 10) return t('admin.accounts.refreshInterval10s')
@@ -1047,6 +1101,11 @@ const toggleColumn = (key: string) => {
   if ((key === 'today_stats' || key === 'usage') && wasHidden) {
     refreshTodayStatsBatch().catch((error) => {
       console.error('Failed to load account today stats after showing column:', error)
+    })
+  }
+  if (key === 'recent_requests') {
+    refreshRecentRequestsBatch().catch((error) => {
+      console.error('Failed to load account recent requests after toggling column:', error)
     })
   }
   if (key === 'scheduler_score') {
@@ -1352,6 +1411,12 @@ watch(accounts, (rows) => {
   usageBatchRequestTokenByAccountId.value = Object.fromEntries(
     Object.entries(usageBatchRequestTokenByAccountId.value).filter(([key]) => visibleIDs.has(key))
   )
+  recentRequestsByAccountId.value = Object.fromEntries(
+    Object.entries(recentRequestsByAccountId.value).filter(([key]) => visibleIDs.has(key))
+  )
+  // Page changes and debounced filters call useTableLoader directly. Refreshing
+  // here keeps telemetry in sync with those paths as well as the initial load.
+  void refreshRecentRequestsBatch()
 })
 
 const isAnyModalOpen = computed(() => {
@@ -1469,7 +1534,7 @@ const refreshAccountsIncrementally = async () => {
     }
     upstreamBillingNow.value = Date.now()
 
-    await refreshTodayStatsBatch()
+    await Promise.all([refreshTodayStatsBatch(), refreshRecentRequestsBatch()])
   } catch (error) {
     console.error('Auto refresh failed:', error)
   } finally {
@@ -1786,6 +1851,7 @@ const allColumns = computed(() => {
     { key: 'id', label: t('admin.accounts.columns.id'), sortable: true },
     { key: 'platform_type', label: t('admin.accounts.columns.platformType'), sortable: false },
     { key: 'capacity', label: t('admin.accounts.columns.capacity'), sortable: false },
+    { key: 'recent_requests', label: t('admin.accounts.columns.recentRequests'), sortable: false },
     { key: 'status', label: t('admin.accounts.columns.status'), sortable: true },
     { key: 'schedulable', label: t('admin.accounts.columns.schedulable'), sortable: true },
     { key: 'today_stats', label: t('admin.accounts.columns.todayStats'), sortable: false }

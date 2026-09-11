@@ -383,6 +383,48 @@ export interface BatchAccountUsageResponse {
   errors: Record<string, string>
 }
 
+/** A compact record of one recent upstream account request attempt. */
+export interface AccountRecentRequest {
+  id?: string | number
+  account_name?: string | null
+  created_at?: string
+  timestamp?: string
+  success?: boolean
+  ok?: boolean
+  status_code?: number | string | null
+  status?: number | string | null
+  error_message?: string | null
+  error?: string | null
+  model?: string | null
+  proxy_id?: number | string | null
+  proxy_name?: string | null
+  attempt_count?: number | null
+}
+
+export interface BatchAccountRecentRequestsResponse {
+  requests: Record<string, AccountRecentRequest[]>
+}
+
+/** Fetch recent request summaries for the supplied account IDs. */
+export async function getBatchRecentRequests(
+  accountIds: number[]
+): Promise<BatchAccountRecentRequestsResponse> {
+  if (accountIds.length === 0) return { requests: {} }
+  // Table preferences can allow up to 1,000 rows, while this endpoint caps each
+  // batch at 200 accounts to keep individual Redis reads bounded.
+  const batches: number[][] = []
+  for (let offset = 0; offset < accountIds.length; offset += 200) {
+    batches.push(accountIds.slice(offset, offset + 200))
+  }
+  const maps = await Promise.all(batches.map(async (ids) => {
+    const { data } = await apiClient.post<Record<string, AccountRecentRequest[]>>(
+      '/admin/accounts/recent-requests/batch', { account_ids: ids }
+    )
+    return data ?? {}
+  }))
+  return { requests: Object.assign({}, ...maps) }
+}
+
 export async function getBatchUsage(accountIds: number[], force?: boolean): Promise<BatchAccountUsageResponse> {
   const { data } = await apiClient.post<BatchAccountUsageResponse>('/admin/accounts/usage/batch', {
     account_ids: accountIds,
@@ -1088,6 +1130,7 @@ export const accountsAPI = {
   getBatchUsage,
   getTodayStats,
   getBatchTodayStats,
+  getBatchRecentRequests,
   clearRateLimit,
   recoverState,
   resetAccountQuota,

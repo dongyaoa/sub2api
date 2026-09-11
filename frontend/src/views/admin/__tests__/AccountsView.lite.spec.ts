@@ -4,12 +4,14 @@ import { defineComponent } from 'vue'
 
 import AccountsView from '../AccountsView.vue'
 import AccountActionMenu from '@/components/admin/account/AccountActionMenu.vue'
+import AccountRecentRequestsCell from '@/components/account/AccountRecentRequestsCell.vue'
 
 const {
   listAccounts,
   listWithEtag,
   getById,
   getBatchTodayStats,
+  getBatchRecentRequests,
   getUpstreamBillingProbeSettings,
   getAllProxies,
   getAllGroups,
@@ -19,6 +21,7 @@ const {
   listWithEtag: vi.fn(),
   getById: vi.fn(),
   getBatchTodayStats: vi.fn(),
+  getBatchRecentRequests: vi.fn(),
   getUpstreamBillingProbeSettings: vi.fn(),
   getAllProxies: vi.fn(),
   getAllGroups: vi.fn(),
@@ -32,6 +35,7 @@ vi.mock('@/api/admin', () => ({
       getById,
       listWithEtag,
       getBatchTodayStats,
+      getBatchRecentRequests,
       getUpstreamBillingProbeSettings,
       delete: vi.fn(),
       batchClearError: vi.fn(),
@@ -62,6 +66,7 @@ const DataTableStub = defineComponent({
     <div>
       <div v-for="row in data" :key="row.id">
         <slot name="cell-groups" :row="row" />
+        <slot name="cell-recent_requests" :row="row" />
         <slot name="cell-actions" :row="row" />
       </div>
     </div>
@@ -96,7 +101,10 @@ function mountView(stubActionMenu = true) {
         AppLayout: { template: '<div><slot /></div>' },
         TablePageLayout: { template: '<div><slot name="filters" /><slot name="table" /><slot name="pagination" /></div>' },
         DataTable: DataTableStub,
-        AccountTableActions: { template: '<div><slot name="after" /></div>' },
+        AccountTableActions: {
+          emits: ['refresh'],
+          template: '<div><button data-test="refresh-accounts" @click="$emit(\'refresh\')" /><slot name="after" /></div>'
+        },
         AccountTableFilters: true,
         AccountBulkActionsBar: true,
         Pagination: true,
@@ -158,6 +166,7 @@ describe('admin AccountsView lite account list', () => {
     listWithEtag.mockReset().mockResolvedValue({ notModified: true, etag: 'compact-etag', data: null })
     getById.mockReset().mockResolvedValue(fullAccount)
     getBatchTodayStats.mockReset().mockResolvedValue({ stats: {} })
+    getBatchRecentRequests.mockReset().mockResolvedValue({ requests: {} })
     getUpstreamBillingProbeSettings.mockReset().mockResolvedValue({ enabled: true })
     getAllProxies.mockReset().mockResolvedValue([])
     getAllGroups.mockReset().mockResolvedValue([{ id: 7, name: 'codex', platform: 'openai' }])
@@ -190,6 +199,33 @@ describe('admin AccountsView lite account list', () => {
     wrapper.unmount()
   })
 
+  it('keeps recent history stable while manually retrying a failed read', async () => {
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    let finishRefresh!: (result: { requests: Record<string, []> }) => void
+    getBatchRecentRequests.mockRejectedValueOnce(new Error('history endpoint unavailable'))
+      .mockImplementationOnce(() => new Promise(resolve => { finishRefresh = resolve }))
+    const wrapper = mountView()
+    await flushPromises()
+    const cell = wrapper.getComponent(AccountRecentRequestsCell)
+    const timeElement = cell.get('[data-testid="recent-request-time"]').element
+    expect(cell.props('error')).toBe(true)
+
+    listAccounts.mockResolvedValueOnce({ items: [{ ...listRow }], total: 1, page: 1, page_size: 20, pages: 1 })
+    await wrapper.get('[data-test="refresh-accounts"]').trigger('click')
+    await flushPromises()
+    expect(getBatchRecentRequests).toHaveBeenCalledTimes(2)
+    expect(cell.props('error')).toBe(true)
+    expect(cell.get('[data-testid="recent-request-time"]').element).toBe(timeElement)
+    expect(cell.find('.animate-pulse').exists()).toBe(false)
+
+    finishRefresh({ requests: { '42': [] } })
+    await flushPromises()
+    expect(cell.props('error')).toBe(false)
+    expect(cell.get('[data-testid="recent-request-time"]').element).toBe(timeElement)
+    expect(cell.findAll('[data-testid="recent-request-placeholder"]')).toHaveLength(10)
+    wrapper.unmount()
+  })
+
   it('keeps the action menu open during internal scrolling but closes it on table scrolling', async () => {
     const wrapper = mountView(false)
     await flushPromises()
@@ -211,12 +247,15 @@ describe('admin AccountsView lite account list', () => {
     wrapper.unmount()
   })
 
-  it('keeps lite=1 on automatic ETag refreshes', async () => {
+  it('keeps lite=1 and refreshes recent requests when the account list returns 304', async () => {
     vi.useFakeTimers()
     vi.spyOn(document, 'hidden', 'get').mockReturnValue(false)
     localStorage.setItem('account-auto-refresh', JSON.stringify({ enabled: true, interval_seconds: 5 }))
     const wrapper = mountView()
     await flushPromises()
+
+    expect(getBatchRecentRequests).toHaveBeenCalledWith([42])
+    getBatchRecentRequests.mockClear()
 
     await vi.advanceTimersByTimeAsync(6000)
     await flushPromises()
@@ -227,6 +266,7 @@ describe('admin AccountsView lite account list', () => {
       expect.objectContaining({ lite: '1' }),
       expect.objectContaining({ etag: null })
     )
+    expect(getBatchRecentRequests).toHaveBeenCalledWith([42])
     wrapper.unmount()
   })
 

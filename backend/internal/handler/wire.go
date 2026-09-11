@@ -9,6 +9,11 @@ import (
 	"github.com/google/wire"
 )
 
+func ProvideRecentRequestStore(cache service.GatewayCache) service.RecentRequestStore {
+	store, _ := cache.(service.RecentRequestStore)
+	return store
+}
+
 // ProvideAdminHandlers creates the AdminHandlers struct
 func ProvideAdminHandlers(
 	dashboardHandler *admin.DashboardHandler,
@@ -234,6 +239,7 @@ func ProvideHandlers(
 
 // ProviderSet is the Wire provider set for all handlers
 var ProviderSet = wire.NewSet(
+	ProvideRecentRequestStore,
 	// Top-level handlers
 	NewAuthHandler,
 	NewUserHandler,

@@ -66,6 +66,7 @@ type AccountHandler struct {
 	upstreamBillingProbe    *service.UpstreamBillingProbeService
 	ollamaCloudUsage        *service.OllamaCloudUsageService
 	cfg                     *config.Config
+	recentRequestStore      service.RecentRequestStore
 }
 
 // SetUpstreamBillingProbeService attaches the optional remote billing probe service.
@@ -75,6 +76,11 @@ func (h *AccountHandler) SetUpstreamBillingProbeService(probe *service.UpstreamB
 
 func (h *AccountHandler) SetOllamaCloudUsageService(usage *service.OllamaCloudUsageService) {
 	h.ollamaCloudUsage = usage
+}
+
+// SetRecentRequestStore attaches the best-effort Redis request history store.
+func (h *AccountHandler) SetRecentRequestStore(store service.RecentRequestStore) {
+	h.recentRequestStore = store
 }
 
 // NewAccountHandler creates a new admin account handler
@@ -110,6 +116,35 @@ func NewAccountHandler(
 		rpmCache:                rpmCache,
 		tokenCacheInvalidator:   tokenCacheInvalidator,
 	}
+}
+
+// GetBatchRecentRequests returns recent upstream attempts for the requested accounts.
+// POST body: {"account_ids":[1,2],"limit":10}
+func (h *AccountHandler) GetBatchRecentRequests(c *gin.Context) {
+	var req struct {
+		AccountIDs []int64 `json:"account_ids" binding:"required,min=1,max=200,dive,gt=0"`
+		Limit      int     `json:"limit"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		response.Error(c, http.StatusBadRequest, "invalid account_ids")
+		return
+	}
+	if h == nil || h.recentRequestStore == nil {
+		response.Success(c, map[int64][]service.RecentRequestRecord{})
+		return
+	}
+	if req.Limit <= 0 {
+		req.Limit = 10
+	}
+	if req.Limit > 20 {
+		req.Limit = 20
+	}
+	items, err := h.recentRequestStore.GetRecentRequests(c.Request.Context(), req.AccountIDs, req.Limit)
+	if err != nil {
+		response.Error(c, http.StatusInternalServerError, "failed to load recent requests")
+		return
+	}
+	response.Success(c, items)
 }
 
 // CreateAccountRequest represents create account request

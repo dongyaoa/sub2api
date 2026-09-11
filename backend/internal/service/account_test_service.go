@@ -32,6 +32,7 @@ import (
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/openai_compat"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/xai"
+	"github.com/Wei-Shaw/sub2api/internal/util/logredact"
 	"github.com/Wei-Shaw/sub2api/internal/util/urlvalidator"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -46,6 +47,7 @@ const (
 	testClaudeAPIURL            = "https://api.anthropic.com/v1/messages?beta=true"
 	chatgptCodexAPIURL          = "https://chatgpt.com/backend-api/codex/responses"
 	defaultAntigravityTestModel = "claude-sonnet-4-6"
+	accountTestProxyRedactorKey = "account_test_proxy_redactor"
 )
 
 // TestEvent represents a SSE event for account testing
@@ -63,6 +65,12 @@ type TestEvent struct {
 	Data     any    `json:"data,omitempty"`
 	Success  bool   `json:"success,omitempty"`
 	Error    string `json:"error,omitempty"`
+	// ProxyID, ProxyName and RouteType are emitted by the admin account test
+	// before the provider-specific probe starts.  Only the proxy identity is
+	// exposed; credentials and endpoint details are intentionally omitted.
+	ProxyID   *int64 `json:"proxy_id,omitempty"`
+	ProxyName string `json:"proxy_name,omitempty"`
+	RouteType string `json:"route_type,omitempty"`
 }
 
 // AccountTestOptions carries optional media for admin connectivity tests.
@@ -336,6 +344,39 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 	if err != nil {
 		return s.sendErrorAndEnd(c, "Account not found")
 	}
+	accountSnapshot := *account
+	account = &accountSnapshot
+
+	// Account tests bypass the scheduler, so select a proxy explicitly here.
+	// This keeps multi-proxy accounts on the same weighted round-robin path as
+	// normal gateway requests and gives the UI an accurate route snapshot.
+	if len(account.ProxyPool) > 0 {
+		SelectAccountProxy(account)
+	}
+	if account.Proxy != nil {
+		proxyURL := account.Proxy.URL()
+		redactions := []string{proxyURL, "[proxy]"}
+		if parsed, parseErr := url.Parse(proxyURL); parseErr == nil {
+			redactions = append(redactions, parsed.Redacted(), "[proxy]", parsed.Host, "[proxy]")
+		}
+		for _, secret := range []string{account.Proxy.Username, account.Proxy.Password} {
+			if secret != "" {
+				redactions = append(redactions, secret, "[redacted]", url.QueryEscape(secret), "[redacted]")
+			}
+		}
+		c.Set(accountTestProxyRedactorKey, strings.NewReplacer(redactions...))
+	}
+	s.prepareAccountTestSSE(c)
+	proxyEvent := accountTestProxyEvent(account)
+	// Without an explicit proxy the default WebSocket dialer can inherit an
+	// environment proxy, so it cannot truthfully promise a direct route.
+	if account.IsSyntheticUITest() || (account.Platform == PlatformGrok && normalizeGrokAccountTestMode(mode) == AccountTestModeGrokRealtime && proxyEvent.RouteType == "direct") {
+		proxyEvent.RouteType = "unknown"
+	}
+	s.sendEvent(c, proxyEvent)
+	if !account.IsSyntheticUITest() && (len(account.ProxyPool) > 0 || len(AccountProxyPoolFromExtra(account.Extra)) > 0 || account.ProxyID != nil) && (account.ProxyID == nil || account.Proxy == nil) {
+		return s.sendErrorAndEnd(c, "No usable proxy is available for this account")
+	}
 
 	// Synthetic UI load-test accounts exercise the real SSE parsing and modal
 	// interactions, but intentionally do not send their placeholder credentials
@@ -382,6 +423,50 @@ func (s *AccountTestService) TestAccountConnection(c *gin.Context, accountID int
 	}
 
 	return s.testClaudeAccountConnection(c, account, modelID)
+}
+
+// prepareAccountTestSSE establishes the stream before the initial proxy_info
+// event. Provider-specific test methods repeat these headers for compatibility
+// with their standalone call sites.
+func (s *AccountTestService) prepareAccountTestSSE(c *gin.Context) {
+	c.Writer.Header().Set("Content-Type", "text/event-stream")
+	c.Writer.Header().Set("Cache-Control", "no-cache")
+	c.Writer.Header().Set("Connection", "keep-alive")
+	c.Writer.Header().Set("X-Accel-Buffering", "no")
+	c.Writer.Flush()
+}
+
+func accountTestProxyEvent(account *Account) TestEvent {
+	event := TestEvent{Type: "proxy_info"}
+	if account == nil {
+		event.RouteType = "unknown"
+		return event
+	}
+	if len(account.ProxyPool) > 0 || len(AccountProxyPoolFromExtra(account.Extra)) > 0 {
+		if account.ProxyID != nil && account.Proxy != nil {
+			event.RouteType = "managed"
+		} else {
+			// A configured pool with no available member is deliberately reported
+			// as unknown; it must never be mistaken for a direct connection.
+			event.RouteType = "unknown"
+		}
+	} else if account.ProxyID == nil && account.Proxy == nil {
+		event.RouteType = "direct"
+	} else if account.ProxyID != nil && account.Proxy != nil {
+		event.RouteType = "managed"
+	} else {
+		event.RouteType = "unknown"
+	}
+	if event.RouteType == "managed" && account.ProxyID != nil && account.Proxy != nil {
+		id := *account.ProxyID
+		event.ProxyID = &id
+		name := strings.TrimSpace(account.Proxy.Name)
+		if name == "" {
+			name = fmt.Sprintf("Proxy #%d", id)
+		}
+		event.ProxyName = name
+	}
+	return event
 }
 
 func (s *AccountTestService) testCNProviderChatCompletionsConnection(c *gin.Context, account *Account, modelID string, prompt string) error {
@@ -3169,6 +3254,12 @@ func (s *AccountTestService) sendEvent(c *gin.Context, event TestEvent) {
 
 // sendErrorAndEnd sends an error event and ends the stream
 func (s *AccountTestService) sendErrorAndEnd(c *gin.Context, errorMsg string) error {
+	if redactor, ok := c.Get(accountTestProxyRedactorKey); ok {
+		if replacer, ok := redactor.(*strings.Replacer); ok {
+			errorMsg = replacer.Replace(errorMsg)
+		}
+	}
+	errorMsg = logredact.RedactText(errorMsg)
 	log.Printf("Account test error: %s", errorMsg)
 	s.sendEvent(c, TestEvent{Type: "error", Error: errorMsg})
 	return fmt.Errorf("%s", errorMsg)

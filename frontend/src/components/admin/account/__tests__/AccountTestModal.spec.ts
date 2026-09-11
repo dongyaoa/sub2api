@@ -36,6 +36,9 @@ vi.mock('vue-i18n', async () => {
         if (key === 'admin.accounts.imagePreviewAlt' && params?.index) {
           return `test-image-${params.index}`
         }
+        if (key === 'admin.accounts.testProxySelected') {
+          return `Test proxy: ${params?.name} (ID: ${params?.id})`
+        }
         return messages[key] || key
       }
     })
@@ -219,5 +222,79 @@ describe('AccountTestModal', () => {
       prompt: '',
       mode: 'compact'
     })
+  })
+
+  it('显示服务端实际选中的代理并在重试等待期间清除旧代理', async () => {
+    let finishRetry!: (response: Response) => void
+    global.fetch = vi.fn()
+      .mockResolvedValueOnce(createStreamResponse([
+        'data: {"type":"proxy_info","route_type":"managed","proxy_id":12,"proxy_name":"US selected node"}\n',
+        'data: {"type":"error","error":"API returned 429"}\n'
+      ]))
+      .mockImplementationOnce(() => new Promise<Response>((resolve) => { finishRetry = resolve })) as any
+
+    const wrapper = mountModal({
+      id: 42,
+      name: 'Multiple proxy account',
+      platform: 'gemini',
+      type: 'apikey',
+      status: 'active',
+      proxy_id: 11,
+      proxy: { id: 11, name: 'Legacy primary node' }
+    })
+    await wrapper.setProps({ show: true })
+    await flushPromises()
+
+    const startButton = wrapper.findAll('button').find((button) => button.text().includes('admin.accounts.startTest'))
+    await startButton!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.text()).toContain('US selected node')
+    expect(wrapper.text()).toContain('ID: 12')
+    expect(wrapper.text()).not.toContain('Legacy primary node')
+    expect(wrapper.text()).toContain('API returned 429')
+    const copyButton = wrapper.find('button[title="admin.accounts.copyOutput"]')
+    await copyButton.trigger('click')
+    expect(copyToClipboard).toHaveBeenCalledWith(
+      expect.stringContaining('Test proxy: US selected node (ID: 12)'),
+      'admin.accounts.outputCopied'
+    )
+
+    const retryButton = wrapper.findAll('button').find((button) => button.text().includes('admin.accounts.retry'))
+    await retryButton!.trigger('click')
+    await flushPromises()
+    expect(global.fetch).toHaveBeenCalledTimes(2)
+    expect(wrapper.text()).not.toContain('US selected node')
+    expect(wrapper.text()).not.toContain('ID: 12')
+
+    finishRetry(createStreamResponse([
+      'data: {"type":"proxy_info","route_type":"managed","proxy_id":13,"proxy_name":"EU retry node"}\n',
+      'data: {"type":"test_complete","success":true}\n'
+    ]))
+    await flushPromises()
+    expect(wrapper.text()).toContain('EU retry node')
+    expect(wrapper.text()).toContain('ID: 13')
+    expect(wrapper.text()).not.toContain('US selected node')
+    wrapper.unmount()
+  })
+
+  it.each(['direct', 'unknown'])('显示 %s 路由且重新打开时清除旧结果', async (routeType) => {
+    global.fetch = vi.fn().mockResolvedValue(createStreamResponse([
+      `data: {"type":"proxy_info","route_type":"${routeType}"}\n`,
+      'data: {"type":"test_complete","success":true}\n'
+    ])) as any
+    const wrapper = mountModal()
+    await wrapper.setProps({ show: true })
+    await flushPromises()
+    const startButton = wrapper.findAll('button').find((button) => button.text().includes('admin.accounts.startTest'))
+    await startButton!.trigger('click')
+    await flushPromises()
+    expect(wrapper.text()).toContain(`admin.accounts.testProxyRoute.${routeType}`)
+    expect(wrapper.text()).not.toContain('ID:')
+    await wrapper.setProps({ show: false })
+    await wrapper.setProps({ show: true })
+    await flushPromises()
+    expect(wrapper.text()).not.toContain(`admin.accounts.testProxyRoute.${routeType}`)
+    wrapper.unmount()
   })
 })

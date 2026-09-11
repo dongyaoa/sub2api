@@ -41,6 +41,18 @@
         </span>
       </div>
 
+      <div
+        v-if="currentProxy"
+        class="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600 dark:border-dark-500 dark:bg-dark-700 dark:text-gray-300"
+      >
+        <Icon name="globe" size="sm" :stroke-width="2" />
+        <span class="font-medium">{{ t('admin.accounts.testProxy') }}:</span>
+        <span v-if="currentProxy.routeType === 'managed'">
+          {{ currentProxy.name }}<span v-if="currentProxy.id"> (ID: {{ currentProxy.id }})</span>
+        </span>
+        <span v-else>{{ t(`admin.accounts.testProxyRoute.${currentProxy.routeType}`) }}</span>
+      </div>
+
       <!-- Grok: mode first, then optional model / mode params -->
       <div v-if="isGrokAccount" class="space-y-1.5">
         <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -404,6 +416,7 @@ const status = ref<'idle' | 'connecting' | 'success' | 'error'>('idle')
 const outputLines = ref<OutputLine[]>([])
 const streamingContent = ref('')
 const errorMessage = ref('')
+const currentProxy = ref<{ id?: number; name?: string; routeType: 'managed' | 'direct' | 'unknown' } | null>(null)
 const availableModels = ref<ClaudeModel[]>([])
 const selectedModelId = ref('')
 const testPrompt = ref('')
@@ -799,6 +812,7 @@ const resetState = () => {
   generatedAudios.value = []
   generatedVideos.value = []
   previewImageUrl.value = ''
+  currentProxy.value = null
 }
 
 const handleClose = () => {
@@ -948,8 +962,30 @@ const handleEvent = (event: {
   audio_url?: string
   video_url?: string
   mime_type?: string
+  proxy_id?: number
+  proxy_name?: string
+  route_type?: 'managed' | 'direct' | 'unknown'
 }) => {
   switch (event.type) {
+    case 'proxy_info':
+      currentProxy.value = {
+        id: event.proxy_id,
+        name: event.proxy_name,
+        routeType: event.route_type || 'unknown'
+      }
+      if (event.route_type === 'managed' && event.proxy_name) {
+        addLine(
+          t('admin.accounts.testProxySelected', {
+            name: event.proxy_name,
+            id: event.proxy_id ?? ''
+          }),
+          'text-cyan-300'
+        )
+      } else {
+        addLine(t(`admin.accounts.testProxyRoute.${event.route_type || 'unknown'}`), 'text-cyan-300')
+      }
+      break
+
     case 'test_start':
       addLine(t('admin.accounts.connectedToApi'), 'text-green-400')
       if (event.model) {

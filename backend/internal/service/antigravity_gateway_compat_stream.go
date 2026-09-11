@@ -305,6 +305,7 @@ func (s *AntigravityGatewayService) handleAntigravityCompatStream(
 			session.consume(event.line)
 
 		case <-timeoutCh:
+			markRecentRequestFailure(c, resp.StatusCode, "Upstream stream data interval timeout")
 			if writer.Disconnected() {
 				return session.collectResult(true), nil
 			}
@@ -406,6 +407,7 @@ func (s *AntigravityGatewayService) handleAntigravityCompatReadError(
 	maxLineSize int,
 	prefix string,
 ) (*antigravityStreamResult, error) {
+	markRecentRequestFailure(c, http.StatusOK, err.Error())
 	if !session.hasMeaningfulData() && !session.writer.Disconnected() {
 		return nil, antigravityCompatEmptyStreamError()
 	}

@@ -34,7 +34,10 @@ func (s *GatewayService) ForwardAsResponses(
 	account *Account,
 	body []byte,
 	parsed *ParsedRequest,
-) (*ForwardResult, error) {
+) (recentResult *ForwardResult, recentErr error) {
+	finishRecentRequest := beginAccountRecentRequest(ctx, c, s.cache, account, recentRequestModel(body))
+	defer func() { finishRecentRequest(recentResult != nil, recentErr) }()
+
 	startTime := time.Now()
 
 	normalizedBody, normalized, err := normalizeOpenAIResponsesLegacyIngress(body)
@@ -183,6 +186,7 @@ func (s *GatewayService) ForwardAsResponses(
 		}
 
 		// Non-failover error: return Responses-formatted error to client
+		appendOpsUpstreamHTTPError(c, account, resp, upstreamMsg)
 		writeResponsesError(c, mapUpstreamStatusCode(resp.StatusCode), "server_error", upstreamMsg)
 		return nil, fmt.Errorf("upstream error: %d %s", resp.StatusCode, upstreamMsg)
 	}
@@ -355,6 +359,7 @@ func (s *GatewayService) handleResponsesBufferedStreamingResponse(
 	// Accumulate the final Anthropic response from streaming events
 	var finalResp *apicompat.AnthropicResponse
 	var usage ClaudeUsage
+	var sawMessageStop, sawResponseError bool
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -373,6 +378,10 @@ func (s *GatewayService) handleResponsesBufferedStreamingResponse(
 			continue
 		}
 
+		observeRecentResponseError(c, []byte(payload), resp.StatusCode)
+		if upstreamError := gjson.Get(payload, "error"); upstreamError.Exists() && upstreamError.Type != gjson.Null {
+			sawResponseError = true
+		}
 		var event apicompat.AnthropicStreamEvent
 		if err := json.Unmarshal([]byte(payload), &event); err != nil {
 			logger.L().Warn("forward_as_responses buffered: failed to parse event",
@@ -381,6 +390,10 @@ func (s *GatewayService) handleResponsesBufferedStreamingResponse(
 				zap.String("event_type", eventType),
 			)
 			continue
+		}
+
+		if event.Type == "message_stop" {
+			sawMessageStop = true
 		}
 
 		// message_start carries the initial response structure
@@ -419,12 +432,15 @@ func (s *GatewayService) handleResponsesBufferedStreamingResponse(
 	}
 
 	if err := scanner.Err(); err != nil {
+		markRecentRequestFailure(c, resp.StatusCode, err.Error())
 		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
 			logger.L().Warn("forward_as_responses buffered: read error",
 				zap.Error(err),
 				zap.String("request_id", requestID),
 			)
 		}
+	} else if !sawMessageStop && !sawResponseError {
+		markRecentRequestFailure(c, resp.StatusCode, "Upstream stream ended before message_stop")
 	}
 
 	if finalResp == nil {
@@ -506,6 +522,7 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 	var usage ClaudeUsage
 	var firstTokenMs *int
 	firstChunk := true
+	var sawMessageStop, sawResponseError bool
 
 	scanner := bufio.NewScanner(resp.Body)
 	maxLineSize := defaultMaxLineSize
@@ -614,6 +631,10 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 			continue
 		}
 
+		observeRecentResponseError(c, []byte(payload), resp.StatusCode)
+		if upstreamError := gjson.Get(payload, "error"); upstreamError.Exists() && upstreamError.Type != gjson.Null {
+			sawResponseError = true
+		}
 		var event apicompat.AnthropicStreamEvent
 		if err := json.Unmarshal([]byte(payload), &event); err != nil {
 			logger.L().Warn("forward_as_responses stream: failed to parse event",
@@ -624,18 +645,25 @@ func (s *GatewayService) handleResponsesStreamingResponse(
 			continue
 		}
 
+		if event.Type == "message_stop" {
+			sawMessageStop = true
+		}
+
 		if processEvent(&event) {
 			return resultWithUsage(), nil
 		}
 	}
 
 	if err := scanner.Err(); err != nil {
+		markRecentRequestFailure(c, resp.StatusCode, err.Error())
 		if !errors.Is(err, context.Canceled) && !errors.Is(err, context.DeadlineExceeded) {
 			logger.L().Warn("forward_as_responses stream: read error",
 				zap.Error(err),
 				zap.String("request_id", requestID),
 			)
 		}
+	} else if !sawMessageStop && !sawResponseError {
+		markRecentRequestFailure(c, resp.StatusCode, "Upstream stream ended before message_stop")
 	}
 
 	return finalizeStream()

@@ -115,9 +115,24 @@ export default {
         usageWindows: '用量窗口',
         proxy: '代理',
         lastUsed: '最近使用',
+        recentRequests: '最近请求',
         createdAt: '创建时间',
         expiresAt: '过期时间',
         actions: '操作'
+      },
+      recentRequests: {
+        account: '账号',
+        empty: '暂无请求',
+        loadFailed: '请求记录加载失败',
+        copyDetails: '复制请求详情',
+        ariaLabel: '最近请求状态',
+        statusCode: '状态码',
+        model: '模型',
+        proxy: '代理',
+        attempts: '尝试次数：{count}',
+        unknownStatus: '状态未知',
+        unknownTime: '时间未知',
+        noDetails: '没有更多详情'
       },
       schedulerScore: {
         baseShort: '普通',
@@ -1538,6 +1553,13 @@ export default {
       testCompleted: '测试完成！',
       connectedToApi: '已连接到 API',
       usingModel: '使用模型：{model}',
+      testProxy: '本次测试代理',
+      testProxySelected: '本次测试代理：{name}（ID：{id}）',
+      testProxyRoute: {
+        direct: '直连',
+        unknown: '实际路由未知',
+        managed: '已配置代理'
+      },
       sendingTestMessage: '发送测试消息："hi"',
       sendingImageRequest: '发送生图测试请求...',
       response: '响应：',

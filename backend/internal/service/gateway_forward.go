@@ -89,6 +89,9 @@ func sleepWithContext(ctx context.Context, d time.Duration) error {
 
 // Forward 转发请求到Claude API
 func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *Account, parsed *ParsedRequest) (result *ForwardResult, err error) {
+	finishRecentRequest := beginAccountRecentRequest(ctx, c, s.cache, account, recentRequestParsedModel(parsed))
+	defer func() { finishRecentRequest(result != nil, err) }()
+
 	startTime := time.Now()
 	if parsed == nil {
 		return nil, fmt.Errorf("parse request: empty request")
@@ -435,6 +438,7 @@ func (s *GatewayService) Forward(ctx context.Context, c *gin.Context, account *A
 
 					// 避免在重试预算已耗尽时再发起额外请求
 					if time.Since(retryStart) >= maxRetryElapsed {
+						reuseRecentRequestResponse(c)
 						resp.Body = io.NopCloser(bytes.NewReader(respBody))
 						break
 					}

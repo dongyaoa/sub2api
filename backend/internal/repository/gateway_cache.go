@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strconv"
@@ -11,12 +12,16 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
+	"github.com/google/uuid"
 	"github.com/redis/go-redis/v9"
 )
 
 const stickySessionPrefix = "sticky_session:"
 const openAIResponsesSessionWindowPrefix = "openai_responses_session_window:"
 const liveCallPrefix = "live:call:"
+const recentRequestsPrefix = "account:recent_requests:v1:"
+const recentRequestsLimit = 20
+const recentRequestsTTL = 7 * 24 * time.Hour
 
 type gatewayCache struct {
 	rdb *redis.Client
@@ -24,6 +29,95 @@ type gatewayCache struct {
 
 func NewGatewayCache(rdb *redis.Client) service.GatewayCache {
 	return &gatewayCache{rdb: rdb}
+}
+
+func recentRequestsKey(accountID int64) string {
+	return fmt.Sprintf("%s%d", recentRequestsPrefix, accountID)
+}
+
+func (c *gatewayCache) RecordRecentRequest(ctx context.Context, accountID int64, record service.RecentRequestRecord) error {
+	if c == nil || c.rdb == nil || accountID <= 0 {
+		return errors.New("gateway cache unavailable")
+	}
+	if record.CreatedAt.IsZero() {
+		record.CreatedAt = time.Now().UTC()
+	}
+	record.AccountID = accountID
+	record = service.NormalizeRecentRequestRecord(record)
+	// The UUID keeps simultaneous identical attempts distinct. Scores order by
+	// completion time, so asynchronous writers cannot evict newer requests.
+	b, err := json.Marshal(struct {
+		service.RecentRequestRecord
+		ID string `json:"_id"`
+	}{record, uuid.NewString()})
+	if err != nil {
+		return err
+	}
+	key := recentRequestsKey(accountID)
+	pipe := c.rdb.TxPipeline()
+	pipe.ZAdd(ctx, key, redis.Z{Score: float64(record.CreatedAt.UnixMicro()), Member: b})
+	pipe.ZRemRangeByRank(ctx, key, 0, -recentRequestsLimit-1)
+	pipe.Expire(ctx, key, recentRequestsTTL)
+	_, err = pipe.Exec(ctx)
+	return err
+}
+
+func (c *gatewayCache) GetRecentRequests(ctx context.Context, accountIDs []int64, limit int) (map[int64][]service.RecentRequestRecord, error) {
+	result := make(map[int64][]service.RecentRequestRecord, len(accountIDs))
+	if c == nil || c.rdb == nil {
+		return result, errors.New("gateway cache unavailable")
+	}
+	if limit <= 0 {
+		limit = 10
+	}
+	if limit > recentRequestsLimit {
+		limit = recentRequestsLimit
+	}
+	if len(accountIDs) == 0 {
+		return result, nil
+	}
+	if len(accountIDs) > 200 {
+		return result, errors.New("too many account IDs")
+	}
+	pipe := c.rdb.Pipeline()
+	cmds := make(map[int64]*redis.StringSliceCmd, len(accountIDs))
+	seen := make(map[int64]struct{}, len(accountIDs))
+	for _, id := range accountIDs {
+		if id <= 0 {
+			continue
+		}
+		if _, ok := seen[id]; ok {
+			continue
+		}
+		seen[id] = struct{}{}
+		cmds[id] = pipe.ZRangeArgs(ctx, redis.ZRangeArgs{
+			Key:   recentRequestsKey(id),
+			Start: "0",
+			Stop:  strconv.Itoa(limit - 1),
+			Rev:   true,
+		})
+	}
+	if _, err := pipe.Exec(ctx); err != nil && !errors.Is(err, redis.Nil) {
+		return result, err
+	}
+	for id, cmd := range cmds {
+		values, err := cmd.Result()
+		if err != nil {
+			if errors.Is(err, redis.Nil) {
+				continue
+			}
+			return result, err
+		}
+		items := make([]service.RecentRequestRecord, 0, len(values))
+		for _, raw := range values {
+			var item service.RecentRequestRecord
+			if json.Unmarshal([]byte(raw), &item) == nil {
+				items = append(items, item)
+			}
+		}
+		result[id] = items
+	}
+	return result, nil
 }
 
 // buildSessionKey 构建 session key，包含 groupID 实现分组隔离
