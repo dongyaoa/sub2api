@@ -10,6 +10,7 @@ const messages: Record<string, string> = {
   'usage.in': 'In',
   'usage.out': 'Out',
   'usage.cacheTotal': 'Cache',
+  'usage.cacheRate': 'Cache Rate',
   'usage.cacheBreakdown': 'Cache Token Breakdown',
   'usage.cacheCreationTokensLabel': 'Cache Creation',
   'usage.cacheReadTokensLabel': 'Cache Read',
@@ -44,6 +45,37 @@ const stats = {
 }
 
 describe('UsageStatsCards', () => {
+  it('only shows the cache rate when enabled', () => {
+    const wrapper = mount(UsageStatsCards, { props: { stats } })
+
+    expect(wrapper.find('[data-testid="usage-cache-rate"]').exists()).toBe(false)
+    expect(wrapper.findAll('.card')).toHaveLength(4)
+  })
+
+  it('calculates the cache read share of all prompt tokens and updates with stats', async () => {
+    const wrapper = mount(UsageStatsCards, {
+      props: { stats, showCacheRate: true },
+      global: { stubs: { HelpTooltip: true } },
+    })
+    const card = wrapper.get('[data-testid="usage-cache-rate"]')
+
+    expect(wrapper.findAll('.card')).toHaveLength(5)
+    expect(card.text()).toContain('Cache Rate')
+    expect(card.text()).toContain('16.42%')
+
+    await wrapper.setProps({ stats: { ...stats, total_output_tokens: 10000 } })
+    expect(card.text()).toContain('16.42%')
+
+    await wrapper.setProps({ stats: { ...stats, total_input_tokens: 0, total_cache_creation_tokens: 0 } })
+    expect(card.text()).toContain('100.00%')
+
+    await wrapper.setProps({ stats: { ...stats, total_cache_read_tokens: 0 } })
+    expect(card.text()).toContain('0.00%')
+
+    await wrapper.setProps({ stats: null })
+    expect(card.text()).toContain('0.00%')
+  })
+
   it('shows cache token breakdown values', () => {
     const wrapper = mount(UsageStatsCards, {
       props: {

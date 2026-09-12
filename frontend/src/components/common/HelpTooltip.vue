@@ -14,6 +14,7 @@ const show = ref(false)
 const triggerRef = useTemplateRef<HTMLElement>('trigger')
 const tooltipRef = useTemplateRef<HTMLElement>('tooltip')
 const tooltipStyle = ref({ top: '0px', left: '0px' })
+const arrowLeft = ref('50%')
 
 function openTooltip() {
   show.value = true
@@ -80,10 +81,17 @@ function updatePosition() {
   const el = triggerRef.value
   if (!el) return
   const rect = el.getBoundingClientRect()
+  const halfWidth = (tooltipRef.value?.getBoundingClientRect().width ?? 0) / 2
+  const padding = 8
+  const center = Math.min(
+    Math.max(rect.left + rect.width / 2, halfWidth + padding),
+    window.innerWidth - halfWidth - padding,
+  )
   tooltipStyle.value = {
-    top: `${rect.top + window.scrollY}px`,
-    left: `${rect.left + rect.width / 2 + window.scrollX}px`,
+    top: `${rect.top}px`,
+    left: `${center}px`,
   }
+  arrowLeft.value = `calc(50% + ${rect.left + rect.width / 2 - center}px)`
 }
 
 onMounted(() => {
@@ -152,7 +160,7 @@ onBeforeUnmount(() => {
           </svg>
         </button>
         <slot>{{ content }}</slot>
-        <div class="absolute -bottom-1 left-1/2 h-2 w-2 -translate-x-1/2 rotate-45 bg-gray-900 dark:bg-gray-800"></div>
+        <div class="absolute -bottom-1 h-2 w-2 -translate-x-1/2 rotate-45 bg-gray-900 dark:bg-gray-800" :style="{ left: arrowLeft }"></div>
       </div>
     </Teleport>
   </div>

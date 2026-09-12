@@ -1,7 +1,7 @@
 <template>
   <AppLayout>
     <div class="space-y-6">
-      <UsageStatsCards :stats="usageStats" />
+      <UsageStatsCards :stats="usageStats" show-cache-rate />
       <!-- Charts Section -->
       <div class="space-y-4">
         <div class="card p-4">

@@ -207,7 +207,7 @@ describe('admin AccountsView lite account list', () => {
     const wrapper = mountView()
     await flushPromises()
     const cell = wrapper.getComponent(AccountRecentRequestsCell)
-    const timeElement = cell.get('[data-testid="recent-request-time"]').element
+    const stripElement = cell.get('[data-testid="recent-request-strip"]').element
     expect(cell.props('error')).toBe(true)
 
     listAccounts.mockResolvedValueOnce({ items: [{ ...listRow }], total: 1, page: 1, page_size: 20, pages: 1 })
@@ -215,13 +215,14 @@ describe('admin AccountsView lite account list', () => {
     await flushPromises()
     expect(getBatchRecentRequests).toHaveBeenCalledTimes(2)
     expect(cell.props('error')).toBe(true)
-    expect(cell.get('[data-testid="recent-request-time"]').element).toBe(timeElement)
+    expect(cell.get('[data-testid="recent-request-strip"]').element).toBe(stripElement)
+    expect(cell.find('[data-testid="recent-request-time"]').exists()).toBe(false)
     expect(cell.find('.animate-pulse').exists()).toBe(false)
 
     finishRefresh({ requests: { '42': [] } })
     await flushPromises()
     expect(cell.props('error')).toBe(false)
-    expect(cell.get('[data-testid="recent-request-time"]').element).toBe(timeElement)
+    expect(cell.get('[data-testid="recent-request-strip"]').element).toBe(stripElement)
     expect(cell.findAll('[data-testid="recent-request-placeholder"]')).toHaveLength(10)
     wrapper.unmount()
   })

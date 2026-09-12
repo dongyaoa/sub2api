@@ -1501,6 +1501,21 @@ export default {
         unknown: 'Actual route unknown',
         managed: 'Configured proxy'
       },
+      testProxyOptions: {
+        label: 'Test proxy',
+        auto: 'Automatic',
+        inactive: 'Disabled',
+        expired: 'Expired',
+        unavailable: 'Unavailable'
+      },
+      testMetrics: {
+        latency: 'Response latency',
+        firstToken: 'Time to first token',
+        duration: 'Total duration',
+        latencyHint: 'Time from the first upstream attempt to response headers or the first response.',
+        firstTokenHint: 'Time from the first upstream attempt to the first actual text. Shows -- when no text is received.',
+        durationHint: 'Total server processing time from the start of this test until it ends.'
+      },
       sendingTestMessage: 'Sending test message: "hi"',
       sendingImageRequest: 'Sending image generation test request...',
       response: 'Response:',

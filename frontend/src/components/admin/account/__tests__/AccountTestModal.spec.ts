@@ -80,7 +80,21 @@ function mountModal(account: Record<string, unknown> = {
     global: {
       stubs: {
         BaseDialog: { template: '<div><slot /><slot name="footer" /></div>' },
-        Select: { template: '<div class="select-stub"></div>' },
+        Select: {
+          props: ['modelValue', 'options', 'disabled', 'valueKey', 'labelKey'],
+          emits: ['update:modelValue'],
+          template: `<select
+            class="select-stub"
+            :value="modelValue ?? ''"
+            :disabled="disabled"
+            @change="$emit('update:modelValue', options.find(option => String(option[valueKey || 'value'] ?? '') === $event.target.value)?.[valueKey || 'value'] ?? null)"
+          >
+            <option v-for="(option, index) in options" :key="index" :value="option[valueKey || 'value'] ?? ''" :disabled="option.disabled">
+              {{ option[labelKey || 'label'] }}
+            </option>
+          </select>`
+        },
+        HelpTooltip: { props: ['content'], template: '<span :title="content" />' },
         TextArea: {
           props: ['modelValue'],
           emits: ['update:modelValue'],
@@ -251,7 +265,7 @@ describe('AccountTestModal', () => {
 
     expect(wrapper.text()).toContain('US selected node')
     expect(wrapper.text()).toContain('ID: 12')
-    expect(wrapper.text()).not.toContain('Legacy primary node')
+    expect(wrapper.get('[data-testid="account-test-actual-proxy"]').text()).not.toContain('Legacy primary node')
     expect(wrapper.text()).toContain('API returned 429')
     const copyButton = wrapper.find('button[title="admin.accounts.copyOutput"]')
     await copyButton.trigger('click')
@@ -295,6 +309,150 @@ describe('AccountTestModal', () => {
     await wrapper.setProps({ show: true })
     await flushPromises()
     expect(wrapper.text()).not.toContain(`admin.accounts.testProxyRoute.${routeType}`)
+    wrapper.unmount()
+  })
+
+  it('仅提供绑定代理并禁用停用、过期和未加载的代理，指定选择后携带代理 ID', async () => {
+    const wrapper = mountModal({
+      id: 42,
+      name: 'Proxy pool account',
+      platform: 'gemini',
+      type: 'apikey',
+      status: 'active',
+      proxy_id: 99,
+      proxy: { id: 99, name: 'Outside pool', status: 'active' },
+      proxy_pool: [
+        { proxy_id: 12, concurrency: 1, proxy: { id: 12, name: 'US node', status: 'active' } },
+        { proxy_id: 13, concurrency: 1, proxy: { id: 13, name: 'Disabled node', status: 'inactive' } },
+        { proxy_id: 14, concurrency: 1, proxy: { id: 14, name: 'Expired node', status: 'expired' } },
+        { proxy_id: 15, concurrency: 1 },
+        { proxy_id: 16, concurrency: 1, proxy: { id: 16, name: 'Past expiry', status: 'active', expires_at: '2000-01-01T00:00:00Z' } }
+      ]
+    })
+    await wrapper.setProps({ show: true })
+    await flushPromises()
+
+    const proxySelect = wrapper.get('[data-testid="account-test-proxy-select"]')
+    expect(proxySelect.findAll('option').map(option => option.element.value)).toEqual(['', '12', '13', '14', '15', '16'])
+    expect(proxySelect.text()).not.toContain('Outside pool')
+    expect(proxySelect.get('option[value="12"]').attributes('disabled')).toBeUndefined()
+    for (const id of [13, 14, 15, 16]) {
+      expect(proxySelect.get(`option[value="${id}"]`).attributes('disabled')).toBeDefined()
+    }
+    expect(proxySelect.get('option[value="13"]').text()).toContain('admin.accounts.testProxyOptions.inactive')
+    expect(proxySelect.get('option[value="14"]').text()).toContain('admin.accounts.testProxyOptions.expired')
+    expect(proxySelect.get('option[value="15"]').text()).toContain('admin.accounts.testProxyOptions.unavailable')
+    await proxySelect.setValue('12')
+    await wrapper.findAll('button').find(button => button.text().includes('admin.accounts.startTest'))!.trigger('click')
+    await flushPromises()
+
+    expect(JSON.parse(vi.mocked(global.fetch).mock.calls[0][1]!.body as string).proxy_id).toBe(12)
+    wrapper.unmount()
+  })
+
+  it('兼容旧版单代理绑定且自动选择不提交代理 ID', async () => {
+    const wrapper = mountModal({
+      id: 42,
+      name: 'Legacy proxy account',
+      platform: 'gemini',
+      type: 'apikey',
+      status: 'active',
+      proxy_id: 11,
+      proxy: { id: 11, name: 'Legacy node', status: 'active' }
+    })
+    await wrapper.setProps({ show: true })
+    await flushPromises()
+    const proxySelect = wrapper.get('[data-testid="account-test-proxy-select"]')
+    expect(proxySelect.findAll('option').map(option => option.element.value)).toEqual(['', '11'])
+    expect((proxySelect.element as HTMLSelectElement).value).toBe('')
+    await wrapper.findAll('button').find(button => button.text().includes('admin.accounts.startTest'))!.trigger('click')
+    await flushPromises()
+    expect(JSON.parse(vi.mocked(global.fetch).mock.calls[0][1]!.body as string)).not.toHaveProperty('proxy_id')
+    wrapper.unmount()
+  })
+
+  it('重试保留代理选择并清除旧耗时，连接时禁用选择，重新打开恢复自动选择', async () => {
+    let finishRetry!: (response: Response) => void
+    global.fetch = vi.fn()
+      .mockResolvedValueOnce(createStreamResponse([
+        'data: {"type":"test_metrics","latency_ms":120,"first_token_ms":280,"duration_ms":930}\n',
+        'data: {"type":"error","error":"API returned 429"}\n'
+      ]))
+      .mockImplementationOnce(() => new Promise<Response>(resolve => { finishRetry = resolve })) as any
+    const wrapper = mountModal({
+      id: 42,
+      name: 'Retry account',
+      platform: 'gemini',
+      type: 'apikey',
+      status: 'active',
+      proxy_pool: [{ proxy_id: 12, concurrency: 1, proxy: { id: 12, name: 'US node', status: 'active' } }]
+    })
+    await wrapper.setProps({ show: true })
+    await flushPromises()
+    const proxySelect = wrapper.get('[data-testid="account-test-proxy-select"]')
+    await proxySelect.setValue('12')
+    await wrapper.findAll('button').find(button => button.text().includes('admin.accounts.startTest'))!.trigger('click')
+    await flushPromises()
+    expect(wrapper.get('[data-testid="account-test-metric-latency_ms"]').text()).toBe('120 ms')
+    expect(wrapper.get('[data-testid="account-test-metric-first_token_ms"]').text()).toBe('280 ms')
+    expect(wrapper.get('[data-testid="account-test-metric-duration_ms"]').text()).toBe('930 ms')
+
+    await wrapper.findAll('button').find(button => button.text().includes('admin.accounts.retry'))!.trigger('click')
+    await flushPromises()
+    expect((proxySelect.element as HTMLSelectElement).value).toBe('12')
+    expect(proxySelect.attributes('disabled')).toBeDefined()
+    expect(JSON.parse(vi.mocked(global.fetch).mock.calls[1][1]!.body as string).proxy_id).toBe(12)
+    expect(wrapper.findAll('[data-testid^="account-test-metric-"]').map(metric => metric.text())).toEqual(['--', '--', '--'])
+
+    finishRetry(createStreamResponse([
+      'data: {"type":"test_metrics","duration_ms":450}\n',
+      'data: {"type":"test_complete","success":true}\n'
+    ]))
+    await flushPromises()
+    expect(proxySelect.attributes('disabled')).toBeUndefined()
+    expect(wrapper.get('[data-testid="account-test-metric-duration_ms"]').text()).toBe('450 ms')
+    await wrapper.setProps({ show: false })
+    await wrapper.setProps({ show: true })
+    await flushPromises()
+    expect((proxySelect.element as HTMLSelectElement).value).toBe('')
+    expect(wrapper.find('[data-testid="account-test-metrics"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it('分批接收耗时保留有效零值，缺失项显示占位且复制输出包含耗时', async () => {
+    global.fetch = vi.fn().mockResolvedValue(createStreamResponse([
+      'data: {"type":"test_metrics","latency_ms":0}\n',
+      'data: {"type":"test_metrics","duration_ms":375}\n',
+      'data: {"type":"test_complete","success":true}\n'
+    ])) as any
+    const wrapper = mountModal()
+    await wrapper.setProps({ show: true })
+    await flushPromises()
+    await wrapper.findAll('button').find(button => button.text().includes('admin.accounts.startTest'))!.trigger('click')
+    await flushPromises()
+
+    expect(wrapper.get('[data-testid="account-test-metric-latency_ms"]').text()).toBe('0 ms')
+    expect(wrapper.get('[data-testid="account-test-metric-first_token_ms"]').text()).toBe('--')
+    expect(wrapper.get('[data-testid="account-test-metric-duration_ms"]').text()).toBe('375 ms')
+    await wrapper.get('button[title="admin.accounts.copyOutput"]').trigger('click')
+    const copiedOutput = copyToClipboard.mock.calls[0][0] as string
+    expect(copiedOutput).toContain('admin.accounts.testMetrics.latency: 0 ms')
+    expect(copiedOutput).toContain('admin.accounts.testMetrics.firstToken: --')
+    expect(copiedOutput).toContain('admin.accounts.testMetrics.duration: 375 ms')
+    wrapper.unmount()
+  })
+
+  it('非法或空的耗时不会显示为零毫秒', async () => {
+    global.fetch = vi.fn().mockResolvedValue(createStreamResponse([
+      'data: {"type":"test_metrics","latency_ms":-1,"first_token_ms":null,"duration_ms":"150"}\n',
+      'data: {"type":"test_complete","success":true}\n'
+    ])) as any
+    const wrapper = mountModal()
+    await wrapper.setProps({ show: true })
+    await flushPromises()
+    await wrapper.findAll('button').find(button => button.text().includes('admin.accounts.startTest'))!.trigger('click')
+    await flushPromises()
+    expect(wrapper.findAll('[data-testid^="account-test-metric-"]').map(metric => metric.text())).toEqual(['--', '--', '--'])
     wrapper.unmount()
   })
 })

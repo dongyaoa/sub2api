@@ -1560,6 +1560,21 @@ export default {
         unknown: '实际路由未知',
         managed: '已配置代理'
       },
+      testProxyOptions: {
+        label: '测试代理',
+        auto: '自动选择',
+        inactive: '已停用',
+        expired: '已过期',
+        unavailable: '不可用'
+      },
+      testMetrics: {
+        latency: '响应延迟',
+        firstToken: '首字耗时',
+        duration: '总耗时',
+        latencyHint: '从首次上游调用开始，到收到响应头或首次响应的时间。',
+        firstTokenHint: '从首次上游调用开始，到收到首段实际文本的时间；没有文本时显示 --。',
+        durationHint: '服务端从开始处理本次测试到结束的总耗时。'
+      },
       sendingTestMessage: '发送测试消息："hi"',
       sendingImageRequest: '发送生图测试请求...',
       response: '响应：',

@@ -30,7 +30,9 @@ func (s *AccountTestService) doOpenAIAccountTestUpstream(
 	proxyURL string,
 	account *Account,
 	useTLSFallback bool,
-) (*http.Response, error) {
+) (response *http.Response, err error) {
+	request, received := beginAccountTestHTTPRequest(request)
+	defer func() { received(response) }()
 	if profile := s.tlsFPProfileService.ResolveTLSProfile(account); profile != nil {
 		return s.httpUpstream.DoWithTLS(request, proxyURL, account.ID, account.Concurrency, profile)
 	}

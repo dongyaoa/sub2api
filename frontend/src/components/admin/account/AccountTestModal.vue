@@ -11,14 +11,14 @@
         v-if="account"
         class="flex items-center justify-between rounded-xl border border-gray-200 bg-gradient-to-r from-gray-50 to-gray-100 p-3 dark:border-dark-500 dark:from-dark-700 dark:to-dark-600"
       >
-        <div class="flex items-center gap-3">
+        <div class="flex min-w-0 items-center gap-3">
           <div
             class="flex h-10 w-10 items-center justify-center rounded-lg bg-gradient-to-br from-primary-500 to-primary-600"
           >
             <Icon name="play" size="md" class="text-white" :stroke-width="2" />
           </div>
-          <div>
-            <div class="font-semibold text-gray-900 dark:text-gray-100">{{ account.name }}</div>
+          <div class="min-w-0">
+            <div class="break-words font-semibold text-gray-900 dark:text-gray-100">{{ account.name }}</div>
             <div class="flex items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
               <span
                 class="rounded bg-gray-200 px-1.5 py-0.5 text-[10px] font-medium uppercase dark:bg-dark-500"
@@ -41,13 +41,28 @@
         </span>
       </div>
 
+      <div class="space-y-1.5">
+        <label for="account-test-proxy" class="text-sm font-medium text-gray-700 dark:text-gray-300">
+          {{ t('admin.accounts.testProxyOptions.label') }}
+        </label>
+        <Select
+          id="account-test-proxy"
+          v-model="selectedProxyId"
+          :options="proxyOptions"
+          :disabled="status === 'connecting'"
+          :aria-label="t('admin.accounts.testProxyOptions.label')"
+          data-testid="account-test-proxy-select"
+        />
+      </div>
+
       <div
         v-if="currentProxy"
-        class="flex items-center gap-2 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600 dark:border-dark-500 dark:bg-dark-700 dark:text-gray-300"
+        class="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600 dark:border-dark-500 dark:bg-dark-700 dark:text-gray-300"
+        data-testid="account-test-actual-proxy"
       >
         <Icon name="globe" size="sm" :stroke-width="2" />
         <span class="font-medium">{{ t('admin.accounts.testProxy') }}:</span>
-        <span v-if="currentProxy.routeType === 'managed'">
+        <span v-if="currentProxy.routeType === 'managed'" class="min-w-0 break-all">
           {{ currentProxy.name }}<span v-if="currentProxy.id"> (ID: {{ currentProxy.id }})</span>
         </span>
         <span v-else>{{ t(`admin.accounts.testProxyRoute.${currentProxy.routeType}`) }}</span>
@@ -236,6 +251,18 @@
         </button>
       </div>
 
+      <dl v-if="status !== 'idle'" class="grid grid-cols-3 gap-3 border-y border-gray-200 py-3 dark:border-dark-600" data-testid="account-test-metrics">
+        <div v-for="metric in metricRows" :key="metric.key" class="min-w-0">
+          <dt class="flex items-start gap-0.5 text-xs text-gray-500 dark:text-gray-400">
+            <span class="min-w-0 break-words">{{ metric.label }}</span>
+            <HelpTooltip :content="metric.hint" width-class="w-64 max-w-[calc(100vw-2rem)]" />
+          </dt>
+          <dd class="mt-1 break-words font-mono text-sm font-semibold tabular-nums text-gray-900 dark:text-gray-100" :data-testid="`account-test-metric-${metric.key}`">
+            {{ metric.value }}
+          </dd>
+        </div>
+      </dl>
+
       <div v-if="generatedImages.length > 0" class="space-y-2">
         <div class="text-xs font-medium text-gray-600 dark:text-gray-300">
           {{ t('admin.accounts.imagePreview') }}
@@ -380,14 +407,15 @@
 import { computed, ref, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
-import Select from '@/components/common/Select.vue'
+import Select, { type SelectOption } from '@/components/common/Select.vue'
+import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import TextArea from '@/components/common/TextArea.vue'
 import { Icon } from '@/components/icons'
 import { useClipboard } from '@/composables/useClipboard'
 import { buildApiUrl } from '@/api/client'
 import { ADMIN_UI_REQUEST_HEADER } from '@/api/adminUIRequest'
 import { adminAPI } from '@/api/admin'
-import type { Account, ClaudeModel } from '@/types'
+import type { Account, AccountProxyPoolEntry, ClaudeModel } from '@/types'
 
 const { t } = useI18n()
 const { copyToClipboard } = useClipboard()
@@ -417,6 +445,62 @@ const outputLines = ref<OutputLine[]>([])
 const streamingContent = ref('')
 const errorMessage = ref('')
 const currentProxy = ref<{ id?: number; name?: string; routeType: 'managed' | 'direct' | 'unknown' } | null>(null)
+const selectedProxyId = ref<number | null>(null)
+const proxyAvailabilityTime = ref(Date.now())
+interface TestMetrics {
+  latency_ms: number | null
+  first_token_ms: number | null
+  duration_ms: number | null
+}
+const testMetrics = ref<TestMetrics | null>(null)
+const boundProxyEntries = computed<AccountProxyPoolEntry[]>(() => {
+  const account = props.account
+  if (!account) return []
+  const entries = account.proxy_pool?.length
+    ? account.proxy_pool
+    : account.proxy_id || account.proxy?.id
+      ? [{ proxy_id: account.proxy_id || account.proxy!.id, concurrency: 1, proxy: account.proxy ?? undefined }]
+      : []
+  const seen = new Set<number>()
+  return entries.filter(entry => {
+    if (!Number.isInteger(entry.proxy_id) || entry.proxy_id <= 0 || seen.has(entry.proxy_id)) return false
+    seen.add(entry.proxy_id)
+    return true
+  })
+})
+const proxyUnavailableReason = (entry: AccountProxyPoolEntry, now: number): string => {
+  if (!entry.proxy || entry.proxy.id !== entry.proxy_id) return 'unavailable'
+  if (entry.proxy.status === 'expired') return 'expired'
+  if (entry.proxy.status !== 'active') return 'inactive'
+  if (entry.proxy.expires_at) {
+    const expiresAt = Date.parse(entry.proxy.expires_at)
+    if (!Number.isFinite(expiresAt)) return 'unavailable'
+    if (expiresAt <= now) return 'expired'
+  }
+  return ''
+}
+const proxyOptions = computed<SelectOption[]>(() => [
+  { value: null, label: t('admin.accounts.testProxyOptions.auto') },
+  ...boundProxyEntries.value.map(entry => {
+    const reason = proxyUnavailableReason(entry, proxyAvailabilityTime.value)
+    const name = entry.proxy?.name || `#${entry.proxy_id}`
+    return {
+      value: entry.proxy_id,
+      label: `${name} (ID: ${entry.proxy_id})${reason ? ` - ${t(`admin.accounts.testProxyOptions.${reason}`)}` : ''}`,
+      disabled: Boolean(reason)
+    }
+  })
+])
+const metricRows = computed(() => [
+  { key: 'latency_ms', label: t('admin.accounts.testMetrics.latency'), hint: t('admin.accounts.testMetrics.latencyHint') },
+  { key: 'first_token_ms', label: t('admin.accounts.testMetrics.firstToken'), hint: t('admin.accounts.testMetrics.firstTokenHint') },
+  { key: 'duration_ms', label: t('admin.accounts.testMetrics.duration'), hint: t('admin.accounts.testMetrics.durationHint') }
+].map(metric => ({
+  ...metric,
+  value: formatMetric(testMetrics.value?.[metric.key as keyof TestMetrics])
+})))
+const formatMetric = (value: number | null | undefined): string =>
+  typeof value === 'number' && Number.isFinite(value) && value >= 0 ? `${value} ms` : '--'
 const availableModels = ref<ClaudeModel[]>([])
 const selectedModelId = ref('')
 const testPrompt = ref('')
@@ -688,6 +772,7 @@ const testModeSummary = computed(() => {
 
 const canStartTest = computed(() => {
   if (status.value === 'connecting') return false
+  if (selectedProxyId.value !== null && !proxyOptions.value.some(option => option.value === selectedProxyId.value && !option.disabled)) return false
   if (isGrokAccount.value) {
     if (
       grokTestMode.value === 'search' ||
@@ -750,6 +835,8 @@ watch(
   () => props.show,
   async (newVal) => {
     if (newVal && props.account) {
+      selectedProxyId.value = null
+      proxyAvailabilityTime.value = Date.now()
       testPrompt.value = ''
       testMode.value = 'default'
       grokTestMode.value = 'text'
@@ -813,6 +900,7 @@ const resetState = () => {
   generatedVideos.value = []
   previewImageUrl.value = ''
   currentProxy.value = null
+  testMetrics.value = null
 }
 
 const handleClose = () => {
@@ -840,6 +928,7 @@ const scrollToBottom = async () => {
 }
 
 const startTest = async () => {
+  proxyAvailabilityTime.value = Date.now()
   if (!props.account || !canStartTest.value) return
 
   resetState()
@@ -864,10 +953,12 @@ const startTest = async () => {
       mode?: string
       image_data_url?: string
       audio_data_url?: string
+      proxy_id?: number
     } = {
       model_id: showModelSelect.value ? selectedModelId.value : '',
       prompt: supportsPromptInput.value ? testPrompt.value.trim() : ''
     }
+    if (selectedProxyId.value !== null) requestBody.proxy_id = selectedProxyId.value
     if (isOpenAIAccount.value) {
       requestBody.mode = testMode.value
     }
@@ -965,8 +1056,21 @@ const handleEvent = (event: {
   proxy_id?: number
   proxy_name?: string
   route_type?: 'managed' | 'direct' | 'unknown'
+  latency_ms?: number | null
+  first_token_ms?: number | null
+  duration_ms?: number | null
 }) => {
   switch (event.type) {
+    case 'test_metrics': {
+      const metrics = testMetrics.value ?? { latency_ms: null, first_token_ms: null, duration_ms: null }
+      for (const key of ['latency_ms', 'first_token_ms', 'duration_ms'] as const) {
+        if (!(key in event)) continue
+        const value = event[key]
+        metrics[key] = typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null
+      }
+      testMetrics.value = { ...metrics }
+      break
+    }
     case 'proxy_info':
       currentProxy.value = {
         id: event.proxy_id,
@@ -1084,7 +1188,11 @@ const handleEvent = (event: {
 }
 
 const copyOutput = () => {
-  const text = outputLines.value.map((l) => l.text).join('\n')
+  const lines = outputLines.value.map((l) => l.text)
+  if (status.value !== 'idle') {
+    lines.push('', ...metricRows.value.map(metric => `${metric.label}: ${metric.value}`))
+  }
+  const text = lines.join('\n')
   copyToClipboard(text, t('admin.accounts.outputCopied'))
 }
 </script>

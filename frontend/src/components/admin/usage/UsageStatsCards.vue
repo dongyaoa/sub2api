@@ -1,5 +1,8 @@
 <template>
-  <div class="grid grid-cols-2 gap-4 lg:grid-cols-4">
+  <div
+    class="grid gap-4"
+    :class="showCacheRate ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-5' : 'grid-cols-2 lg:grid-cols-4'"
+  >
     <div class="card p-4 flex items-center gap-3">
       <div class="rounded-lg bg-blue-100 p-2 dark:bg-blue-900/30 text-blue-600">
         <Icon name="document" size="md" />
@@ -58,6 +61,19 @@
         </p>
       </div>
     </div>
+    <div v-if="showCacheRate" class="card p-4 flex items-center gap-3" data-testid="usage-cache-rate">
+      <div class="shrink-0 rounded-lg bg-cyan-100 p-2 dark:bg-cyan-900/30 text-cyan-600">
+        <Icon name="database" size="md" />
+      </div>
+      <div class="min-w-0">
+        <div class="flex items-center text-xs font-medium text-gray-500">
+          <span>{{ t('usage.cacheRate') }}</span>
+          <HelpTooltip :content="t('usage.cacheRateHint')" />
+        </div>
+        <p class="text-xl font-bold tabular-nums">{{ cacheRate.toFixed(2) }}%</p>
+        <p class="text-xs text-gray-400">{{ t('usage.inSelectedRange') }}</p>
+      </div>
+    </div>
     <div class="card p-4 flex items-center gap-3">
       <div class="rounded-lg bg-green-100 p-2 dark:bg-green-900/30 text-green-600">
         <Icon name="dollar" size="md" />
@@ -94,17 +110,28 @@ import { useI18n } from 'vue-i18n'
 import type { AdminUsageStatsResponse } from '@/api/admin/usage'
 import type { UsageStatsResponse } from '@/types'
 import Icon from '@/components/icons/Icon.vue'
+import HelpTooltip from '@/components/common/HelpTooltip.vue'
 
 const props = withDefaults(defineProps<{
   stats: (AdminUsageStatsResponse | UsageStatsResponse) | null
+  showCacheRate?: boolean
   showAccountCost?: boolean
   strikeStandardCost?: boolean
 }>(), {
+  showCacheRate: false,
   showAccountCost: true,
   strikeStandardCost: false,
 })
 
 const { t } = useI18n()
+
+const cacheRate = computed(() => {
+  const input = props.stats?.total_input_tokens || 0
+  const creation = props.stats?.total_cache_creation_tokens || 0
+  const read = props.stats?.total_cache_read_tokens || 0
+  const totalPromptTokens = input + creation + read
+  return totalPromptTokens > 0 ? (read / totalPromptTokens) * 100 : 0
+})
 
 const totalAccountCost = computed(() => {
   const stats = props.stats as (AdminUsageStatsResponse & { total_account_cost?: number }) | null

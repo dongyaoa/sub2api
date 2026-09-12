@@ -24,8 +24,8 @@ describe('AccountRecentRequestsCell', () => {
     wrapper = mount(AccountRecentRequestsCell)
     expect(wrapper.findAll('[data-testid="recent-request-placeholder"]')).toHaveLength(10)
     expect(wrapper.findAll('[data-testid="recent-request-bar"]')).toHaveLength(0)
-    expect(wrapper.get('[data-testid="recent-request-time"]').text()).toBe('—')
-    const timeElement = wrapper.get('[data-testid="recent-request-time"]').element
+    expect(wrapper.find('[data-testid="recent-request-time"]').exists()).toBe(false)
+    const stripElement = wrapper.get('[data-testid="recent-request-strip"]').element
     expect(wrapper.find('[data-testid="recent-request-load-error"]').exists()).toBe(false)
     await wrapper.setProps({ error: true })
     expect(wrapper.findAll('[data-testid="recent-request-placeholder"]')).toHaveLength(10)
@@ -34,8 +34,8 @@ describe('AccountRecentRequestsCell', () => {
     await wrapper.setProps({ error: false, loading: true })
     expect(wrapper.attributes('aria-busy')).toBe('true')
     expect(wrapper.findAll('[data-testid="recent-request-placeholder"]')).toHaveLength(10)
-    expect(wrapper.get('[data-testid="recent-request-time"]').element).toBe(timeElement)
-    expect(wrapper.get('[data-testid="recent-request-time"]').text()).toBe('—')
+    expect(wrapper.get('[data-testid="recent-request-strip"]').element).toBe(stripElement)
+    expect(wrapper.find('[data-testid="recent-request-time"]').exists()).toBe(false)
     expect(wrapper.find('.animate-pulse').exists()).toBe(false)
   })
 

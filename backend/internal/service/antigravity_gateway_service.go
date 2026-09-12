@@ -391,7 +391,7 @@ func (s *AntigravityGatewayService) TestConnection(ctx context.Context, account 
 		action:         "streamGenerateContent",
 		body:           requestBody,
 		c:              nil, // 无 gin.Context → 跳过 ops 追踪
-		httpUpstream:   s.httpUpstream,
+		httpUpstream:   accountTestUpstream(s.httpUpstream),
 		settingService: s.settingService,
 		accountRepo:    s.accountRepo,
 		requestedModel: modelID,
@@ -413,7 +413,7 @@ func (s *AntigravityGatewayService) TestConnection(ctx context.Context, account 
 	}
 	defer func() { _ = result.resp.Body.Close() }()
 
-	respBody, err := io.ReadAll(io.LimitReader(result.resp.Body, s.upstreamErrorBodyReadLimit()))
+	respBody, err := readAccountTestGeminiBody(ctx, io.LimitReader(result.resp.Body, s.upstreamErrorBodyReadLimit()), result.resp.StatusCode)
 	if err != nil {
 		return nil, fmt.Errorf("读取响应失败: %w", err)
 	}

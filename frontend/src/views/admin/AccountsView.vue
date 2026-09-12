@@ -303,6 +303,9 @@
               :error="todayStatsError"
             />
           </template>
+          <template #header-recent_requests="{ column }">
+            <span class="w-full text-center">{{ column.label }}</span>
+          </template>
           <template #cell-recent_requests="{ row }">
             <AccountRecentRequestsCell
               :requests="recentRequestsByAccountId[String(row.id)] ?? []"

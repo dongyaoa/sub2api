@@ -97,15 +97,15 @@ const copyDetails = (request: AccountRecentRequest) => {
 </script>
 
 <template>
-  <div class="min-w-[9rem] py-0.5" :aria-busy="loading || undefined">
-    <div class="flex h-5 items-center gap-1.5">
+  <div class="recent-requests-cell" :aria-busy="loading || undefined">
+    <div v-if="latestTime" class="recent-requests-time-row">
       <span
-        class="text-sm font-bold leading-5 tabular-nums tracking-[0.01em]"
-        :class="latestTime ? 'text-slate-500 dark:text-slate-300' : 'text-slate-300 dark:text-slate-600'"
-        :title="!entries.length && !error ? t('admin.accounts.recentRequests.empty') : undefined"
+        class="recent-requests-time text-gray-500 dark:text-gray-400"
         data-testid="recent-request-time"
-      >{{ latestTime ? formatCompactTime(latestTime) : '—' }}</span>
-      <HelpTooltip v-if="error" class="!ml-0" :content="t('admin.accounts.recentRequests.loadFailed')">
+      >{{ formatCompactTime(latestTime) }}</span>
+    </div>
+      <div class="recent-requests-strip" :aria-label="t('admin.accounts.recentRequests.ariaLabel')" data-testid="recent-request-strip">
+      <HelpTooltip v-if="error" class="recent-requests-error !ml-0" :content="t('admin.accounts.recentRequests.loadFailed')">
         <template #trigger>
           <button
             type="button"
@@ -115,8 +115,6 @@ const copyDetails = (request: AccountRecentRequest) => {
           ><Icon name="exclamationCircle" size="sm" /></button>
         </template>
       </HelpTooltip>
-    </div>
-      <div class="mt-2.5 flex h-5 items-center gap-1.5" :aria-label="t('admin.accounts.recentRequests.ariaLabel')">
         <span
           v-for="index in emptySlots"
           :key="`empty-${index}`"
@@ -182,12 +180,51 @@ const copyDetails = (request: AccountRecentRequest) => {
 </template>
 
 <style scoped>
+.recent-requests-cell {
+  display: flex;
+  min-width: 108px;
+  height: 38px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+}
+
+.recent-requests-time-row {
+  display: flex;
+  align-items: center;
+  height: 16px;
+}
+
+.recent-requests-time {
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+
+.recent-requests-strip {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 16px;
+  gap: 4px;
+}
+
+.recent-requests-error {
+  position: absolute;
+  left: calc(100% + 5px);
+}
+
 .recent-request-bar {
   display: inline-block;
-  width: 6px;
-  height: 20px;
+  width: 5px;
+  height: 16px;
   flex-shrink: 0;
-  border-radius: 3px;
+  border-radius: 2.5px;
 }
 
 .recent-request-bar--empty {
