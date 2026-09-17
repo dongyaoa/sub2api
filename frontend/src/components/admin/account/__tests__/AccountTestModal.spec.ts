@@ -94,7 +94,6 @@ function mountModal(account: Record<string, unknown> = {
             </option>
           </select>`
         },
-        HelpTooltip: { props: ['content'], template: '<span :title="content" />' },
         TextArea: {
           props: ['modelValue'],
           emits: ['update:modelValue'],
@@ -265,7 +264,7 @@ describe('AccountTestModal', () => {
 
     expect(wrapper.text()).toContain('US selected node')
     expect(wrapper.text()).toContain('ID: 12')
-    expect(wrapper.get('[data-testid="account-test-actual-proxy"]').text()).not.toContain('Legacy primary node')
+    expect(wrapper.find('[data-testid="account-test-actual-proxy"]').exists()).toBe(false)
     expect(wrapper.text()).toContain('API returned 429')
     const copyButton = wrapper.find('button[title="admin.accounts.copyOutput"]')
     await copyButton.trigger('click')
@@ -371,7 +370,7 @@ describe('AccountTestModal', () => {
     wrapper.unmount()
   })
 
-  it('重试保留代理选择并清除旧耗时，连接时禁用选择，重新打开恢复自动选择', async () => {
+  it('重试保留代理选择，连接时禁用选择，重新打开恢复自动选择', async () => {
     let finishRetry!: (response: Response) => void
     global.fetch = vi.fn()
       .mockResolvedValueOnce(createStreamResponse([
@@ -393,16 +392,13 @@ describe('AccountTestModal', () => {
     await proxySelect.setValue('12')
     await wrapper.findAll('button').find(button => button.text().includes('admin.accounts.startTest'))!.trigger('click')
     await flushPromises()
-    expect(wrapper.get('[data-testid="account-test-metric-latency_ms"]').text()).toBe('120 ms')
-    expect(wrapper.get('[data-testid="account-test-metric-first_token_ms"]').text()).toBe('280 ms')
-    expect(wrapper.get('[data-testid="account-test-metric-duration_ms"]').text()).toBe('930 ms')
+    expect(wrapper.find('[data-testid="account-test-metrics"]').exists()).toBe(false)
 
     await wrapper.findAll('button').find(button => button.text().includes('admin.accounts.retry'))!.trigger('click')
     await flushPromises()
     expect((proxySelect.element as HTMLSelectElement).value).toBe('12')
     expect(proxySelect.attributes('disabled')).toBeDefined()
     expect(JSON.parse(vi.mocked(global.fetch).mock.calls[1][1]!.body as string).proxy_id).toBe(12)
-    expect(wrapper.findAll('[data-testid^="account-test-metric-"]').map(metric => metric.text())).toEqual(['--', '--', '--'])
 
     finishRetry(createStreamResponse([
       'data: {"type":"test_metrics","duration_ms":450}\n',
@@ -410,7 +406,6 @@ describe('AccountTestModal', () => {
     ]))
     await flushPromises()
     expect(proxySelect.attributes('disabled')).toBeUndefined()
-    expect(wrapper.get('[data-testid="account-test-metric-duration_ms"]').text()).toBe('450 ms')
     await wrapper.setProps({ show: false })
     await wrapper.setProps({ show: true })
     await flushPromises()
@@ -419,7 +414,7 @@ describe('AccountTestModal', () => {
     wrapper.unmount()
   })
 
-  it('分批接收耗时保留有效零值，缺失项显示占位且复制输出包含耗时', async () => {
+  it('收到耗时事件后仍可完成测试，页面及复制输出不再包含耗时', async () => {
     global.fetch = vi.fn().mockResolvedValue(createStreamResponse([
       'data: {"type":"test_metrics","latency_ms":0}\n',
       'data: {"type":"test_metrics","duration_ms":375}\n',
@@ -431,28 +426,11 @@ describe('AccountTestModal', () => {
     await wrapper.findAll('button').find(button => button.text().includes('admin.accounts.startTest'))!.trigger('click')
     await flushPromises()
 
-    expect(wrapper.get('[data-testid="account-test-metric-latency_ms"]').text()).toBe('0 ms')
-    expect(wrapper.get('[data-testid="account-test-metric-first_token_ms"]').text()).toBe('--')
-    expect(wrapper.get('[data-testid="account-test-metric-duration_ms"]').text()).toBe('375 ms')
+    expect(wrapper.find('[data-testid="account-test-metrics"]').exists()).toBe(false)
+    expect(wrapper.text()).toContain('admin.accounts.testComplete')
     await wrapper.get('button[title="admin.accounts.copyOutput"]').trigger('click')
     const copiedOutput = copyToClipboard.mock.calls[0][0] as string
-    expect(copiedOutput).toContain('admin.accounts.testMetrics.latency: 0 ms')
-    expect(copiedOutput).toContain('admin.accounts.testMetrics.firstToken: --')
-    expect(copiedOutput).toContain('admin.accounts.testMetrics.duration: 375 ms')
-    wrapper.unmount()
-  })
-
-  it('非法或空的耗时不会显示为零毫秒', async () => {
-    global.fetch = vi.fn().mockResolvedValue(createStreamResponse([
-      'data: {"type":"test_metrics","latency_ms":-1,"first_token_ms":null,"duration_ms":"150"}\n',
-      'data: {"type":"test_complete","success":true}\n'
-    ])) as any
-    const wrapper = mountModal()
-    await wrapper.setProps({ show: true })
-    await flushPromises()
-    await wrapper.findAll('button').find(button => button.text().includes('admin.accounts.startTest'))!.trigger('click')
-    await flushPromises()
-    expect(wrapper.findAll('[data-testid^="account-test-metric-"]').map(metric => metric.text())).toEqual(['--', '--', '--'])
+    expect(copiedOutput).not.toContain('admin.accounts.testMetrics')
     wrapper.unmount()
   })
 })

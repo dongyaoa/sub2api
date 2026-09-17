@@ -55,19 +55,6 @@
         />
       </div>
 
-      <div
-        v-if="currentProxy"
-        class="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-xs text-gray-600 dark:border-dark-500 dark:bg-dark-700 dark:text-gray-300"
-        data-testid="account-test-actual-proxy"
-      >
-        <Icon name="globe" size="sm" :stroke-width="2" />
-        <span class="font-medium">{{ t('admin.accounts.testProxy') }}:</span>
-        <span v-if="currentProxy.routeType === 'managed'" class="min-w-0 break-all">
-          {{ currentProxy.name }}<span v-if="currentProxy.id"> (ID: {{ currentProxy.id }})</span>
-        </span>
-        <span v-else>{{ t(`admin.accounts.testProxyRoute.${currentProxy.routeType}`) }}</span>
-      </div>
-
       <!-- Grok: mode first, then optional model / mode params -->
       <div v-if="isGrokAccount" class="space-y-1.5">
         <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -251,18 +238,6 @@
         </button>
       </div>
 
-      <dl v-if="status !== 'idle'" class="grid grid-cols-3 gap-3 border-y border-gray-200 py-3 dark:border-dark-600" data-testid="account-test-metrics">
-        <div v-for="metric in metricRows" :key="metric.key" class="min-w-0">
-          <dt class="flex items-start gap-0.5 text-xs text-gray-500 dark:text-gray-400">
-            <span class="min-w-0 break-words">{{ metric.label }}</span>
-            <HelpTooltip :content="metric.hint" width-class="w-64 max-w-[calc(100vw-2rem)]" />
-          </dt>
-          <dd class="mt-1 break-words font-mono text-sm font-semibold tabular-nums text-gray-900 dark:text-gray-100" :data-testid="`account-test-metric-${metric.key}`">
-            {{ metric.value }}
-          </dd>
-        </div>
-      </dl>
-
       <div v-if="generatedImages.length > 0" class="space-y-2">
         <div class="text-xs font-medium text-gray-600 dark:text-gray-300">
           {{ t('admin.accounts.imagePreview') }}
@@ -408,7 +383,6 @@ import { computed, ref, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Select, { type SelectOption } from '@/components/common/Select.vue'
-import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import TextArea from '@/components/common/TextArea.vue'
 import { Icon } from '@/components/icons'
 import { useClipboard } from '@/composables/useClipboard'
@@ -444,15 +418,8 @@ const status = ref<'idle' | 'connecting' | 'success' | 'error'>('idle')
 const outputLines = ref<OutputLine[]>([])
 const streamingContent = ref('')
 const errorMessage = ref('')
-const currentProxy = ref<{ id?: number; name?: string; routeType: 'managed' | 'direct' | 'unknown' } | null>(null)
 const selectedProxyId = ref<number | null>(null)
 const proxyAvailabilityTime = ref(Date.now())
-interface TestMetrics {
-  latency_ms: number | null
-  first_token_ms: number | null
-  duration_ms: number | null
-}
-const testMetrics = ref<TestMetrics | null>(null)
 const boundProxyEntries = computed<AccountProxyPoolEntry[]>(() => {
   const account = props.account
   if (!account) return []
@@ -491,16 +458,6 @@ const proxyOptions = computed<SelectOption[]>(() => [
     }
   })
 ])
-const metricRows = computed(() => [
-  { key: 'latency_ms', label: t('admin.accounts.testMetrics.latency'), hint: t('admin.accounts.testMetrics.latencyHint') },
-  { key: 'first_token_ms', label: t('admin.accounts.testMetrics.firstToken'), hint: t('admin.accounts.testMetrics.firstTokenHint') },
-  { key: 'duration_ms', label: t('admin.accounts.testMetrics.duration'), hint: t('admin.accounts.testMetrics.durationHint') }
-].map(metric => ({
-  ...metric,
-  value: formatMetric(testMetrics.value?.[metric.key as keyof TestMetrics])
-})))
-const formatMetric = (value: number | null | undefined): string =>
-  typeof value === 'number' && Number.isFinite(value) && value >= 0 ? `${value} ms` : '--'
 const availableModels = ref<ClaudeModel[]>([])
 const selectedModelId = ref('')
 const testPrompt = ref('')
@@ -899,8 +856,6 @@ const resetState = () => {
   generatedAudios.value = []
   generatedVideos.value = []
   previewImageUrl.value = ''
-  currentProxy.value = null
-  testMetrics.value = null
 }
 
 const handleClose = () => {
@@ -1056,27 +1011,9 @@ const handleEvent = (event: {
   proxy_id?: number
   proxy_name?: string
   route_type?: 'managed' | 'direct' | 'unknown'
-  latency_ms?: number | null
-  first_token_ms?: number | null
-  duration_ms?: number | null
 }) => {
   switch (event.type) {
-    case 'test_metrics': {
-      const metrics = testMetrics.value ?? { latency_ms: null, first_token_ms: null, duration_ms: null }
-      for (const key of ['latency_ms', 'first_token_ms', 'duration_ms'] as const) {
-        if (!(key in event)) continue
-        const value = event[key]
-        metrics[key] = typeof value === 'number' && Number.isFinite(value) && value >= 0 ? value : null
-      }
-      testMetrics.value = { ...metrics }
-      break
-    }
     case 'proxy_info':
-      currentProxy.value = {
-        id: event.proxy_id,
-        name: event.proxy_name,
-        routeType: event.route_type || 'unknown'
-      }
       if (event.route_type === 'managed' && event.proxy_name) {
         addLine(
           t('admin.accounts.testProxySelected', {
@@ -1188,11 +1125,7 @@ const handleEvent = (event: {
 }
 
 const copyOutput = () => {
-  const lines = outputLines.value.map((l) => l.text)
-  if (status.value !== 'idle') {
-    lines.push('', ...metricRows.value.map(metric => `${metric.label}: ${metric.value}`))
-  }
-  const text = lines.join('\n')
+  const text = outputLines.value.map((l) => l.text).join('\n')
   copyToClipboard(text, t('admin.accounts.outputCopied'))
 }
 </script>
