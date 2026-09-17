@@ -177,18 +177,22 @@ func TestRecentObserverGeminiHTTP200ErrorPayload(t *testing.T) {
 			svc := &GeminiMessagesCompatService{}
 			switch mode {
 			case "native-stream", "oauth-stream":
-				_, _ = svc.handleNativeStreamingResponse(c, resp, time.Now(), mode == "oauth-stream")
+				_, _ = svc.handleNativeStreamingResponse(c, resp, time.Now(), mode == "oauth-stream", account, "")
 			case "claude-stream":
 				_, _ = svc.handleStreamingResponse(c, resp, time.Now(), "gemini")
 			case "native-json":
-				_, _ = svc.handleNativeNonStreamingResponse(c, resp, false)
+				_, _ = svc.handleNativeNonStreamingResponse(c, resp, false, account, "")
 			case "claude-json":
 				_, _ = svc.handleNonStreamingResponse(c, resp, "gemini")
 			}
 			finish(true, nil)
 			record := takeRecentObserverRecord(t, store)
 			require.False(t, record.Success)
-			require.Equal(t, 200, record.StatusCode)
+			expectedStatus := 200
+			if mode == "native-stream" || mode == "oauth-stream" || mode == "native-json" {
+				expectedStatus = 400
+			}
+			require.Equal(t, expectedStatus, record.StatusCode)
 			require.Equal(t, "invalid generation settings", record.ErrorMessage)
 		})
 	}
