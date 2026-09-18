@@ -687,6 +687,11 @@ export default {
         tlsFingerprintHint: 'Off by default. When enabled, the selected TLS profile takes precedence over the OAuth transport plugin. The built-in Node.js 24 profile is not a verified Codex TLS fingerprint.',
         tlsFingerprintProfile: 'TLS fingerprint profile',
         tlsFingerprintBuiltIn: 'Built-in default (Node.js 24)',
+        codexTurnTicket: 'Codex 292 ticket',
+        codexTurnTicketDesc: 'Ticket status for the configured models. Requests are paused without a valid ticket only when fail-closed is enabled.',
+        codexTurnTicketMissing: 'No valid ticket; requests remain allowed',
+        codexTurnTicketReady: '{time} left',
+        codexTurnTicketPaused: 'No 292 ticket; this model is paused',
         codexImageTool: 'Codex image bridge policy',
         codexImageToolDesc:
           'Controls the hosted image_generation bridge and client-declared image tools on Codex /responses text requests. Hosted auto-injection applies only to non-Responses Lite requests. Account policy takes precedence over channel and global settings; standalone image-generation endpoints are unaffected.',

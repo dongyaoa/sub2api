@@ -4,15 +4,23 @@ import { describe, expect, it, vi } from 'vitest'
 import type { UserMonitorView } from '@/api/channelMonitor'
 import MonitorCard from './MonitorCard.vue'
 
-vi.mock('vue-i18n', () => ({
-  useI18n: () => ({
-    t: (key: string, params?: Record<string, string>) => {
-      if (key === 'channelStatus.groupRateValue') return `倍率 ${params?.value}x`
-      if (key === 'channelStatus.groupRateTitle') return `${params?.group} 当前倍率：${params?.value}x`
-      return key
-    },
-  }),
+vi.mock('@/utils/featureFlags', () => ({
+  isChannelMonitorQuotaVisible: () => false,
 }))
+
+vi.mock('vue-i18n', async () => {
+  const actual = await vi.importActual<typeof import('vue-i18n')>('vue-i18n')
+  return {
+    ...actual,
+    useI18n: () => ({
+      t: (key: string, params?: Record<string, string>) => {
+        if (key === 'channelStatus.groupRateValue') return `倍率 ${params?.value}x`
+        if (key === 'channelStatus.groupRateTitle') return `${params?.group} 当前倍率：${params?.value}x`
+        return key
+      },
+    }),
+  }
+})
 
 function monitor(overrides: Partial<UserMonitorView> = {}): UserMonitorView {
   return {

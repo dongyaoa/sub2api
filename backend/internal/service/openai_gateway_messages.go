@@ -391,6 +391,9 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	if isCodexMultiWindowAccount(codexAccountIdentitySource(c, account)) {
 		applyStagedCodexFingerprintHeaders(c, account, upstreamReq.Header)
 	}
+	if err := s.applyOpenAICodexTicket(ctx, account, upstreamModel, upstreamReq.Header); err != nil {
+		return nil, err
+	}
 
 	// 7. Send request
 	proxyURL := ""

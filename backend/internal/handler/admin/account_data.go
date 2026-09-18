@@ -205,7 +205,7 @@ func (h *AccountHandler) ExportData(c *gin.Context) {
 			v := acc.ExpiresAt.Unix()
 			expiresAt = &v
 		}
-		extra := cloneDataAccountExtra(acc.Extra)
+		extra := service.RedactOpenAICodexTicketExtra(cloneDataAccountExtra(acc.Extra))
 		dataAccounts = append(dataAccounts, DataAccount{
 			Name:               acc.Name,
 			Notes:              acc.Notes,
