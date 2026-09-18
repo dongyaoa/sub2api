@@ -10,7 +10,9 @@ const messages: Record<string, string> = {
   'usage.in': 'In',
   'usage.out': 'Out',
   'usage.cacheTotal': 'Cache',
-  'usage.cacheRate': 'Cache Rate',
+  'usage.cacheRate': 'Cache Hit Rate',
+  'usage.cacheRateHint': 'Cache read tokens / (input tokens + cache creation tokens + cache read tokens) × 100%',
+  'usage.cacheRateWeightedHint': 'Token-weighted across current filters',
   'usage.cacheBreakdown': 'Cache Token Breakdown',
   'usage.cacheCreationTokensLabel': 'Cache Creation',
   'usage.cacheReadTokensLabel': 'Cache Read',
@@ -60,20 +62,58 @@ describe('UsageStatsCards', () => {
     const card = wrapper.get('[data-testid="usage-cache-rate"]')
 
     expect(wrapper.findAll('.card')).toHaveLength(5)
-    expect(card.text()).toContain('Cache Rate')
-    expect(card.text()).toContain('16.42%')
+    expect(card.text()).toContain('Cache Hit Rate')
+    expect(card.text()).toContain('Token-weighted across current filters')
+    expect(card.text()).toContain('16.4%')
+    expect(card.get('help-tooltip-stub').attributes('content')).toBe(messages['usage.cacheRateHint'])
+    const progress = card.get('[role="progressbar"]')
+    expect(progress.attributes('aria-label')).toBe('Cache Hit Rate')
+    expect(progress.attributes('aria-valuenow')).toBe('16.4')
+    expect(progress.attributes('aria-valuetext')).toBe('16.4%')
+    expect(parseFloat((progress.element.firstElementChild as HTMLElement).style.width)).toBeCloseTo(22 / 134 * 100)
 
     await wrapper.setProps({ stats: { ...stats, total_output_tokens: 10000 } })
-    expect(card.text()).toContain('16.42%')
+    expect(card.text()).toContain('16.4%')
+    expect(progress.attributes('aria-valuenow')).toBe('16.4')
 
     await wrapper.setProps({ stats: { ...stats, total_input_tokens: 0, total_cache_creation_tokens: 0 } })
-    expect(card.text()).toContain('100.00%')
+    expect(card.text()).toContain('100.0%')
+    expect(progress.attributes('aria-valuenow')).toBe('100')
+    expect((progress.element.firstElementChild as HTMLElement).style.width).toBe('100%')
 
     await wrapper.setProps({ stats: { ...stats, total_cache_read_tokens: 0 } })
-    expect(card.text()).toContain('0.00%')
+    expect(card.text()).toContain('0.0%')
+    expect(progress.attributes('aria-valuenow')).toBe('0')
+    expect((progress.element.firstElementChild as HTMLElement).style.width).toBe('0%')
 
     await wrapper.setProps({ stats: null })
-    expect(card.text()).toContain('0.00%')
+    expect(card.text()).toContain('0.0%')
+    expect(progress.attributes('aria-valuenow')).toBe('0')
+  })
+
+  it('weights the overall hit rate by prompt tokens across the filtered requests', () => {
+    // A 100-token prompt with 10 cache reads plus a 900-token fully cached
+    // prompt gives 91%, rather than the 55% mean of their individual rates.
+    const wrapper = mount(UsageStatsCards, {
+      props: {
+        stats: {
+          ...stats,
+          total_requests: 2,
+          total_input_tokens: 80,
+          total_cache_creation_tokens: 10,
+          total_cache_read_tokens: 910,
+          total_cache_tokens: 920,
+          total_output_tokens: 10000,
+          total_tokens: 11000,
+        },
+        showCacheRate: true,
+      },
+      global: { stubs: { HelpTooltip: true } },
+    })
+    const card = wrapper.get('[data-testid="usage-cache-rate"]')
+
+    expect(card.text()).toContain('91.0%')
+    expect(card.get('[role="progressbar"]').attributes('aria-valuenow')).toBe('91')
   })
 
   it('shows cache token breakdown values', () => {

@@ -605,6 +605,63 @@ describe('admin UsageTable tooltip', () => {
   })
 })
 
+describe('UsageTable cache hit rate', () => {
+  const mountRates = (rows: Array<typeof baseImageRow>) => mount(UsageTable, {
+    props: {
+      data: rows,
+      columns: [{ key: 'cache_rate', label: 'Cache Hit Rate' }],
+    },
+    global: {
+      stubs: {
+        DataTable: {
+          props: ['data'],
+          template: '<div><div v-for="row in data" :key="row.request_id"><slot name="cell-cache_rate" :row="row" /></div></div>',
+        },
+        Icon: true,
+        Teleport: true,
+      },
+    },
+  })
+
+  it('shows each request rate using prompt tokens, including cache creation only once', () => {
+    const samples = [
+      { input: 230, creation: 0, read: 182400, expected: '99.87%', color: 'bg-emerald-100' },
+      { input: 171253, creation: 0, read: 4224, expected: '2.41%', color: 'bg-amber-100' },
+      { input: 167, creation: 0, read: 1280, expected: '88.46%', color: 'bg-emerald-100' },
+      { input: 100, creation: 300, read: 600, expected: '60.00%', color: 'bg-amber-100' },
+      { input: 100, creation: 0, read: 400, expected: '80.00%', color: 'bg-emerald-100' },
+      { input: 0, creation: 0, read: 100, expected: '100.00%', color: 'bg-emerald-100' },
+      { input: 100, creation: 0, read: 0, expected: '0.00%', color: 'bg-gray-100' },
+    ]
+    const wrapper = mountRates(samples.map((sample, index) => ({
+      ...baseImageRow,
+      request_id: `cache-${index}`,
+      billing_mode: 'token',
+      image_count: 0,
+      input_tokens: sample.input,
+      cache_creation_tokens: sample.creation,
+      cache_creation_5m_tokens: sample.creation,
+      cache_read_tokens: sample.read,
+      output_tokens: 10000,
+    })))
+
+    const badges = wrapper.findAll('[data-testid="cache-hit-rate"]')
+    expect(badges).toHaveLength(samples.length)
+    badges.forEach((badge, index) => {
+      expect(badge.text()).toBe(samples[index].expected)
+      expect(badge.classes()).toContain(samples[index].color)
+    })
+    wrapper.unmount()
+  })
+
+  it('shows a dash when a request has no prompt tokens', () => {
+    const wrapper = mountRates([{ ...baseImageRow, output_tokens: 500 }])
+    expect(wrapper.find('[data-testid="cache-hit-rate"]').exists()).toBe(false)
+    expect(wrapper.text()).toBe('-')
+    wrapper.unmount()
+  })
+})
+
 describe('admin UsageTable request ID column', () => {
   beforeEach(() => {
     appStoreMocks.showSuccess.mockReset()

@@ -205,6 +205,19 @@
           </div>
         </template>
 
+        <template #cell-cache_rate="{ row }">
+          <span
+            v-if="(row.input_tokens || 0) + (row.cache_creation_tokens || 0) + (row.cache_read_tokens || 0) > 0"
+            data-testid="cache-hit-rate"
+            class="inline-flex items-center whitespace-nowrap rounded px-2 py-0.5 text-sm font-medium tabular-nums"
+            :class="cacheRateBadgeClass(row)"
+            :title="t('usage.cacheRateHint')"
+          >
+            {{ cacheRate(row).toFixed(2) }}%
+          </span>
+          <span v-else class="text-sm text-gray-400 dark:text-gray-500">-</span>
+        </template>
+
         <template #cell-cost="{ row }">
           <div class="text-sm">
             <div class="flex items-center gap-1.5">
@@ -585,6 +598,7 @@ import Icon from '@/components/icons/Icon.vue'
 import { fetchBatch, getEntry } from '@/utils/ipGeoLookup'
 import type { AdminUsageLog } from '@/types'
 import type { Column } from '@/components/common/types'
+import { getCacheHitRate } from '@/utils/cacheHitRate'
 
 interface Props {
   data: AdminUsageLog[]
@@ -621,6 +635,16 @@ const showUpstreamEndpoint = props.showUpstreamEndpoint
 const ipGeoBatchLoading = ref(false)
 
 const showIpGeoToolbar = computed(() => props.columns.some((col) => col.key === 'ip_address'))
+
+const cacheRate = (row: AdminUsageLog): number =>
+  getCacheHitRate(row.input_tokens, row.cache_creation_tokens, row.cache_read_tokens)
+
+const cacheRateBadgeClass = (row: AdminUsageLog): string => {
+  const rate = cacheRate(row)
+  if (rate >= 80) return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
+  if (rate > 0) return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
+  return 'bg-gray-100 text-gray-600 dark:bg-dark-700 dark:text-gray-400'
+}
 
 const hasReasoningEffortMapping = (row: AdminUsageLog): boolean => {
   const requested = row.reasoning_effort?.trim() || ''

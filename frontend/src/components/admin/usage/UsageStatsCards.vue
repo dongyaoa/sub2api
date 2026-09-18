@@ -62,16 +62,30 @@
       </div>
     </div>
     <div v-if="showCacheRate" class="card p-4 flex items-center gap-3" data-testid="usage-cache-rate">
-      <div class="shrink-0 rounded-lg bg-cyan-100 p-2 dark:bg-cyan-900/30 text-cyan-600">
-        <Icon name="database" size="md" />
+      <div class="shrink-0 rounded-xl bg-cyan-100 p-3 text-cyan-600 dark:bg-cyan-900/30 dark:text-cyan-400">
+        <Icon name="chart" size="lg" />
       </div>
-      <div class="min-w-0">
-        <div class="flex items-center text-xs font-medium text-gray-500">
+      <div class="min-w-0 flex-1">
+        <div class="flex items-center text-xs font-medium text-gray-500 dark:text-gray-400">
           <span>{{ t('usage.cacheRate') }}</span>
           <HelpTooltip :content="t('usage.cacheRateHint')" />
         </div>
-        <p class="text-xl font-bold tabular-nums">{{ cacheRate.toFixed(2) }}%</p>
-        <p class="text-xs text-gray-400">{{ t('usage.inSelectedRange') }}</p>
+        <p class="text-2xl font-bold tabular-nums text-cyan-600 dark:text-cyan-400">{{ cacheRate.toFixed(1) }}%</p>
+        <div
+          class="my-1.5 h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-dark-700"
+          role="progressbar"
+          :aria-label="t('usage.cacheRate')"
+          :aria-valuenow="Number(cacheRate.toFixed(1))"
+          :aria-valuetext="`${cacheRate.toFixed(1)}%`"
+          :aria-valuemin="0"
+          :aria-valuemax="100"
+        >
+          <div
+            class="h-full rounded-full bg-gradient-to-r from-cyan-400 to-blue-500 transition-[width] duration-300 motion-reduce:transition-none"
+            :style="{ width: `${cacheRate}%` }"
+          />
+        </div>
+        <p class="text-xs text-gray-400 dark:text-gray-500">{{ t('usage.cacheRateWeightedHint') }}</p>
       </div>
     </div>
     <div class="card p-4 flex items-center gap-3">
@@ -111,6 +125,7 @@ import type { AdminUsageStatsResponse } from '@/api/admin/usage'
 import type { UsageStatsResponse } from '@/types'
 import Icon from '@/components/icons/Icon.vue'
 import HelpTooltip from '@/components/common/HelpTooltip.vue'
+import { getCacheHitRate } from '@/utils/cacheHitRate'
 
 const props = withDefaults(defineProps<{
   stats: (AdminUsageStatsResponse | UsageStatsResponse) | null
@@ -125,13 +140,11 @@ const props = withDefaults(defineProps<{
 
 const { t } = useI18n()
 
-const cacheRate = computed(() => {
-  const input = props.stats?.total_input_tokens || 0
-  const creation = props.stats?.total_cache_creation_tokens || 0
-  const read = props.stats?.total_cache_read_tokens || 0
-  const totalPromptTokens = input + creation + read
-  return totalPromptTokens > 0 ? (read / totalPromptTokens) * 100 : 0
-})
+const cacheRate = computed(() => getCacheHitRate(
+  props.stats?.total_input_tokens,
+  props.stats?.total_cache_creation_tokens,
+  props.stats?.total_cache_read_tokens,
+))
 
 const totalAccountCost = computed(() => {
   const stats = props.stats as (AdminUsageStatsResponse & { total_account_cost?: number }) | null

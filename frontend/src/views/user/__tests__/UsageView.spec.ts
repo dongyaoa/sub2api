@@ -5,6 +5,7 @@ import UsageView from '../UsageView.vue'
 import Select, { type SelectOption } from '@/components/common/Select.vue'
 import DateRangePicker from '@/components/common/DateRangePicker.vue'
 import UsageTable from '@/components/admin/usage/UsageTable.vue'
+import UsageStatsCards from '@/components/admin/usage/UsageStatsCards.vue'
 
 const {
   query,
@@ -158,7 +159,7 @@ function mountUsageView() {
         Select: true,
         DateRangePicker: true,
         Icon: true,
-        UsageStatsCards: chartStub,
+        UsageStatsCards: false,
         UsageTable: chartStub,
         UserErrorRequestsTable: chartStub,
         ModelDistributionChart: chartStub,
@@ -231,6 +232,40 @@ describe('user UsageView', () => {
     expect(list).toHaveBeenCalledTimes(1)
     expect(list).toHaveBeenCalledWith(1, 100)
     expect(getAvailable).toHaveBeenCalled()
+  })
+
+  it('shows the cache rate column and uses filtered totals for the overall rate', async () => {
+    getStats.mockResolvedValue({
+      total_input_tokens: 100,
+      total_cache_creation_tokens: 100,
+      total_cache_read_tokens: 800,
+    })
+    const wrapper = mountUsageView()
+    await flushPromises()
+
+    const columns = wrapper.findComponent(UsageTable).vm.$attrs.columns as Array<{ key: string }>
+    expect(columns.map((column) => column.key)).toEqual(expect.arrayContaining(['cache_rate']))
+    expect(columns.findIndex((column) => column.key === 'cache_rate')).toBe(
+      columns.findIndex((column) => column.key === 'tokens') + 1,
+    )
+    expect(wrapper.findComponent(UsageStatsCards).props('showCacheRate')).toBe(true)
+    expect(wrapper.get('[data-testid="usage-cache-rate"]').text()).toContain('80.0%')
+
+    getStats.mockResolvedValue({
+      total_input_tokens: 800,
+      total_cache_creation_tokens: 100,
+      total_cache_read_tokens: 100,
+    })
+    const keySelect = wrapper.findAllComponents(Select).find((select) =>
+      select.props('options').some((option: SelectOption) => option.label === 'All API Keys'),
+    )!
+    keySelect.vm.$emit('update:modelValue', 1)
+    keySelect.vm.$emit('change', 1)
+    await flushPromises()
+
+    expect(getStats).toHaveBeenLastCalledWith(expect.objectContaining({ api_key_id: 1 }))
+    expect(wrapper.get('[data-testid="usage-cache-rate"]').text()).toContain('10.0%')
+    wrapper.unmount()
   })
 
   it('includes API keys after the first page in both record filters and queries by the selected key', async () => {
