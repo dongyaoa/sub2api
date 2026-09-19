@@ -35,8 +35,9 @@ func EvaluatePluginCompatibility(manifest PluginManifest, host PluginHostInfo) P
 		return result
 	}
 	result.Compatible = true
+	hostVersion := normalizePluginHostSemver(host.Version)
 	for _, tested := range manifest.Requires.TestedSub2APIVersions {
-		if normalizeSemver(tested) == normalizeSemver(host.Version) {
+		if normalizeSemver(tested) == hostVersion {
 			result.Tested = true
 			break
 		}
@@ -65,8 +66,21 @@ func normalizeSemver(version string) string {
 	return v
 }
 
-func matchesSemverRange(version, expression string) bool {
+func normalizePluginHostSemver(version string) string {
 	v := normalizeSemver(version)
+	if v == "" {
+		return ""
+	}
+	prerelease := semver.Prerelease(v)
+	if prerelease != "-custom" && !strings.HasPrefix(prerelease, "-custom.") {
+		return v
+	}
+	v = strings.TrimSuffix(v, semver.Build(v))
+	return strings.TrimSuffix(v, prerelease)
+}
+
+func matchesSemverRange(version, expression string) bool {
+	v := normalizePluginHostSemver(version)
 	if v == "" {
 		return false
 	}
