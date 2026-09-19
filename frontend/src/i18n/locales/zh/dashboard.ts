@@ -497,7 +497,7 @@ export default {
   monitorCommon: {
     status: {
       operational: '正常',
-      degraded: '降级',
+      degraded: '波动',
       failed: '失败',
       error: '错误',
       unknown: '-'

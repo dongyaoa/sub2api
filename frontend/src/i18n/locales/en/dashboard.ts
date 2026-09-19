@@ -492,7 +492,7 @@ export default {
   monitorCommon: {
     status: {
       operational: 'Operational',
-      degraded: 'Degraded',
+      degraded: 'Fluctuating',
       failed: 'Failed',
       error: 'Error',
       unknown: '-'

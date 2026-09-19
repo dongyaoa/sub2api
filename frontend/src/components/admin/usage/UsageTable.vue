@@ -18,7 +18,7 @@
     </div>
     <div class="overflow-auto">
       <DataTable
-        :columns="columns"
+        :columns="tableColumns"
         :data="data"
         :loading="loading"
         :server-side-sort="serverSideSort"
@@ -209,12 +209,11 @@
           <span
             v-if="(row.input_tokens || 0) + (row.cache_creation_tokens || 0) + (row.cache_read_tokens || 0) > 0"
             data-testid="cache-hit-rate"
-            class="inline-flex items-center gap-1.5 whitespace-nowrap text-xs font-medium leading-4 tabular-nums"
+            class="inline-block rounded px-1.5 py-0.5 align-middle whitespace-nowrap text-[11px] font-medium leading-4 tabular-nums"
             :class="cacheRateTextClass(row)"
             :title="t('usage.cacheRateHint')"
           >
-            <span class="h-1 w-1 shrink-0 rounded-full bg-current opacity-60" aria-hidden="true" />
-            <span>{{ cacheRate(row).toFixed(2) }}<span class="ml-0.5 text-[10px] font-normal opacity-70">%</span></span>
+            {{ cacheRate(row).toFixed(2) }}%
           </span>
           <span v-else class="text-xs text-gray-400 dark:text-gray-500">-</span>
         </template>
@@ -637,14 +636,20 @@ const ipGeoBatchLoading = ref(false)
 
 const showIpGeoToolbar = computed(() => props.columns.some((col) => col.key === 'ip_address'))
 
+// Keep token details and their hit rate together instead of sharing the table's spare width.
+const tableColumns = computed(() => props.columns.map((column) => {
+  if (column.key !== 'tokens' && column.key !== 'cache_rate') return column
+  return { ...column, class: [column.class, 'w-px whitespace-nowrap !px-2'].filter(Boolean).join(' ') }
+}))
+
 const cacheRate = (row: AdminUsageLog): number =>
   getCacheHitRate(row.input_tokens, row.cache_creation_tokens, row.cache_read_tokens)
 
 const cacheRateTextClass = (row: AdminUsageLog): string => {
   const rate = cacheRate(row)
-  if (rate >= 80) return 'text-emerald-600 dark:text-emerald-400'
-  if (rate > 0) return 'text-amber-600 dark:text-amber-400'
-  return 'text-gray-500 dark:text-gray-400'
+  if (rate >= 80) return 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400'
+  if (rate > 0) return 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400'
+  return 'bg-gray-100 text-gray-500 dark:bg-gray-500/10 dark:text-gray-400'
 }
 
 const hasReasoningEffortMapping = (row: AdminUsageLog): boolean => {
