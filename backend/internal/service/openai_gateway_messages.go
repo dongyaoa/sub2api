@@ -391,7 +391,7 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 	if isCodexMultiWindowAccount(codexAccountIdentitySource(c, account)) {
 		applyStagedCodexFingerprintHeaders(c, account, upstreamReq.Header)
 	}
-	if err := s.applyOpenAICodexTicket(ctx, account, upstreamModel, upstreamReq.Header); err != nil {
+	if err := s.applyOpenAICodexTicketToRequest(ctx, account, upstreamModel, upstreamReq); err != nil {
 		return nil, err
 	}
 
