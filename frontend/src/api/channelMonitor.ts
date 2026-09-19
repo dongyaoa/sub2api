@@ -8,6 +8,13 @@ import type { MonitorQuotaSnapshot, Provider, MonitorStatus } from './admin/chan
 
 export type { Provider, MonitorStatus } from './admin/channelMonitor'
 
+export type MonitorDisplayGroup = 'openai' | 'anthropic' | 'other'
+
+export interface MonitorDisplayOrder {
+  group_order: MonitorDisplayGroup[]
+  monitor_order: number[]
+}
+
 export interface UserMonitorExtraModel {
   model: string
   status: MonitorStatus
@@ -35,6 +42,9 @@ export interface UserMonitorView {
   availability_7d: number
   extra_models: UserMonitorExtraModel[]
   timeline: MonitorTimelinePoint[]
+  interval_seconds?: number
+  jitter_seconds?: number
+  last_checked_at?: string | null
   /**
    * 主模型最近配额快照。仅当系统开启 channel_monitor_show_quota 时
    * 服务端才会下发（关闭时服务端已剥离，前端 flag 仅作纵深防御）。
@@ -44,6 +54,7 @@ export interface UserMonitorView {
 
 export interface UserMonitorListResponse {
   items: UserMonitorView[]
+  display_order?: MonitorDisplayOrder
 }
 
 export interface UserMonitorModelDetail {
@@ -77,8 +88,8 @@ export async function list(options?: { signal?: AbortSignal }): Promise<UserMoni
 /**
  * Get detailed status (multi-window availability + latency) for a single monitor.
  */
-export async function status(id: number): Promise<UserMonitorDetail> {
-  const { data } = await apiClient.get<UserMonitorDetail>(`/channel-monitors/${id}/status`)
+export async function status(id: number, options?: { signal?: AbortSignal }): Promise<UserMonitorDetail> {
+  const { data } = await apiClient.get<UserMonitorDetail>(`/channel-monitors/${id}/status`, options)
   return data
 }
 

@@ -625,13 +625,13 @@ describe('UsageTable cache hit rate', () => {
 
   it('shows each request rate using prompt tokens, including cache creation only once', () => {
     const samples = [
-      { input: 230, creation: 0, read: 182400, expected: '99.87%', color: 'bg-emerald-100' },
-      { input: 171253, creation: 0, read: 4224, expected: '2.41%', color: 'bg-amber-100' },
-      { input: 167, creation: 0, read: 1280, expected: '88.46%', color: 'bg-emerald-100' },
-      { input: 100, creation: 300, read: 600, expected: '60.00%', color: 'bg-amber-100' },
-      { input: 100, creation: 0, read: 400, expected: '80.00%', color: 'bg-emerald-100' },
-      { input: 0, creation: 0, read: 100, expected: '100.00%', color: 'bg-emerald-100' },
-      { input: 100, creation: 0, read: 0, expected: '0.00%', color: 'bg-gray-100' },
+      { input: 230, creation: 0, read: 182400, expected: '99.87%', color: 'text-emerald-600' },
+      { input: 171253, creation: 0, read: 4224, expected: '2.41%', color: 'text-amber-600' },
+      { input: 167, creation: 0, read: 1280, expected: '88.46%', color: 'text-emerald-600' },
+      { input: 100, creation: 300, read: 600, expected: '60.00%', color: 'text-amber-600' },
+      { input: 100, creation: 0, read: 400, expected: '80.00%', color: 'text-emerald-600' },
+      { input: 0, creation: 0, read: 100, expected: '100.00%', color: 'text-emerald-600' },
+      { input: 100, creation: 0, read: 0, expected: '0.00%', color: 'text-gray-500' },
     ]
     const wrapper = mountRates(samples.map((sample, index) => ({
       ...baseImageRow,

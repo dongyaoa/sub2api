@@ -1003,6 +1003,9 @@ func ProvideChannelMonitorService(
 ) *ChannelMonitorService {
 	svc := NewChannelMonitorService(repo, encryptor)
 	svc.SetRuntimeReader(settingService)
+	if settingService != nil {
+		svc.SetDisplayOrderStore(settingService.settingRepo)
+	}
 	svc.SetAPIKeyGroupResolver(apiKeyGroupResolver)
 	return svc
 }

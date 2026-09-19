@@ -39,6 +39,10 @@ func NewChannelMonitorRepository(client *dbent.Client, db *sql.DB) service.Chann
 
 // ---------- CRUD ----------
 
+func (r *channelMonitorRepository) ExistingIDs(ctx context.Context, ids []int64) ([]int64, error) {
+	return clientFromContext(ctx, r.client).ChannelMonitor.Query().Where(channelmonitor.IDIn(ids...)).IDs(ctx)
+}
+
 func (r *channelMonitorRepository) Create(ctx context.Context, m *service.ChannelMonitor) error {
 	client := clientFromContext(ctx, r.client)
 	builder := client.ChannelMonitor.Create().

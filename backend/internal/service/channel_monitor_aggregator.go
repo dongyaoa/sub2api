@@ -57,6 +57,11 @@ func (s *ChannelMonitorService) BatchMonitorStatusSummary(
 //	1 次批量 7d availability；
 //	1 次批量 timeline（主模型最近 N 条）。
 func (s *ChannelMonitorService) ListUserView(ctx context.Context) ([]*UserMonitorView, error) {
+	views, _, err := s.ListUserViewWithDisplayOrder(ctx)
+	return views, err
+}
+
+func (s *ChannelMonitorService) listUserView(ctx context.Context) ([]*UserMonitorView, error) {
 	monitors, err := s.repo.ListEnabled(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("list enabled monitors: %w", err)
@@ -271,6 +276,8 @@ func buildUserViewFromSummary(
 ) *UserMonitorView {
 	view := &UserMonitorView{
 		ID:                  m.ID,
+		IntervalSeconds:     m.IntervalSeconds,
+		JitterSeconds:       m.JitterSeconds,
 		Name:                m.Name,
 		Provider:            m.Provider,
 		GroupName:           m.GroupName,
@@ -283,6 +290,10 @@ func buildUserViewFromSummary(
 		Timeline:            buildTimelinePoints(timelineEntries),
 	}
 	if primaryLatest != nil {
+		checkedAt := primaryLatest.CheckedAt
+		if !checkedAt.IsZero() {
+			view.LastCheckedAt = &checkedAt
+		}
 		view.PrimaryPingLatencyMs = primaryLatest.PingLatencyMs
 		view.LatestQuota = primaryLatest.Quota
 	}
@@ -291,6 +302,9 @@ func buildUserViewFromSummary(
 
 // buildTimelinePoints 把 history entry 裁剪为 timeline 点（去除 message/ID/Model，减小响应体）。
 func buildTimelinePoints(entries []*ChannelMonitorHistoryEntry) []UserMonitorTimelinePoint {
+	if len(entries) > monitorTimelineMaxPoints {
+		entries = entries[:monitorTimelineMaxPoints]
+	}
 	out := make([]UserMonitorTimelinePoint, 0, len(entries))
 	for _, e := range entries {
 		out = append(out, UserMonitorTimelinePoint{

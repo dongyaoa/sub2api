@@ -45,6 +45,14 @@
         <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
       </button>
       <button
+        type="button"
+        @click="$emit('display-order')"
+        class="btn btn-secondary"
+      >
+        <Icon name="arrowsUpDown" size="md" class="mr-2" />
+        {{ t('channelStatus.order.title') }}
+      </button>
+      <button
         @click="$emit('manage-templates')"
         class="btn btn-secondary"
         :title="t('admin.channelMonitor.template.manageButton')"
@@ -87,6 +95,7 @@ defineEmits<{
   (e: 'reload'): void
   (e: 'create'): void
   (e: 'manage-templates'): void
+  (e: 'display-order'): void
   (e: 'search-input'): void
 }>()
 

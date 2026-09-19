@@ -4,6 +4,7 @@
  */
 
 import { apiClient } from '../client'
+import type { MonitorDisplayOrder } from '../channelMonitor'
 
 export type Provider =
   | 'openai'
@@ -208,6 +209,19 @@ export async function list(
   return data
 }
 
+/** Shared display order for the signed-in channel monitoring page. */
+export async function getDisplayOrder(options?: { signal?: AbortSignal }): Promise<MonitorDisplayOrder> {
+  const { data } = await apiClient.get<MonitorDisplayOrder>('/admin/channel-monitors/display-order', {
+    signal: options?.signal,
+  })
+  return data
+}
+
+export async function saveDisplayOrder(order: MonitorDisplayOrder): Promise<MonitorDisplayOrder> {
+  const { data } = await apiClient.put<MonitorDisplayOrder>('/admin/channel-monitors/display-order', order)
+  return data
+}
+
 /**
  * Get a channel monitor by ID
  */
@@ -347,6 +361,8 @@ export async function listHistory(
 
 export const channelMonitorAPI = {
   list,
+  getDisplayOrder,
+  saveDisplayOrder,
   get,
   create,
   duplicate,

@@ -59,6 +59,7 @@
           @reload="reload"
           @create="openCreateDialog"
           @manage-templates="showTemplateManager = true"
+          @display-order="showDisplayOrder = true"
           @search-input="handleSearch"
         />
       </template>
@@ -149,6 +150,11 @@
       @updated="reload"
     />
 
+    <MonitorDisplayOrderDialog
+      :show="showDisplayOrder"
+      @close="showDisplayOrder = false"
+    />
+
     <MonitorRunResultDialog
       :show="showRunResult"
       :results="runResults"
@@ -193,6 +199,7 @@ import Toggle from '@/components/common/Toggle.vue'
 import MonitorFiltersBar from '@/components/admin/monitor/MonitorFiltersBar.vue'
 import MonitorFormDialog from '@/components/admin/monitor/MonitorFormDialog.vue'
 import MonitorTemplateManagerDialog from '@/components/admin/monitor/MonitorTemplateManagerDialog.vue'
+import MonitorDisplayOrderDialog from '@/components/admin/monitor/MonitorDisplayOrderDialog.vue'
 import MonitorRunResultDialog from '@/components/admin/monitor/MonitorRunResultDialog.vue'
 import MonitorPrimaryModelCell from '@/components/admin/monitor/MonitorPrimaryModelCell.vue'
 import MonitorActionsCell from '@/components/admin/monitor/MonitorActionsCell.vue'
@@ -224,6 +231,7 @@ const pagination = reactive({ page: 1, page_size: getPersistedPageSize(), total:
 
 const showDialog = ref(false)
 const showTemplateManager = ref(false)
+const showDisplayOrder = ref(false)
 const editing = ref<ChannelMonitor | null>(null)
 const showDeleteDialog = ref(false)
 const deleting = ref<ChannelMonitor | null>(null)

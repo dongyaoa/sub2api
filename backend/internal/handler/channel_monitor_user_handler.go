@@ -53,6 +53,9 @@ func (h *ChannelMonitorUserHandler) quotaVisible(c *gin.Context) bool {
 
 type channelMonitorUserListItem struct {
 	ID                   int64                                `json:"id"`
+	IntervalSeconds      int                                  `json:"interval_seconds"`
+	JitterSeconds        int                                  `json:"jitter_seconds"`
+	LastCheckedAt        *time.Time                           `json:"last_checked_at"`
 	Name                 string                               `json:"name"`
 	Provider             string                               `json:"provider"`
 	GroupName            string                               `json:"group_name"`
@@ -116,6 +119,9 @@ func userMonitorViewToItem(v *service.UserMonitorView, includeQuota bool) channe
 	}
 	item := channelMonitorUserListItem{
 		ID:                   v.ID,
+		IntervalSeconds:      v.IntervalSeconds,
+		JitterSeconds:        v.JitterSeconds,
+		LastCheckedAt:        v.LastCheckedAt,
 		Name:                 v.Name,
 		Provider:             v.Provider,
 		GroupName:            v.GroupName,
@@ -161,10 +167,10 @@ func userMonitorDetailToResponse(d *service.UserMonitorDetail) *channelMonitorUs
 // List GET /api/v1/channel-monitors
 func (h *ChannelMonitorUserHandler) List(c *gin.Context) {
 	if !h.featureEnabled(c) {
-		response.Success(c, gin.H{"items": []channelMonitorUserListItem{}})
+		response.Success(c, gin.H{"items": []channelMonitorUserListItem{}, "display_order": service.DefaultChannelMonitorDisplayOrder()})
 		return
 	}
-	views, err := h.monitorService.ListUserView(c.Request.Context())
+	views, displayOrder, err := h.monitorService.ListUserViewWithDisplayOrder(c.Request.Context())
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return
@@ -174,7 +180,7 @@ func (h *ChannelMonitorUserHandler) List(c *gin.Context) {
 	for _, v := range views {
 		items = append(items, userMonitorViewToItem(v, includeQuota))
 	}
-	response.Success(c, gin.H{"items": items})
+	response.Success(c, gin.H{"items": items, "display_order": displayOrder})
 }
 
 // GetStatus GET /api/v1/channel-monitors/:id/status

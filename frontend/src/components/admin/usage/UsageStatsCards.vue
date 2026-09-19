@@ -62,28 +62,30 @@
       </div>
     </div>
     <div v-if="showCacheRate" class="card p-4 flex items-center gap-3" data-testid="usage-cache-rate">
-      <div class="shrink-0 rounded-xl bg-cyan-100 p-3 text-cyan-600 dark:bg-cyan-900/30 dark:text-cyan-400">
-        <Icon name="chart" size="lg" />
+      <div class="shrink-0 rounded-lg bg-cyan-100 p-2 text-cyan-600 dark:bg-cyan-900/30 dark:text-cyan-400">
+        <Icon name="chart" size="md" />
       </div>
       <div class="min-w-0 flex-1">
         <div class="flex items-center text-xs font-medium text-gray-500 dark:text-gray-400">
           <span>{{ t('usage.cacheRate') }}</span>
           <HelpTooltip :content="t('usage.cacheRateHint')" />
         </div>
-        <p class="text-2xl font-bold tabular-nums text-cyan-600 dark:text-cyan-400">{{ cacheRate.toFixed(1) }}%</p>
-        <div
-          class="my-1.5 h-2 overflow-hidden rounded-full bg-gray-100 dark:bg-dark-700"
-          role="progressbar"
-          :aria-label="t('usage.cacheRate')"
-          :aria-valuenow="Number(cacheRate.toFixed(1))"
-          :aria-valuetext="`${cacheRate.toFixed(1)}%`"
-          :aria-valuemin="0"
-          :aria-valuemax="100"
-        >
+        <div class="flex items-center gap-2">
+          <p class="shrink-0 text-xl font-bold tabular-nums text-gray-900 dark:text-white">{{ cacheRate.toFixed(1) }}%</p>
           <div
-            class="h-full rounded-full bg-gradient-to-r from-cyan-400 to-blue-500 transition-[width] duration-300 motion-reduce:transition-none"
-            :style="{ width: `${cacheRate}%` }"
-          />
+            class="h-1 min-w-0 max-w-12 flex-1 overflow-hidden rounded-full bg-gray-100 dark:bg-dark-700"
+            role="progressbar"
+            :aria-label="t('usage.cacheRate')"
+            :aria-valuenow="Number(cacheRate.toFixed(1))"
+            :aria-valuetext="`${cacheRate.toFixed(1)}%`"
+            :aria-valuemin="0"
+            :aria-valuemax="100"
+          >
+            <div
+              class="h-full rounded-full bg-cyan-500 transition-[width] duration-300 motion-reduce:transition-none"
+              :style="{ width: `${cacheRate}%` }"
+            />
+          </div>
         </div>
         <p class="text-xs text-gray-400 dark:text-gray-500">{{ t('usage.cacheRateWeightedHint') }}</p>
       </div>

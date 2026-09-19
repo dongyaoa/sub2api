@@ -153,6 +153,9 @@ type CheckResult struct {
 // UserMonitorView 用户只读视图：监控概览（含主模型最近状态 + 7d 可用率 + 附加模型最近状态）。
 type UserMonitorView struct {
 	ID                   int64
+	IntervalSeconds      int
+	JitterSeconds        int
+	LastCheckedAt        *time.Time
 	Name                 string
 	Provider             string
 	GroupName            string

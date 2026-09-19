@@ -1,34 +1,43 @@
 <template>
-  <div class="mt-4 pt-3 border-t border-gray-100 dark:border-dark-700/60">
-    <div
-      class="flex justify-between text-[10px] font-semibold uppercase tracking-widest text-gray-400 mb-2"
-    >
-      <span>{{ t('monitorCommon.history60pts', { n: length }) }}</span>
-      <span class="tabular-nums">{{ t('monitorCommon.nextUpdateIn', { n: countdownSeconds }) }}</span>
+  <div class="w-full min-w-0">
+    <div class="mb-[7px] flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-[10px] leading-[15px] text-gray-400">
+      <span>{{ t('channelStatus.cards.timelineLabel', { n: length }) }}</span>
+      <span class="flex items-center gap-1.5 tabular-nums" :title="lastCheckedTitle">
+        <span>{{ latestCheckLabel }}</span>
+        <span v-if="stale" class="rounded bg-amber-50 px-1 text-amber-600 dark:bg-amber-500/10 dark:text-amber-300">
+          {{ t('channelStatus.cards.stale') }}
+        </span>
+      </span>
     </div>
 
     <div
       v-if="maintenance"
-      class="flex h-5 w-full items-center justify-center rounded border border-dashed border-gray-300 dark:border-dark-600 text-[10px] uppercase tracking-widest text-gray-400"
+      class="flex h-[21px] w-full items-center justify-center rounded border border-dashed border-gray-300 text-[10px] text-gray-400 dark:border-dark-600"
     >
       {{ t('monitorCommon.maintenancePaused') }}
     </div>
-    <div v-else class="flex items-end gap-[2px] h-5 w-full">
-      <div
+    <div
+      v-else
+      class="grid h-[21px] w-full items-end gap-[2px]"
+      :style="{ gridTemplateColumns: `repeat(${length}, minmax(0, 1fr))` }"
+      role="img"
+      :aria-label="t('channelStatus.cards.timelineAria', { n: realPoints.length })"
+    >
+      <span
         v-for="(bar, idx) in displayBars"
         :key="idx"
-        class="flex-1 min-w-0 rounded-sm"
+        data-testid="monitor-timeline-bar"
+        class="min-w-0 rounded-full"
         :class="bar.colorClass"
         :style="{ height: bar.heightPct + '%' }"
         :title="bar.title"
-      ></div>
+        :data-checked-at="bar.checkedAt"
+      ></span>
     </div>
 
-    <div
-      class="mt-1 flex justify-between text-[9px] uppercase tracking-widest text-gray-400"
-    >
-      <span>{{ t('monitorCommon.past') }}</span>
-      <span>{{ t('monitorCommon.now') }}</span>
+    <div class="mt-[5px] flex justify-between text-[9px] leading-3 tracking-[0.7px] text-gray-400" aria-hidden="true">
+      <span>PAST</span>
+      <span>NOW</span>
     </div>
   </div>
 </template>
@@ -41,26 +50,31 @@ import { useChannelMonitorFormat } from '@/composables/useChannelMonitorFormat'
 
 const props = withDefaults(defineProps<{
   buckets?: MonitorTimelinePoint[]
-  countdownSeconds: number
+  countdownSeconds?: number
   length?: number
   maintenance?: boolean
+  lastCheckedAt?: string | null
+  stale?: boolean
+  now?: number
 }>(), {
   buckets: () => [],
-  length: 60,
+  length: 45,
   maintenance: false,
+  stale: false,
+  now: () => Date.now(),
 })
 
-const { t } = useI18n()
-const { statusLabel, formatLatency, formatRelativeTime } = useChannelMonitorFormat()
+const { t, locale } = useI18n()
+const { statusLabel, formatLatency } = useChannelMonitorFormat()
 
 interface Bar {
   colorClass: string
   heightPct: number
   title: string
+  checkedAt?: string
 }
 
-// 4 级高度 + 颜色双重编码：高=好+绿，短=坏+红，灰=未测试。
-// 长绿(正常) > 中黄(降级) > 短红(失败/系统错误) > 很短灰(未测试)。
+// Height supplements the colour so degraded/failed checks remain distinguishable.
 const STATUS_HEIGHT: Record<string, number> = {
   operational: 100,
   degraded: 65,
@@ -77,39 +91,49 @@ const STATUS_COLOR: Record<string, string> = {
   empty: 'bg-gray-300 dark:bg-dark-600',
 }
 
+// The API returns real checks newest-first. Keep only the latest 45, then put
+// the newest on the right; padding belongs on the older (left) side.
+const realPoints = computed(() => props.buckets.slice(0, props.length).reverse())
+const effectiveLastCheckedAt = computed(() => props.lastCheckedAt ?? props.buckets[0]?.checked_at ?? null)
+
+function absoluteTime(value: string | null | undefined): string {
+  if (!value || Number.isNaN(Date.parse(value))) return t('channelStatus.cards.timeUnknown')
+  return new Date(value).toLocaleString(locale.value, { hour12: false })
+}
+
+const lastCheckedTitle = computed(() => effectiveLastCheckedAt.value ? absoluteTime(effectiveLastCheckedAt.value) : undefined)
+const latestCheckLabel = computed(() => {
+  const checkedAt = effectiveLastCheckedAt.value
+  if (!checkedAt) return t('channelStatus.cards.noChecks')
+  const timestamp = Date.parse(checkedAt)
+  if (Number.isNaN(timestamp)) return t('channelStatus.cards.timeUnknown')
+  const seconds = Math.max(0, Math.floor((props.now - timestamp) / 1000))
+  const time = seconds < 60
+    ? t('monitorCommon.relativeSecondsAgo', { n: seconds })
+    : seconds < 3600
+      ? t('monitorCommon.relativeMinutesAgo', { n: Math.floor(seconds / 60) })
+      : seconds < 86400
+        ? t('monitorCommon.relativeHoursAgo', { n: Math.floor(seconds / 3600) })
+        : t('monitorCommon.relativeDaysAgo', { n: Math.floor(seconds / 86400) })
+  return t('channelStatus.cards.latestCheck', { time })
+})
+
 const displayBars = computed<Bar[]>(() => {
-  // Real points come newest-first; convert to oldest-first so the rightmost
-  // bar represents "now". Pad the left with empty placeholders to keep the
-  // bar count stable at `length`.
-  const real = [...(props.buckets ?? [])]
-    .slice(0, props.length)
-    .reverse()
+  const padCount = Math.max(0, props.length - realPoints.value.length)
+  const bars: Bar[] = Array.from({ length: padCount }, () => ({
+    colorClass: STATUS_COLOR.empty,
+    heightPct: STATUS_HEIGHT.empty,
+    title: t('channelStatus.cards.noChecks'),
+  }))
 
-  const padCount = Math.max(0, props.length - real.length)
-  const bars: Bar[] = []
-
-  for (let i = 0; i < padCount; i += 1) {
+  for (const point of realPoints.value) {
     bars.push({
-      colorClass: STATUS_COLOR.empty,
-      heightPct: STATUS_HEIGHT.empty,
-      title: '',
+      colorClass: STATUS_COLOR[point.status] ?? STATUS_COLOR.empty,
+      heightPct: STATUS_HEIGHT[point.status] ?? STATUS_HEIGHT.empty,
+      title: `${absoluteTime(point.checked_at)} · ${statusLabel(point.status)} · ${formatLatency(point.latency_ms)}ms`,
+      checkedAt: point.checked_at,
     })
   }
-
-  for (const point of real) {
-    const status = point.status as keyof typeof STATUS_HEIGHT
-    const colorClass = STATUS_COLOR[status] ?? STATUS_COLOR.empty
-    const heightPct = STATUS_HEIGHT[status] ?? STATUS_HEIGHT.empty
-    const latency = formatLatency(point.latency_ms)
-    const relative = formatRelativeTime(point.checked_at)
-    const label = statusLabel(point.status)
-    bars.push({
-      colorClass,
-      heightPct,
-      title: `${relative} · ${label} · ${latency}ms`,
-    })
-  }
-
   return bars
 })
 </script>

@@ -209,13 +209,14 @@
           <span
             v-if="(row.input_tokens || 0) + (row.cache_creation_tokens || 0) + (row.cache_read_tokens || 0) > 0"
             data-testid="cache-hit-rate"
-            class="inline-flex items-center whitespace-nowrap rounded px-2 py-0.5 text-sm font-medium tabular-nums"
-            :class="cacheRateBadgeClass(row)"
+            class="inline-flex items-center gap-1.5 whitespace-nowrap text-xs font-medium leading-4 tabular-nums"
+            :class="cacheRateTextClass(row)"
             :title="t('usage.cacheRateHint')"
           >
-            {{ cacheRate(row).toFixed(2) }}%
+            <span class="h-1 w-1 shrink-0 rounded-full bg-current opacity-60" aria-hidden="true" />
+            <span>{{ cacheRate(row).toFixed(2) }}<span class="ml-0.5 text-[10px] font-normal opacity-70">%</span></span>
           </span>
-          <span v-else class="text-sm text-gray-400 dark:text-gray-500">-</span>
+          <span v-else class="text-xs text-gray-400 dark:text-gray-500">-</span>
         </template>
 
         <template #cell-cost="{ row }">
@@ -639,11 +640,11 @@ const showIpGeoToolbar = computed(() => props.columns.some((col) => col.key === 
 const cacheRate = (row: AdminUsageLog): number =>
   getCacheHitRate(row.input_tokens, row.cache_creation_tokens, row.cache_read_tokens)
 
-const cacheRateBadgeClass = (row: AdminUsageLog): string => {
+const cacheRateTextClass = (row: AdminUsageLog): string => {
   const rate = cacheRate(row)
-  if (rate >= 80) return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300'
-  if (rate > 0) return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300'
-  return 'bg-gray-100 text-gray-600 dark:bg-dark-700 dark:text-gray-400'
+  if (rate >= 80) return 'text-emerald-600 dark:text-emerald-400'
+  if (rate > 0) return 'text-amber-600 dark:text-amber-400'
+  return 'text-gray-500 dark:text-gray-400'
 }
 
 const hasReasoningEffortMapping = (row: AdminUsageLog): boolean => {
