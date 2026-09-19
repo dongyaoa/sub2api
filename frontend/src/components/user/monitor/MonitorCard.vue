@@ -27,7 +27,7 @@
           <span
             v-if="item.group_rate_multiplier != null"
             data-testid="monitor-group-rate"
-            class="inline-flex flex-shrink-0 items-center whitespace-nowrap rounded bg-teal-50 px-1 text-[10px] font-medium leading-4 text-teal-700 dark:bg-teal-500/10 dark:text-teal-300"
+            class="inline-flex flex-shrink-0 items-center whitespace-nowrap rounded bg-teal-50 px-1 py-0.5 text-[10.5px] font-medium leading-4 text-teal-700 dark:bg-teal-500/10 dark:text-teal-300"
             :title="groupRateTitle"
           >
             {{ formatMultiplier(item.group_rate_multiplier) }}x
@@ -73,7 +73,7 @@
           </svg>
           <span>{{ t('channelStatus.cards.availability', { days: window.slice(0, -1) }) }}</span>
         </div>
-        <div class="monitor-metric-value" :style="availabilityColorStyle">
+        <div class="monitor-metric-value monitor-availability-value" :style="availabilityColorStyle">
           {{ availabilityDisplay }}<span class="monitor-metric-unit">%</span>
         </div>
       </div>
@@ -197,12 +197,16 @@ const groupRateTitle = computed(() => {
 }
 
 .monitor-metric-value {
-  font-size: 18px;
+  font-size: 17px;
   line-height: 1.25;
   letter-spacing: -0.5px;
   font-weight: 600;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+}
+
+.monitor-availability-value {
+  font-size: 22px;
 }
 
 .monitor-metric-unit {
@@ -218,11 +222,12 @@ const groupRateTitle = computed(() => {
   }
 
   .monitor-metrics {
-    gap: 6px;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1.2fr);
+    gap: 4px;
   }
 
   .monitor-metric {
-    padding-inline: 4px;
+    padding-inline: 2px;
   }
 
   .monitor-metric-label {
@@ -234,8 +239,9 @@ const groupRateTitle = computed(() => {
     height: 8px;
   }
 
-  .monitor-metric-value {
-    font-size: 15px;
+  .monitor-metric-unit {
+    margin-left: 1px;
+    font-size: 9px;
   }
 }
 </style>
