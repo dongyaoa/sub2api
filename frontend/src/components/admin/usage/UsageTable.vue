@@ -209,7 +209,7 @@
           <span
             v-if="(row.input_tokens || 0) + (row.cache_creation_tokens || 0) + (row.cache_read_tokens || 0) > 0"
             data-testid="cache-hit-rate"
-            class="inline-block rounded px-1.5 py-0.5 align-middle whitespace-nowrap text-[11px] font-medium leading-4 tabular-nums"
+            class="inline-block rounded px-1.5 py-[0.225rem] align-middle whitespace-nowrap text-[11px] font-medium leading-4 tabular-nums"
             :class="cacheRateTextClass(row)"
             :title="t('usage.cacheRateHint')"
           >

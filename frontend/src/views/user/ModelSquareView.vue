@@ -1,6 +1,6 @@
 <template>
   <AppLayout>
-    <div class="mx-auto max-w-[1600px] space-y-5">
+    <div class="model-square mx-auto max-w-[1600px] space-y-5">
       <section class="premium-filter-panel">
         <div class="filter-platform-header flex flex-col gap-2 border-b sm:flex-row sm:items-center">
           <span class="filter-section-label inline-flex flex-shrink-0 items-center gap-1.5">
@@ -48,7 +48,7 @@
           </div>
         </div>
 
-        <div class="filter-control-grid grid grid-cols-1 md:grid-cols-2 xl:grid-cols-[minmax(240px,1fr)_200px_240px_auto_auto] xl:items-end">
+        <div class="filter-control-grid">
           <label class="block">
             <span class="mb-1.5 block text-xs font-medium text-gray-600 dark:text-gray-300">
               {{ t('modelSquare.searchLabel') }}
@@ -169,7 +169,7 @@
             @click="loadData"
           >
             <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
-            <span class="xl:hidden">{{ t('common.refresh') }}</span>
+            <span class="filter-refresh-label">{{ t('common.refresh') }}</span>
           </button>
         </div>
 
@@ -210,7 +210,7 @@
         </div>
       </section>
 
-      <div v-if="loading" class="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+      <div v-if="loading" class="model-card-grid">
         <div
           v-for="index in 6"
           :key="index"
@@ -236,7 +236,7 @@
         <p class="mt-1 max-w-md text-xs leading-5 text-gray-500 dark:text-gray-400">{{ emptyDescription }}</p>
       </section>
 
-      <section v-else class="grid grid-cols-1 gap-3 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+      <section v-else class="model-card-grid">
         <ModelPriceCard
           v-for="model in filteredModels"
           :key="model.key"
@@ -437,6 +437,17 @@ onMounted(loadData)
 </script>
 
 <style scoped>
+.model-square {
+  container-type: inline-size;
+}
+
+.model-card-grid {
+  display: grid;
+  /* Use the space left by the sidebar, including at browser zoom levels. */
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 352px), 1fr));
+  gap: 12px;
+}
+
 .premium-filter-panel {
   position: relative;
   overflow: hidden;
@@ -480,7 +491,14 @@ onMounted(loadData)
 }
 
 .filter-control-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-items: end;
   gap: 14px;
+}
+
+.filter-control-grid > * {
+  min-width: 0;
 }
 
 .filter-control-grid > label > span:first-child {
@@ -608,12 +626,26 @@ onMounted(loadData)
   box-shadow: none;
 }
 
-@media (min-width: 1280px) {
+@container (min-width: 640px) {
+  .filter-control-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@container (min-width: 1100px) {
+  .filter-control-grid {
+    grid-template-columns: minmax(200px, 1fr) 200px 240px auto auto;
+  }
+
   .filter-refresh-button {
     width: 40px;
     min-width: 40px;
     padding-right: 0;
     padding-left: 0;
+  }
+
+  .filter-refresh-label {
+    display: none;
   }
 }
 
