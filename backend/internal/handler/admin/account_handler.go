@@ -67,7 +67,6 @@ type AccountHandler struct {
 	upstreamBillingProbe    *service.UpstreamBillingProbeService
 	ollamaCloudUsage        *service.OllamaCloudUsageService
 	codexTicketSettings     *service.SettingService
-	codexAccountTickets     codexAccountTicketManager
 	cfg                     *config.Config
 	recentRequestStore      service.RecentRequestStore
 }
