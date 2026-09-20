@@ -1176,6 +1176,12 @@ export interface Account {
     remaining_seconds: number
     blocked: boolean
     expires_at?: string
+    harvest_enabled?: boolean
+    harvest_paused?: boolean
+    token_invalid?: boolean
+    attempts?: number
+    harvesting?: boolean
+    next_harvest_at?: string
   }>
   // Extra fields including Codex usage, OpenAI compact capability, and model-level rate limits.
   extra?: (CodexUsageSnapshot & OpenAICompactState & {
@@ -1302,6 +1308,31 @@ export interface Account {
   parent_privacy_mode?: string
   parent_subscription_expires_at?: string
   parent_chatgpt_account_id?: string
+}
+
+export interface CodexTicketLogEntry {
+  id: number
+  time: string
+  attempt: number
+  event: 'started' | 'success' | 'miss' | 'error' | 'skipped'
+  reason: string
+  http_status?: number
+  egress_ip?: string
+  egress_country_code?: string
+  egress_error?: {
+    reason: string
+    http_status?: number
+  }
+  ticket_length?: number
+  target_length: number
+  duration_ms?: number
+}
+
+export interface CodexTicketLogsResponse {
+  model: string
+  entries: CodexTicketLogEntry[]
+  status: NonNullable<Account['codex_turn_tickets']>[number] | null
+  limit: number
 }
 
 export interface AccountProxyPoolEntry {

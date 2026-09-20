@@ -2262,7 +2262,7 @@
         data-testid="edit-openai-tls-fingerprint"
       />
 
-      <!-- Codex 292 门票状态（仅 OpenAI OAuth） -->
+      <!-- Codex 门票状态（个人 292 / Team 332，仅 OpenAI OAuth） -->
       <div
         v-if="account?.platform === 'openai' && (account?.type === 'oauth' || account?.type === 'setup-token') && codexTurnTickets.length"
         class="border-t border-gray-200 pt-4 dark:border-dark-600"

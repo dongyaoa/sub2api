@@ -243,6 +243,21 @@ func ProvideAccountUsageService(
 	return service
 }
 
+// ProvidePluginManager wires persistent plugin state and the OpenAI account
+// directory before plugin runtimes start.
+func ProvidePluginManager(
+	repo PluginRepository,
+	encryptor SecretEncryptor,
+	cfg *config.Config,
+	hostInfo PluginHostInfo,
+	kvStore PluginKVStore,
+	openAIGatewayService *OpenAIGatewayService,
+) *PluginManager {
+	svc := NewPluginManager(repo, encryptor, cfg, hostInfo, kvStore)
+	svc.SetAccountDirectory(openAIGatewayService)
+	return svc
+}
+
 func ProvideAccountTestService(
 	accountRepo AccountRepository,
 	geminiTokenProvider *GeminiTokenProvider,
@@ -930,7 +945,7 @@ var ProviderSet = wire.NewSet(
 	NewTotpService,
 	NewErrorPassthroughService,
 	NewTLSFingerprintProfileService,
-	NewPluginManager,
+	ProvidePluginManager,
 	NewDigestSessionStore,
 	ProvideIdempotencyCoordinator,
 	ProvideSystemOperationLockService,
