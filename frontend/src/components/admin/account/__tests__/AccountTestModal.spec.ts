@@ -311,7 +311,7 @@ describe('AccountTestModal', () => {
     wrapper.unmount()
   })
 
-  it('仅提供绑定代理并禁用停用、过期和未加载的代理，指定选择后携带代理 ID', async () => {
+  it('代理池账号不再显示代理选择，测试交由服务端自动路由', async () => {
     const wrapper = mountModal({
       id: 42,
       name: 'Proxy pool account',
@@ -331,25 +331,16 @@ describe('AccountTestModal', () => {
     await wrapper.setProps({ show: true })
     await flushPromises()
 
-    const proxySelect = wrapper.get('[data-testid="account-test-proxy-select"]')
-    expect(proxySelect.findAll('option').map(option => option.element.value)).toEqual(['', '12', '13', '14', '15', '16'])
-    expect(proxySelect.text()).not.toContain('Outside pool')
-    expect(proxySelect.get('option[value="12"]').attributes('disabled')).toBeUndefined()
-    for (const id of [13, 14, 15, 16]) {
-      expect(proxySelect.get(`option[value="${id}"]`).attributes('disabled')).toBeDefined()
-    }
-    expect(proxySelect.get('option[value="13"]').text()).toContain('admin.accounts.testProxyOptions.inactive')
-    expect(proxySelect.get('option[value="14"]').text()).toContain('admin.accounts.testProxyOptions.expired')
-    expect(proxySelect.get('option[value="15"]').text()).toContain('admin.accounts.testProxyOptions.unavailable')
-    await proxySelect.setValue('12')
+    expect(wrapper.find('[data-testid="account-test-proxy-select"]').exists()).toBe(false)
+    expect(wrapper.text()).not.toContain('admin.accounts.testProxyOptions.label')
     await wrapper.findAll('button').find(button => button.text().includes('admin.accounts.startTest'))!.trigger('click')
     await flushPromises()
 
-    expect(JSON.parse(vi.mocked(global.fetch).mock.calls[0][1]!.body as string).proxy_id).toBe(12)
+    expect(JSON.parse(vi.mocked(global.fetch).mock.calls[0][1]!.body as string)).not.toHaveProperty('proxy_id')
     wrapper.unmount()
   })
 
-  it('兼容旧版单代理绑定且自动选择不提交代理 ID', async () => {
+  it('旧版单代理账号也不显示代理选择且不提交代理覆盖', async () => {
     const wrapper = mountModal({
       id: 42,
       name: 'Legacy proxy account',
@@ -361,16 +352,14 @@ describe('AccountTestModal', () => {
     })
     await wrapper.setProps({ show: true })
     await flushPromises()
-    const proxySelect = wrapper.get('[data-testid="account-test-proxy-select"]')
-    expect(proxySelect.findAll('option').map(option => option.element.value)).toEqual(['', '11'])
-    expect((proxySelect.element as HTMLSelectElement).value).toBe('')
+    expect(wrapper.find('[data-testid="account-test-proxy-select"]').exists()).toBe(false)
     await wrapper.findAll('button').find(button => button.text().includes('admin.accounts.startTest'))!.trigger('click')
     await flushPromises()
     expect(JSON.parse(vi.mocked(global.fetch).mock.calls[0][1]!.body as string)).not.toHaveProperty('proxy_id')
     wrapper.unmount()
   })
 
-  it('重试保留代理选择，连接时禁用选择，重新打开恢复自动选择', async () => {
+  it('重试沿用自动路由，连接期间禁止重复测试，重新打开清除结果', async () => {
     let finishRetry!: (response: Response) => void
     global.fetch = vi.fn()
       .mockResolvedValueOnce(createStreamResponse([
@@ -388,28 +377,30 @@ describe('AccountTestModal', () => {
     })
     await wrapper.setProps({ show: true })
     await flushPromises()
-    const proxySelect = wrapper.get('[data-testid="account-test-proxy-select"]')
-    await proxySelect.setValue('12')
     await wrapper.findAll('button').find(button => button.text().includes('admin.accounts.startTest'))!.trigger('click')
     await flushPromises()
     expect(wrapper.find('[data-testid="account-test-metrics"]').exists()).toBe(false)
 
     await wrapper.findAll('button').find(button => button.text().includes('admin.accounts.retry'))!.trigger('click')
     await flushPromises()
-    expect((proxySelect.element as HTMLSelectElement).value).toBe('12')
-    expect(proxySelect.attributes('disabled')).toBeDefined()
-    expect(JSON.parse(vi.mocked(global.fetch).mock.calls[1][1]!.body as string).proxy_id).toBe(12)
+    const testingButton = wrapper.findAll('button').find(button => button.text().includes('admin.accounts.testing'))!
+    expect(testingButton.attributes('disabled')).toBeDefined()
+    expect(JSON.parse(vi.mocked(global.fetch).mock.calls[1][1]!.body as string)).not.toHaveProperty('proxy_id')
+    await testingButton.trigger('click')
+    expect(global.fetch).toHaveBeenCalledTimes(2)
 
     finishRetry(createStreamResponse([
       'data: {"type":"test_metrics","duration_ms":450}\n',
       'data: {"type":"test_complete","success":true}\n'
     ]))
     await flushPromises()
-    expect(proxySelect.attributes('disabled')).toBeUndefined()
+    expect(wrapper.findAll('button').find(button => button.text().includes('admin.accounts.retry'))!.attributes('disabled')).toBeUndefined()
     await wrapper.setProps({ show: false })
     await wrapper.setProps({ show: true })
     await flushPromises()
-    expect((proxySelect.element as HTMLSelectElement).value).toBe('')
+    expect(wrapper.text()).toContain('admin.accounts.readyToTest')
+    expect(wrapper.text()).not.toContain('API returned 429')
+    expect(wrapper.find('[data-testid="account-test-proxy-select"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="account-test-metrics"]').exists()).toBe(false)
     wrapper.unmount()
   })

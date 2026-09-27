@@ -302,6 +302,28 @@ describe('admin AccountsView lite account list', () => {
     wrapper.unmount()
   })
 
+  it('opens the existing test modal from the shortcut immediately before edit', async () => {
+    const wrapper = mountView()
+    await flushPromises()
+
+    const actionButtons = wrapper.get('[data-account-name="compact row"]').findAll('button')
+    const testIndex = actionButtons.findIndex(button => button.text() === 'admin.accounts.testShortcut')
+    expect(testIndex).toBeGreaterThanOrEqual(0)
+    expect(actionButtons[testIndex].attributes('title')).toBe('admin.accounts.testConnection')
+    expect(actionButtons[testIndex + 1].text()).toBe('common.edit')
+    expect(getById).not.toHaveBeenCalled()
+
+    await actionButtons[testIndex].trigger('click')
+    await flushPromises()
+
+    expect(getById).toHaveBeenCalledWith(42)
+    expect(wrapper.getComponent(AccountTestModalStub).props()).toMatchObject({
+      show: true,
+      account: fullAccount
+    })
+    wrapper.unmount()
+  })
+
   it('shows the warning and patches the account after a partial Antigravity refresh', async () => {
     refreshCredentials.mockResolvedValue({
       account: { ...fullAccount, name: 'refreshed account' },

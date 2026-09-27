@@ -265,7 +265,8 @@ import PlatformIcon from '@/components/common/PlatformIcon.vue'
 import Select, { type SelectOption } from '@/components/common/Select.vue'
 import modelSquareMessages from '@/i18n/modelSquare'
 import ModelPriceCard from '@/components/models/ModelPriceCard.vue'
-import userChannelsAPI, { type UserAvailableChannel } from '@/api/channels'
+import type { UserAvailableChannel } from '@/api/channels'
+import modelSquareAPI from '@/api/modelSquare'
 import userGroupsAPI from '@/api/groups'
 import type { Group, GroupPlatform } from '@/types'
 import { useAppStore } from '@/stores/app'
@@ -417,7 +418,7 @@ async function loadData() {
   loading.value = true
   try {
     const [channelList, groupList, rateMap] = await Promise.all([
-      userChannelsAPI.getAvailable(),
+      modelSquareAPI.getCatalog(),
       userGroupsAPI.getAvailable(),
       userGroupsAPI.getUserGroupRates().catch(() => ({} as Record<number, number>)),
     ])

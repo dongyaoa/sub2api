@@ -95,6 +95,9 @@ func RegisterUserRoutes(
 			channels.GET("/available", h.AvailableChannel.List)
 		}
 
+		// 自定义模型广场独立于可用渠道开关，沿用相同的用户可见性规则。
+		authenticated.GET("/model-square/catalog", h.AvailableChannel.ListModelSquare)
+
 		// 使用记录（聚合统计属重查询，叠加更严格的按用户限流）
 		usage := authenticated.Group("/usage")
 		usage.Use(panelRateLimiter.Heavy())

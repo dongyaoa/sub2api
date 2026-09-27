@@ -4,6 +4,8 @@
       type="button"
       @click="toggle"
       :disabled="disabled"
+      :aria-label="ariaLabel"
+      :aria-expanded="isOpen"
       :class="[
         'select-trigger',
         isOpen && 'select-trigger-open',
@@ -25,49 +27,57 @@
     <Transition name="select-dropdown">
       <div v-if="isOpen" class="select-dropdown">
         <!-- Search and Batch Test Header -->
-        <div class="select-header">
+        <div :class="['select-header', showAvailability && 'select-header-pool']">
           <div class="select-search">
             <Icon name="search" size="sm" class="text-gray-400" />
             <input
               ref="searchInputRef"
               v-model="searchQuery"
               type="text"
-              :placeholder="t('admin.proxies.searchProxies')"
+              :placeholder="showAvailability ? t('admin.accounts.proxyPool.searchPlaceholder') : t('admin.proxies.searchProxies')"
               class="select-search-input"
               @click.stop
             />
           </div>
-          <button
-            v-if="proxies.length > 0"
-            type="button"
-            @click.stop="handleBatchTest"
-            :disabled="batchTesting"
-            class="batch-test-btn"
-            :title="t('admin.proxies.batchTest')"
-          >
-            <svg v-if="batchTesting" class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
-              <circle
-                class="opacity-25"
-                cx="12"
-                cy="12"
-                r="10"
-                stroke="currentColor"
-                stroke-width="4"
-              ></circle>
-              <path
-                class="opacity-75"
-                fill="currentColor"
-                d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-              ></path>
-            </svg>
-            <Icon v-else name="play" size="sm" />
-          </button>
+          <div :class="showAvailability ? 'select-availability' : 'contents'">
+            <span v-if="showAvailability" class="min-w-0 text-xs text-gray-500 dark:text-gray-400">
+              {{ t('admin.accounts.proxyPool.availableCount', { count: filteredProxies.length }) }}
+            </span>
+            <button
+              v-if="showAvailability || proxies.length > 0"
+              type="button"
+              @click.stop="handleBatchTest"
+              :disabled="batchTesting || batchProxies.length === 0"
+              class="batch-test-btn"
+              :title="showAvailability ? t('admin.accounts.proxyPool.testFiltered') : t('admin.proxies.batchTest')"
+              :aria-label="showAvailability ? t('admin.accounts.proxyPool.testFiltered') : t('admin.proxies.batchTest')"
+            >
+              <svg v-if="batchTesting" class="h-4 w-4 animate-spin" fill="none" viewBox="0 0 24 24">
+                <circle
+                  class="opacity-25"
+                  cx="12"
+                  cy="12"
+                  r="10"
+                  stroke="currentColor"
+                  stroke-width="4"
+                ></circle>
+                <path
+                  class="opacity-75"
+                  fill="currentColor"
+                  d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+                ></path>
+              </svg>
+              <Icon v-else name="play" size="sm" />
+              <span v-if="showAvailability">{{ t('admin.accounts.proxyPool.testFiltered') }}</span>
+            </button>
+          </div>
         </div>
 
         <!-- Options list -->
         <div class="select-options">
           <!-- No Proxy option -->
           <div
+            v-if="allowNone"
             @click="selectOption(null)"
             :class="['select-option', modelValue === null && 'select-option-selected']"
           >
@@ -125,6 +135,7 @@
               :disabled="testingProxyIds.has(proxy.id)"
               class="test-btn"
               :title="t('admin.proxies.testConnection')"
+              :aria-label="`${t('admin.proxies.testConnection')}: ${proxy.name}`"
             >
               <svg
                 v-if="testingProxyIds.has(proxy.id)"
@@ -158,7 +169,7 @@
           </div>
 
           <!-- Empty state -->
-          <div v-if="filteredProxies.length === 0 && searchQuery" class="select-empty">
+          <div v-if="filteredProxies.length === 0 && (searchQuery || !allowNone)" class="select-empty">
             {{ t('common.noOptionsFound') }}
           </div>
         </div>
@@ -184,16 +195,23 @@ interface ProxyTestResult {
   city?: string
   region?: string
   country?: string
+  country_code?: string
 }
 
 interface Props {
   modelValue: number | null
   proxies: Proxy[]
   disabled?: boolean
+  allowNone?: boolean
+  placeholder?: string
+  showAvailability?: boolean
+  ariaLabel?: string
 }
 
 const props = withDefaults(defineProps<Props>(), {
-  disabled: false
+  disabled: false,
+  allowNone: true,
+  showAvailability: false
 })
 
 const emit = defineEmits<{
@@ -208,6 +226,7 @@ const searchInputRef = ref<HTMLInputElement | null>(null)
 // Test state
 const testResults = reactive<Record<number, ProxyTestResult>>({})
 const testingProxyIds = reactive(new Set<number>())
+const proxyTests = new Map<number, Promise<void>>()
 const batchTesting = ref(false)
 
 const selectedProxy = computed(() => {
@@ -217,23 +236,37 @@ const selectedProxy = computed(() => {
 
 const selectedLabel = computed(() => {
   if (!selectedProxy.value) {
-    return t('admin.accounts.noProxy')
+    return props.placeholder || t('admin.accounts.noProxy')
   }
   const proxy = selectedProxy.value
   return `${proxy.name} (${proxy.protocol}://${proxy.host}:${proxy.port})`
 })
 
 const filteredProxies = computed(() => {
-  if (!searchQuery.value) {
+  const query = searchQuery.value.trim().toLowerCase()
+  if (!query) {
     return props.proxies
   }
-  const query = searchQuery.value.toLowerCase()
   return props.proxies.filter((proxy) => {
-    const name = proxy.name.toLowerCase()
-    const host = proxy.host.toLowerCase()
-    return name.includes(query) || host.includes(query)
+    const latestResult = testResults[proxy.id]
+    return [
+      proxy.name,
+      `${proxy.protocol}://${proxy.host}:${proxy.port}`,
+      proxy.ip_address,
+      proxy.country,
+      proxy.country_code,
+      proxy.region,
+      proxy.city,
+      latestResult?.ip_address,
+      latestResult?.country,
+      latestResult?.country_code,
+      latestResult?.region,
+      latestResult?.city
+    ].some((value) => value?.toLowerCase().includes(query))
   })
 })
+
+const batchProxies = computed(() => props.showAvailability ? filteredProxies.value : props.proxies)
 
 const toggle = () => {
   if (props.disabled) return
@@ -246,38 +279,45 @@ const toggle = () => {
 }
 
 const selectOption = (value: number | null) => {
+  if (value === null && !props.allowNone) return
   emit('update:modelValue', value)
   isOpen.value = false
   searchQuery.value = ''
 }
 
-const handleTestProxy = async (proxy: Proxy) => {
-  if (testingProxyIds.has(proxy.id)) return
+const handleTestProxy = (proxy: Proxy): Promise<void> => {
+  const pendingTest = proxyTests.get(proxy.id)
+  if (pendingTest) return pendingTest
 
   testingProxyIds.add(proxy.id)
-  try {
-    const result = await adminAPI.proxies.testProxy(proxy.id)
-    testResults[proxy.id] = result
-  } catch (error: any) {
-    testResults[proxy.id] = {
-      success: false,
-      message: error.response?.data?.detail || 'Test failed'
-    }
-  } finally {
-    testingProxyIds.delete(proxy.id)
-  }
+  const pending = Promise.resolve()
+    .then(() => adminAPI.proxies.testProxy(proxy.id))
+    .then((result) => { testResults[proxy.id] = result })
+    .catch((error: unknown) => {
+      const detail = (error as { response?: { data?: { detail?: string } } })?.response?.data?.detail
+      testResults[proxy.id] = {
+        success: false,
+        message: detail || t('admin.proxies.testFailed')
+      }
+    })
+    .finally(() => {
+      testingProxyIds.delete(proxy.id)
+      proxyTests.delete(proxy.id)
+    })
+  proxyTests.set(proxy.id, pending)
+  return pending
 }
 
 const handleBatchTest = async () => {
-  if (batchTesting.value || props.proxies.length === 0) return
+  if (batchTesting.value || batchProxies.value.length === 0) return
 
+  const proxiesToTest = [...batchProxies.value]
   batchTesting.value = true
-
-  // Test all proxies in parallel
-  const testPromises = props.proxies.map(handleTestProxy)
-
-  await Promise.all(testPromises)
-  batchTesting.value = false
+  try {
+    await Promise.all(proxiesToTest.map(handleTestProxy))
+  } finally {
+    batchTesting.value = false
+  }
 }
 
 const handleClickOutside = (event: MouseEvent) => {
@@ -353,17 +393,34 @@ onUnmounted(() => {
 }
 
 .select-search-input {
-  @apply flex-1 bg-transparent text-sm;
+  @apply min-w-0 flex-1 bg-transparent text-sm;
   @apply text-gray-900 dark:text-gray-100;
   @apply placeholder:text-gray-400 dark:placeholder:text-dark-400;
   @apply focus:outline-none;
 }
 
 .batch-test-btn {
+  @apply inline-flex items-center gap-1.5 text-xs;
   @apply flex-shrink-0 rounded-lg p-1.5;
   @apply text-gray-500 hover:text-emerald-600 dark:hover:text-emerald-400;
   @apply hover:bg-emerald-50 dark:hover:bg-emerald-900/20;
   @apply transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+}
+
+.select-header-pool {
+  @apply block p-0;
+}
+
+.select-header-pool .select-search {
+  @apply border-b border-gray-100 px-3 py-3 dark:border-dark-700;
+}
+
+.select-availability {
+  @apply flex items-center justify-between gap-2 px-3 py-2;
+}
+
+.select-availability .batch-test-btn {
+  @apply text-primary-600 dark:text-primary-400;
 }
 
 .select-options {

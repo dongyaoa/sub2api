@@ -3,11 +3,13 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 
+	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 
 	"github.com/gin-gonic/gin"
@@ -25,6 +27,122 @@ func TestUserAvailableChannel_Unauthenticated401(t *testing.T) {
 	h.List(c)
 
 	require.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+func TestModelSquareCatalog_Unauthenticated401(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	h := &AvailableChannelHandler{}
+	w := httptest.NewRecorder()
+	c, _ := gin.CreateTestContext(w)
+	c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/model-square/catalog", nil)
+	h.ListModelSquare(c)
+	require.Equal(t, http.StatusUnauthorized, w.Code)
+}
+
+type squareCatalogRepo struct {
+	service.ChannelRepository
+	channels []service.Channel
+}
+
+func (r *squareCatalogRepo) ListAll(context.Context) ([]service.Channel, error) {
+	return r.channels, nil
+}
+
+type squareGroupRepo struct {
+	service.GroupRepository
+	groups []service.Group
+}
+
+func (r *squareGroupRepo) ListActive(context.Context) ([]service.Group, error) {
+	return r.groups, nil
+}
+
+type squareUserRepo struct{ service.UserRepository }
+
+func (*squareUserRepo) GetByID(_ context.Context, id int64) (*service.User, error) {
+	return &service.User{ID: id}, nil
+}
+
+type squareSubscriptionRepo struct {
+	service.UserSubscriptionRepository
+}
+
+func (*squareSubscriptionRepo) ListActiveByUserID(context.Context, int64) ([]service.UserSubscription, error) {
+	return nil, nil
+}
+
+type squareSettingRepo struct {
+	service.SettingRepository
+	enabled string
+}
+
+func (r *squareSettingRepo) GetMultiple(context.Context, []string) (map[string]string, error) {
+	return map[string]string{service.SettingKeyAvailableChannelsEnabled: r.enabled}, nil
+}
+
+func TestModelSquareCatalog_IndependentSwitchPreservesVisibilityAndPricing(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	groups := &squareGroupRepo{groups: []service.Group{
+		{ID: 1, Name: "public", Platform: "openai", Status: service.StatusActive},
+		{ID: 2, Name: "private", Platform: "anthropic", Status: service.StatusActive, IsExclusive: true},
+	}}
+	price := 0.04
+	pricing := []service.ChannelModelPricing{
+		{Platform: "openai", Models: []string{"test-image"}, BillingMode: service.BillingModeImage,
+			Intervals: []service.PricingInterval{{TierLabel: "1K", PerRequestPrice: &price}}},
+		{Platform: "anthropic", Models: []string{"private-model"}},
+	}
+	channels := &squareCatalogRepo{channels: []service.Channel{
+		{Name: "visible", Status: service.StatusActive, GroupIDs: []int64{1, 2}, ModelPricing: pricing},
+		{Name: "private", Status: service.StatusActive, GroupIDs: []int64{2}, ModelPricing: pricing},
+		{Name: "disabled", Status: "inactive", GroupIDs: []int64{1}, ModelPricing: pricing},
+	}}
+	settings := &squareSettingRepo{enabled: "false"}
+	h := NewAvailableChannelHandler(
+		service.NewChannelService(channels, groups, nil, nil, nil),
+		service.NewAPIKeyService(nil, &squareUserRepo{}, groups, &squareSubscriptionRepo{}, nil, nil, nil),
+		service.NewSettingService(settings, nil),
+	)
+	router := gin.New()
+	router.Use(func(c *gin.Context) {
+		c.Set(string(middleware.ContextKeyUser), middleware.AuthSubject{UserID: 42})
+	})
+	router.GET("/channels/available", h.List)
+	router.GET("/model-square/catalog", h.ListModelSquare)
+	get := func(path string) []userAvailableChannel {
+		t.Helper()
+		w := httptest.NewRecorder()
+		router.ServeHTTP(w, httptest.NewRequest(http.MethodGet, path, nil))
+		require.Equal(t, http.StatusOK, w.Code)
+		var body struct {
+			Data []userAvailableChannel `json:"data"`
+		}
+		require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+		return body.Data
+	}
+
+	// Disabling the old page must not empty the independent catalog.
+	require.Empty(t, get("/channels/available"))
+	catalog := get("/model-square/catalog")
+	require.Len(t, catalog, 1)
+	require.Equal(t, "visible", catalog[0].Name)
+	require.Len(t, catalog[0].Platforms, 1)
+	section := catalog[0].Platforms[0]
+	require.Equal(t, "openai", section.Platform)
+	require.Len(t, section.Groups, 1)
+	require.Equal(t, int64(1), section.Groups[0].ID)
+	require.Len(t, section.SupportedModels, 1)
+	model := section.SupportedModels[0]
+	require.Equal(t, "test-image", model.Name)
+	require.NotNil(t, model.Pricing)
+	require.Equal(t, "image", model.Pricing.BillingMode)
+	require.Len(t, model.Pricing.Intervals, 1)
+	require.Equal(t, "1K", model.Pricing.Intervals[0].TierLabel)
+	require.Equal(t, &price, model.Pricing.Intervals[0].PerRequestPrice)
+
+	settings.enabled = "true"
+	require.Equal(t, catalog, get("/channels/available"))
+	require.Equal(t, catalog, get("/model-square/catalog"))
 }
 
 func TestFilterUserVisibleGroups_IntersectionOnly(t *testing.T) {

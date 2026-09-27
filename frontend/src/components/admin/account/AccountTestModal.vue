@@ -41,20 +41,6 @@
         </span>
       </div>
 
-      <div class="space-y-1.5">
-        <label for="account-test-proxy" class="text-sm font-medium text-gray-700 dark:text-gray-300">
-          {{ t('admin.accounts.testProxyOptions.label') }}
-        </label>
-        <Select
-          id="account-test-proxy"
-          v-model="selectedProxyId"
-          :options="proxyOptions"
-          :disabled="status === 'connecting'"
-          :aria-label="t('admin.accounts.testProxyOptions.label')"
-          data-testid="account-test-proxy-select"
-        />
-      </div>
-
       <!-- Grok: mode first, then optional model / mode params -->
       <div v-if="isGrokAccount" class="space-y-1.5">
         <label class="text-sm font-medium text-gray-700 dark:text-gray-300">
@@ -382,14 +368,14 @@
 import { computed, ref, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
-import Select, { type SelectOption } from '@/components/common/Select.vue'
+import Select from '@/components/common/Select.vue'
 import TextArea from '@/components/common/TextArea.vue'
 import { Icon } from '@/components/icons'
 import { useClipboard } from '@/composables/useClipboard'
 import { buildApiUrl } from '@/api/client'
 import { ADMIN_UI_REQUEST_HEADER } from '@/api/adminUIRequest'
 import { adminAPI } from '@/api/admin'
-import type { Account, AccountProxyPoolEntry, ClaudeModel } from '@/types'
+import type { Account, ClaudeModel } from '@/types'
 
 const { t } = useI18n()
 const { copyToClipboard } = useClipboard()
@@ -418,46 +404,6 @@ const status = ref<'idle' | 'connecting' | 'success' | 'error'>('idle')
 const outputLines = ref<OutputLine[]>([])
 const streamingContent = ref('')
 const errorMessage = ref('')
-const selectedProxyId = ref<number | null>(null)
-const proxyAvailabilityTime = ref(Date.now())
-const boundProxyEntries = computed<AccountProxyPoolEntry[]>(() => {
-  const account = props.account
-  if (!account) return []
-  const entries = account.proxy_pool?.length
-    ? account.proxy_pool
-    : account.proxy_id || account.proxy?.id
-      ? [{ proxy_id: account.proxy_id || account.proxy!.id, concurrency: 1, proxy: account.proxy ?? undefined }]
-      : []
-  const seen = new Set<number>()
-  return entries.filter(entry => {
-    if (!Number.isInteger(entry.proxy_id) || entry.proxy_id <= 0 || seen.has(entry.proxy_id)) return false
-    seen.add(entry.proxy_id)
-    return true
-  })
-})
-const proxyUnavailableReason = (entry: AccountProxyPoolEntry, now: number): string => {
-  if (!entry.proxy || entry.proxy.id !== entry.proxy_id) return 'unavailable'
-  if (entry.proxy.status === 'expired') return 'expired'
-  if (entry.proxy.status !== 'active') return 'inactive'
-  if (entry.proxy.expires_at) {
-    const expiresAt = Date.parse(entry.proxy.expires_at)
-    if (!Number.isFinite(expiresAt)) return 'unavailable'
-    if (expiresAt <= now) return 'expired'
-  }
-  return ''
-}
-const proxyOptions = computed<SelectOption[]>(() => [
-  { value: null, label: t('admin.accounts.testProxyOptions.auto') },
-  ...boundProxyEntries.value.map(entry => {
-    const reason = proxyUnavailableReason(entry, proxyAvailabilityTime.value)
-    const name = entry.proxy?.name || `#${entry.proxy_id}`
-    return {
-      value: entry.proxy_id,
-      label: `${name} (ID: ${entry.proxy_id})${reason ? ` - ${t(`admin.accounts.testProxyOptions.${reason}`)}` : ''}`,
-      disabled: Boolean(reason)
-    }
-  })
-])
 const availableModels = ref<ClaudeModel[]>([])
 const selectedModelId = ref('')
 const testPrompt = ref('')
@@ -729,7 +675,6 @@ const testModeSummary = computed(() => {
 
 const canStartTest = computed(() => {
   if (status.value === 'connecting') return false
-  if (selectedProxyId.value !== null && !proxyOptions.value.some(option => option.value === selectedProxyId.value && !option.disabled)) return false
   if (isGrokAccount.value) {
     if (
       grokTestMode.value === 'search' ||
@@ -792,8 +737,6 @@ watch(
   () => props.show,
   async (newVal) => {
     if (newVal && props.account) {
-      selectedProxyId.value = null
-      proxyAvailabilityTime.value = Date.now()
       testPrompt.value = ''
       testMode.value = 'default'
       grokTestMode.value = 'text'
@@ -883,7 +826,6 @@ const scrollToBottom = async () => {
 }
 
 const startTest = async () => {
-  proxyAvailabilityTime.value = Date.now()
   if (!props.account || !canStartTest.value) return
 
   resetState()
@@ -908,12 +850,10 @@ const startTest = async () => {
       mode?: string
       image_data_url?: string
       audio_data_url?: string
-      proxy_id?: number
     } = {
       model_id: showModelSelect.value ? selectedModelId.value : '',
       prompt: supportsPromptInput.value ? testPrompt.value.trim() : ''
     }
-    if (selectedProxyId.value !== null) requestBody.proxy_id = selectedProxyId.value
     if (isOpenAIAccount.value) {
       requestBody.mode = testMode.value
     }

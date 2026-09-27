@@ -53,8 +53,8 @@ describe('AppSidebar image studio access', () => {
 })
 
 describe('AppSidebar check-in entries', () => {
-  it('keeps user and admin check-in pages in the sidebar declarations', () => {
-    expect(componentSource).toContain("path: '/checkin'")
+  it('keeps check-in out of user navigation while retaining the admin console', () => {
+    expect(componentSource).not.toContain("path: '/checkin'")
     expect(componentSource).toContain("path: '/admin/checkin'")
     expect(componentSource).toContain("t('nav.checkinConsole')")
   })
