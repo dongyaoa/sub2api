@@ -111,6 +111,9 @@ func traceCodexTicketEgress(client *http.Client, req *http.Request, timeout time
 	target.Path, target.RawPath, target.RawQuery, target.Fragment = "/cdn-cgi/trace", "", "", ""
 	target.ForceQuery = false
 	target.User = nil
+	// #nosec G704 -- callers only reach this helper after
+	// canTraceCodexTicketEgress has restricted the request to the fixed
+	// https://chatgpt.com:443 Codex endpoint; target only replaces its path.
 	traceReq, err := http.NewRequestWithContext(ctx, http.MethodGet, target.String(), nil)
 	if err != nil {
 		return codexTicketEgressFailure("request_error"), nil
@@ -122,6 +125,8 @@ func traceCodexTicketEgress(client *http.Client, req *http.Request, timeout time
 	traceClient := *client
 	traceClient.Jar = nil
 	traceClient.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
+	// #nosec G704 -- traceReq is the same-origin diagnostic request validated
+	// above, redirects are disabled, and no credentials are copied onto it.
 	resp, err := traceClient.Do(traceReq)
 	if err != nil {
 		return codexTicketEgressFailure(codexTicketEgressErrorReason(err, "network_error")), nil

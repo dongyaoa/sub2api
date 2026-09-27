@@ -220,11 +220,12 @@ func TestCodexTicketEgressTraceFailuresDoNotPreventTickets(t *testing.T) {
 				"duplicate": "ambiguous_ip", "missing": "missing_ip", "read_error": "response_read_error", "timeout": "timeout",
 			}
 			require.Equal(t, reasons[scenario], result.Error.Reason)
-			if scenario == "redirect" {
+			switch scenario {
+			case "redirect":
 				require.Equal(t, http.StatusFound, result.Error.HTTPStatus)
-			} else if scenario == "status" {
+			case "status":
 				require.Equal(t, http.StatusForbidden, result.Error.HTTPStatus)
-			} else {
+			default:
 				require.Zero(t, result.Error.HTTPStatus)
 			}
 		})
