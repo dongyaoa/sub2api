@@ -11,6 +11,7 @@ import type {
   SubscriptionPlan,
   ProviderInstance
 } from '@/types/payment'
+import type { RechargePromotion } from '@/types/payment'
 import type { BasePaginationResponse } from '@/types'
 
 /** Admin-facing payment config returned by GET /admin/payment/config */
@@ -24,6 +25,7 @@ export interface AdminPaymentConfig {
   enabled_payment_types: string[]
   balance_disabled: boolean
   balance_recharge_multiplier: number
+  recharge_promotion?: RechargePromotion | null
   subscription_usd_to_cny_rate: number
   recharge_fee_rate: number
   load_balance_strategy: string
@@ -44,6 +46,7 @@ export interface UpdatePaymentConfigRequest {
   enabled_payment_types?: string[]
   balance_disabled?: boolean
   balance_recharge_multiplier?: number
+  recharge_promotion?: Omit<RechargePromotion, 'active'>
   subscription_usd_to_cny_rate?: number
   recharge_fee_rate?: number
   load_balance_strategy?: string

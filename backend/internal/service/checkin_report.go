@@ -221,17 +221,18 @@ func (s *CheckinService) ListUserReports(ctx context.Context, page, pageSize int
 	qualification = normalizeCheckinQualification(qualification)
 	const reportCTE = `
 		WITH recharge AS (
-			SELECT used_by AS user_id,
-			       SUM(value) FILTER (WHERE type IN ('balance', 'admin_balance'))::double precision AS total_recharge,
-			       SUM(value) FILTER (WHERE type IN ('balance', 'admin_balance') AND used_at >= $1)::double precision AS effective_recharge
-			FROM redeem_codes
-			WHERE status = 'used' AND used_by IS NOT NULL AND value > 0
-			  AND type IN ('balance', 'admin_balance')
-			GROUP BY used_by
+			SELECT rc.used_by AS user_id,
+			       SUM(COALESCE((po.promotion_snapshot->>'base_amount')::numeric, rc.value))::double precision AS total_recharge,
+			       SUM(COALESCE((po.promotion_snapshot->>'base_amount')::numeric, rc.value)) FILTER (WHERE rc.used_at >= $1)::double precision AS effective_recharge
+			FROM redeem_codes rc
+			LEFT JOIN payment_orders po ON po.recharge_code = rc.code AND po.user_id = rc.used_by
+			WHERE rc.status = 'used' AND rc.used_by IS NOT NULL AND rc.value > 0
+			  AND rc.type IN ('balance', 'admin_balance')
+			GROUP BY rc.used_by
 		), refunds AS (
 			SELECT user_id,
-			       SUM(refund_amount)::double precision AS total_refund,
-			       SUM(refund_amount) FILTER (WHERE COALESCE(completed_at, paid_at, created_at) >= $1)::double precision AS effective_refund
+			       SUM(refund_amount * COALESCE((promotion_snapshot->>'base_amount')::numeric / NULLIF(amount, 0), 1))::double precision AS total_refund,
+			       SUM(refund_amount * COALESCE((promotion_snapshot->>'base_amount')::numeric / NULLIF(amount, 0), 1)) FILTER (WHERE COALESCE(completed_at, paid_at, created_at) >= $1)::double precision AS effective_refund
 			FROM payment_orders
 			WHERE order_type = 'balance' AND refund_amount > 0
 			GROUP BY user_id
@@ -334,13 +335,14 @@ func (s *CheckinService) countEligibleUsersByThresholds(
 	}
 	query := `
 		WITH recharge AS (
-			SELECT used_by AS user_id, SUM(value)::double precision AS amount
-			FROM redeem_codes
-			WHERE used_by IS NOT NULL AND status = 'used'
-			  AND type IN ('balance', 'admin_balance') AND value > 0 AND used_at >= $1
-			GROUP BY used_by
+			SELECT rc.used_by AS user_id, SUM(COALESCE((po.promotion_snapshot->>'base_amount')::numeric, rc.value))::double precision AS amount
+			FROM redeem_codes rc
+			LEFT JOIN payment_orders po ON po.recharge_code = rc.code AND po.user_id = rc.used_by
+			WHERE rc.used_by IS NOT NULL AND rc.status = 'used'
+			  AND rc.type IN ('balance', 'admin_balance') AND rc.value > 0 AND rc.used_at >= $1
+			GROUP BY rc.used_by
 		), refunds AS (
-			SELECT user_id, SUM(refund_amount)::double precision AS amount
+			SELECT user_id, SUM(refund_amount * COALESCE((promotion_snapshot->>'base_amount')::numeric / NULLIF(amount, 0), 1))::double precision AS amount
 			FROM payment_orders
 			WHERE order_type = 'balance' AND refund_amount > 0
 			  AND COALESCE(completed_at, paid_at, created_at) >= $1

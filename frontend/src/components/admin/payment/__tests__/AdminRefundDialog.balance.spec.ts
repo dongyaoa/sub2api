@@ -50,4 +50,25 @@ describe('refund balance warning', () => {
     await wrapper.get('#deduct-balance').setValue(false)
     expect(wrapper.text()).not.toContain(warning)
   })
+
+  it('locks promotional refunds to all credits with mandatory deduction', async () => {
+    const wrapper = await openRefund({ amount: 110, promotion_snapshot: {
+      title: 'Holiday', base_amount: 100, bonus_amount: 10, bonus_percent: 10, currency: 'CNY',
+    } })
+    await wrapper.setProps({ userBalance: 110 })
+    expect(wrapper.get('input[type="number"]').attributes('readonly')).toBeDefined()
+    expect(wrapper.get('#deduct-balance').attributes('disabled')).toBeDefined()
+    await wrapper.get('form').trigger('submit')
+    expect(wrapper.emitted('confirm')?.[0]?.[0]).toMatchObject({ amount: 110, deduct_balance: true, force: false })
+  })
+
+  it('does not submit a promotional refund when the balance cannot cover the bonus', async () => {
+    const wrapper = await openRefund({ amount: 110, promotion_snapshot: {
+      title: 'Holiday', base_amount: 100, bonus_amount: 10, bonus_percent: 10, currency: 'CNY',
+    } })
+    await wrapper.setProps({ userBalance: 100, requireForce: true })
+    expect(wrapper.find('#force-refund').exists()).toBe(false)
+    await wrapper.get('form').trigger('submit')
+    expect(wrapper.emitted('confirm')).toBeUndefined()
+  })
 })

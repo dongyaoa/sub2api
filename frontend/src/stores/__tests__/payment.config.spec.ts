@@ -6,7 +6,7 @@ import type { PaymentConfig } from '@/types/payment'
 const getConfig = vi.hoisted(() => vi.fn())
 vi.mock('@/api/payment', () => ({ paymentAPI: { getConfig } }))
 
-const config = { stripe_publishable_key: 'pk_test_example', payment_enabled: true } as PaymentConfig
+const config = { stripe_publishable_key: 'pk_test_example', enabled: true } as PaymentConfig
 function deferred() {
   let resolve!: (value: { data: PaymentConfig }) => void
   let reject!: (error: Error) => void

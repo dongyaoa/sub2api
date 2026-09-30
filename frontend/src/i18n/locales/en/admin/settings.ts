@@ -14,6 +14,13 @@ export default {
         payment: 'Payment',
       },
       features: {
+        rechargePromotion: {
+          title: 'Promotion Center',
+          description: 'Manage recharge bonus tiers, campaign statistics and order details.',
+          enabled: 'Enable Promotion Center',
+          enabledHint: 'Takes effect after saving. Disabling hides promotion entries and offers, and stops bonuses on new orders. Existing orders and records are preserved.',
+          configureLink: 'Open Promotion Center',
+        },
         channelMonitor: {
           title: 'Channel Monitor',
           description: 'Choose either V1 active probes or V2 passive usage monitoring. When disabled, both background jobs stop and the user entry is hidden.',

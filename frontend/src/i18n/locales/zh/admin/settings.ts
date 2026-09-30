@@ -14,6 +14,13 @@ export default {
         payment: '支付设置',
       },
       features: {
+        rechargePromotion: {
+          title: '活动中心',
+          description: '管理阶梯充值加赠，查看活动统计和充值赠送明细。',
+          enabled: '启用活动中心',
+          enabledHint: '保存后生效。关闭后隐藏所有活动入口与展示，新充值不再加赠；历史订单与记录保留。',
+          configureLink: '进入活动中心',
+        },
         channelMonitor: {
           title: '渠道监控',
           description: '启用后在 V1 主动探测与 V2 被动用量监控中二选一。关闭后两种模式的后台任务均停止，用户端入口隐藏。',

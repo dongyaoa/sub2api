@@ -47,12 +47,18 @@
         </div>
       </div>
 
+      <RechargePromotionReceipt :snapshot="order?.promotion_snapshot" />
+      <p v-if="isPromotionOrder" class="rounded-lg bg-amber-50 p-3 text-sm leading-relaxed text-amber-800 dark:bg-amber-950/30 dark:text-amber-200">
+        {{ t('payment.admin.promotionRefundHint') }}
+      </p>
+
       <!-- Deduct Balance -->
       <div>
         <div class="flex items-center gap-2">
           <input
             id="deduct-balance"
             v-model="form.deduct_balance"
+            :disabled="isPromotionOrder"
             type="checkbox"
             class="h-4 w-4 rounded border-gray-300 text-primary-600 focus:ring-primary-500"
           />
@@ -98,6 +104,7 @@
           <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">{{ creditedAmountSymbol }}</span>
           <input
             v-model.number="form.amount"
+            :readonly="isPromotionOrder"
             type="number"
             step="0.01"
             min="0.01"
@@ -132,7 +139,7 @@
       </div>
 
       <!-- Force Refund -->
-      <div v-if="requireForce" class="flex items-center gap-2">
+      <div v-if="requireForce && !isPromotionOrder" class="flex items-center gap-2">
         <input
           id="force-refund"
           v-model="form.force"
@@ -153,7 +160,7 @@
         <button
           type="submit"
           form="refund-form"
-          :disabled="submitting || form.amount <= 0 || (requireForce && !form.force)"
+          :disabled="submitting || form.amount <= 0 || (requireForce && !form.force) || (isPromotionOrder && balanceInsufficient)"
           class="rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2 disabled:opacity-50 dark:focus:ring-offset-dark-800"
         >
           {{ submitting ? t('common.processing') : t('payment.admin.confirmRefund') }}
@@ -167,6 +174,7 @@
 import { reactive, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
+import RechargePromotionReceipt from '@/components/payment/RechargePromotionReceipt.vue'
 import type { PaymentOrder } from '@/types/payment'
 import { formatOrderDateTime } from '@/components/payment/orderUtils'
 import { currencySymbol } from '@/components/payment/currency'
@@ -190,6 +198,7 @@ const emit = defineEmits<{
 const creditedAmountSymbol = currencySymbol('USD')
 
 const paymentAmountSymbol = computed(() => currencySymbol(props.order?.currency))
+const isPromotionOrder = computed(() => (props.order?.promotion_snapshot?.bonus_amount ?? 0) > 0)
 
 const form = reactive({
   amount: 0,
@@ -238,6 +247,11 @@ function formatDateTime(dateStr: string): string {
 function handleSubmit() {
   if (form.amount <= 0 || form.amount > maxRefundable.value) return
   if (props.requireForce && !form.force) return
+  if (isPromotionOrder.value) {
+    if (balanceInsufficient.value || !props.order || form.amount !== props.order.amount) return
+    emit('confirm', { ...form, amount: props.order.amount, deduct_balance: true, force: false })
+    return
+  }
   emit('confirm', { ...form })
 }
 </script>

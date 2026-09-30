@@ -590,6 +590,16 @@ func FeeRateLTE(v float64) predicate.PaymentOrder {
 	return predicate.PaymentOrder(sql.FieldLTE(FieldFeeRate, v))
 }
 
+// PromotionSnapshotIsNil applies the IsNil predicate on the "promotion_snapshot" field.
+func PromotionSnapshotIsNil() predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldIsNull(FieldPromotionSnapshot))
+}
+
+// PromotionSnapshotNotNil applies the NotNil predicate on the "promotion_snapshot" field.
+func PromotionSnapshotNotNil() predicate.PaymentOrder {
+	return predicate.PaymentOrder(sql.FieldNotNull(FieldPromotionSnapshot))
+}
+
 // RechargeCodeEQ applies the EQ predicate on the "recharge_code" field.
 func RechargeCodeEQ(v string) predicate.PaymentOrder {
 	return predicate.PaymentOrder(sql.FieldEQ(FieldRechargeCode, v))

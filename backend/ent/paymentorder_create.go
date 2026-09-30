@@ -81,6 +81,12 @@ func (_c *PaymentOrderCreate) SetNillableFeeRate(v *float64) *PaymentOrderCreate
 	return _c
 }
 
+// SetPromotionSnapshot sets the "promotion_snapshot" field.
+func (_c *PaymentOrderCreate) SetPromotionSnapshot(v map[string]interface{}) *PaymentOrderCreate {
+	_c.mutation.SetPromotionSnapshot(v)
+	return _c
+}
+
 // SetRechargeCode sets the "recharge_code" field.
 func (_c *PaymentOrderCreate) SetRechargeCode(v string) *PaymentOrderCreate {
 	_c.mutation.SetRechargeCode(v)
@@ -725,6 +731,10 @@ func (_c *PaymentOrderCreate) createSpec() (*PaymentOrder, *sqlgraph.CreateSpec)
 		_spec.SetField(paymentorder.FieldFeeRate, field.TypeFloat64, value)
 		_node.FeeRate = value
 	}
+	if value, ok := _c.mutation.PromotionSnapshot(); ok {
+		_spec.SetField(paymentorder.FieldPromotionSnapshot, field.TypeJSON, value)
+		_node.PromotionSnapshot = value
+	}
 	if value, ok := _c.mutation.RechargeCode(); ok {
 		_spec.SetField(paymentorder.FieldRechargeCode, field.TypeString, value)
 		_node.RechargeCode = value
@@ -1027,6 +1037,24 @@ func (u *PaymentOrderUpsert) UpdateFeeRate() *PaymentOrderUpsert {
 // AddFeeRate adds v to the "fee_rate" field.
 func (u *PaymentOrderUpsert) AddFeeRate(v float64) *PaymentOrderUpsert {
 	u.Add(paymentorder.FieldFeeRate, v)
+	return u
+}
+
+// SetPromotionSnapshot sets the "promotion_snapshot" field.
+func (u *PaymentOrderUpsert) SetPromotionSnapshot(v map[string]interface{}) *PaymentOrderUpsert {
+	u.Set(paymentorder.FieldPromotionSnapshot, v)
+	return u
+}
+
+// UpdatePromotionSnapshot sets the "promotion_snapshot" field to the value that was provided on create.
+func (u *PaymentOrderUpsert) UpdatePromotionSnapshot() *PaymentOrderUpsert {
+	u.SetExcluded(paymentorder.FieldPromotionSnapshot)
+	return u
+}
+
+// ClearPromotionSnapshot clears the value of the "promotion_snapshot" field.
+func (u *PaymentOrderUpsert) ClearPromotionSnapshot() *PaymentOrderUpsert {
+	u.SetNull(paymentorder.FieldPromotionSnapshot)
 	return u
 }
 
@@ -1708,6 +1736,27 @@ func (u *PaymentOrderUpsertOne) AddFeeRate(v float64) *PaymentOrderUpsertOne {
 func (u *PaymentOrderUpsertOne) UpdateFeeRate() *PaymentOrderUpsertOne {
 	return u.Update(func(s *PaymentOrderUpsert) {
 		s.UpdateFeeRate()
+	})
+}
+
+// SetPromotionSnapshot sets the "promotion_snapshot" field.
+func (u *PaymentOrderUpsertOne) SetPromotionSnapshot(v map[string]interface{}) *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetPromotionSnapshot(v)
+	})
+}
+
+// UpdatePromotionSnapshot sets the "promotion_snapshot" field to the value that was provided on create.
+func (u *PaymentOrderUpsertOne) UpdatePromotionSnapshot() *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdatePromotionSnapshot()
+	})
+}
+
+// ClearPromotionSnapshot clears the value of the "promotion_snapshot" field.
+func (u *PaymentOrderUpsertOne) ClearPromotionSnapshot() *PaymentOrderUpsertOne {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.ClearPromotionSnapshot()
 	})
 }
 
@@ -2640,6 +2689,27 @@ func (u *PaymentOrderUpsertBulk) AddFeeRate(v float64) *PaymentOrderUpsertBulk {
 func (u *PaymentOrderUpsertBulk) UpdateFeeRate() *PaymentOrderUpsertBulk {
 	return u.Update(func(s *PaymentOrderUpsert) {
 		s.UpdateFeeRate()
+	})
+}
+
+// SetPromotionSnapshot sets the "promotion_snapshot" field.
+func (u *PaymentOrderUpsertBulk) SetPromotionSnapshot(v map[string]interface{}) *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.SetPromotionSnapshot(v)
+	})
+}
+
+// UpdatePromotionSnapshot sets the "promotion_snapshot" field to the value that was provided on create.
+func (u *PaymentOrderUpsertBulk) UpdatePromotionSnapshot() *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.UpdatePromotionSnapshot()
+	})
+}
+
+// ClearPromotionSnapshot clears the value of the "promotion_snapshot" field.
+func (u *PaymentOrderUpsertBulk) ClearPromotionSnapshot() *PaymentOrderUpsertBulk {
+	return u.Update(func(s *PaymentOrderUpsert) {
+		s.ClearPromotionSnapshot()
 	})
 }
 

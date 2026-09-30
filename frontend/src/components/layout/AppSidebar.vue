@@ -123,6 +123,7 @@
             <component v-else :is="item.icon" class="h-5 w-5 flex-shrink-0" />
             <span class="sidebar-label" :class="{ 'sidebar-label-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">{{ item.label }}</span>
             <span v-if="item.isNew && !sidebarCollapsed" class="sidebar-new-badge" aria-hidden="true">NEW</span>
+            <span v-if="item.path === '/purchase' && activeRechargePromotion && !sidebarCollapsed" class="sidebar-promotion-badge">{{ locale.startsWith('zh') ? '活动' : 'BONUS' }}</span>
           </router-link>
         </div>
       </template>
@@ -144,6 +145,7 @@
             <component v-else :is="item.icon" class="h-5 w-5 flex-shrink-0" />
             <span class="sidebar-label" :class="{ 'sidebar-label-collapsed': sidebarCollapsed }" :aria-hidden="sidebarCollapsed ? 'true' : 'false'">{{ item.label }}</span>
             <span v-if="item.isNew && !sidebarCollapsed" class="sidebar-new-badge" aria-hidden="true">NEW</span>
+            <span v-if="item.path === '/purchase' && activeRechargePromotion && !sidebarCollapsed" class="sidebar-promotion-badge">{{ locale.startsWith('zh') ? '活动' : 'BONUS' }}</span>
           </router-link>
         </div>
       </template>
@@ -201,6 +203,7 @@ import { sanitizeUrl } from '@/utils/url'
 import { FeatureFlags, makeSidebarFlag } from '@/utils/featureFlags'
 import { resolveSiteBillingMode } from '@/utils/siteBillingMode'
 import { useBatchImageAccess } from '@/composables/useBatchImageAccess'
+import { useRechargePromotion } from '@/composables/useRechargePromotion'
 
 interface NavItem {
   path: string
@@ -248,6 +251,8 @@ const authStore = useAuthStore()
 const onboardingStore = useOnboardingStore()
 const adminSettingsStore = useAdminSettingsStore()
 const { canUseBatchImage, refreshBatchImageAccess } = useBatchImageAccess()
+// The purchase page already loads checkout data and seeds the shared promotion cache.
+const { activePromotion: activeRechargePromotion } = useRechargePromotion(() => route.path !== '/purchase')
 
 const sidebarCollapsed = computed(() => appStore.sidebarCollapsed)
 const mobileOpen = computed(() => appStore.mobileOpen)
@@ -710,6 +715,7 @@ const flagChannelMonitor = makeSidebarFlag(FeatureFlags.channelMonitor)
 const flagPayment = makeSidebarFlag(FeatureFlags.payment)
 const flagAvailableChannels = makeSidebarFlag(FeatureFlags.availableChannels)
 const flagSubscription = makeSidebarFlag(FeatureFlags.subscription)
+const flagRechargePromotion = makeSidebarFlag(FeatureFlags.rechargePromotion)
 
 // 购买入口文案随站点计费模式切换：仅充值 → 「充值」，仅订阅 → 「订阅」，否则「充值/订阅」。
 const purchaseNavLabel = computed(() => {
@@ -828,6 +834,7 @@ const adminNavItems = computed((): NavItem[] => {
     },
     { path: '/admin/redeem', label: t('nav.redeemCodes'), icon: TicketIcon, hideInSimpleMode: true },
     { path: '/admin/checkin', label: t('nav.checkinConsole'), icon: GiftIcon, hideInSimpleMode: true },
+    { path: '/admin/promotions', label: t('nav.promotionCenter'), icon: GiftIcon, hideInSimpleMode: true, featureFlag: flagRechargePromotion },
     { path: '/admin/promo-codes', label: t('nav.promoCodes'), icon: GiftIcon, hideInSimpleMode: true },
     {
       path: '/admin/affiliates',
@@ -1124,10 +1131,30 @@ onBeforeUnmount(() => {
   letter-spacing: 0;
 }
 
-:global(.dark) .sidebar-new-badge {
+.dark .sidebar-new-badge {
   border-color: rgb(52 211 153 / 30%);
   background-color: rgb(16 185 129 / 16%);
   color: rgb(110 231 183);
+}
+
+.sidebar-promotion-badge {
+  flex: 0 0 auto;
+  margin-left: auto;
+  border: 1px solid #dcc28a;
+  border-radius: 999px;
+  background: linear-gradient(110deg, #fff8e6, #f4e3b8);
+  padding: 0.1875rem 0.375rem;
+  color: #8c621e;
+  font-size: 0.5625rem;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: 0;
+}
+
+.dark .sidebar-promotion-badge {
+  border-color: #ad87394d;
+  background: linear-gradient(110deg, #59452680, #73532666);
+  color: #e2c68c;
 }
 
 /* Custom SVG icon in sidebar: constrain size without overriding uploaded SVG colors */

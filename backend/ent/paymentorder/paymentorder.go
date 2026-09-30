@@ -28,6 +28,8 @@ const (
 	FieldPayAmount = "pay_amount"
 	// FieldFeeRate holds the string denoting the fee_rate field in the database.
 	FieldFeeRate = "fee_rate"
+	// FieldPromotionSnapshot holds the string denoting the promotion_snapshot field in the database.
+	FieldPromotionSnapshot = "promotion_snapshot"
 	// FieldRechargeCode holds the string denoting the recharge_code field in the database.
 	FieldRechargeCode = "recharge_code"
 	// FieldOutTradeNo holds the string denoting the out_trade_no field in the database.
@@ -115,6 +117,7 @@ var Columns = []string{
 	FieldAmount,
 	FieldPayAmount,
 	FieldFeeRate,
+	FieldPromotionSnapshot,
 	FieldRechargeCode,
 	FieldOutTradeNo,
 	FieldPaymentType,

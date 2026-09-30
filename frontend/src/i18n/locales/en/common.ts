@@ -188,6 +188,7 @@ export default {
     proxies: 'Proxies',
     redeemCodes: 'Redeem Codes',
     checkinConsole: 'Check-in Console',
+    promotionCenter: 'Promotion Center',
     ops: 'Ops',
     promoCodes: 'Promo Codes',
     settings: 'Settings',

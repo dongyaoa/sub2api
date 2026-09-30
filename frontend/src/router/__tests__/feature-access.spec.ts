@@ -25,6 +25,7 @@ const appStore = vi.hoisted(() => ({
   cachedPublicSettings: null as null | {
     payment_enabled?: boolean
     risk_control_enabled?: boolean
+    recharge_promotion_enabled?: boolean
     subscription_enabled?: boolean
     custom_menu_items?: []
   },
@@ -208,5 +209,34 @@ describe('subscription route guard (opt-out flag)', () => {
     await navigation
 
     expect(next).toHaveBeenCalledWith('/admin/dashboard')
+  })
+})
+
+describe('promotion center route guard', () => {
+  beforeEach(() => {
+    authStore.isAdmin = true
+    authStore.isSimpleMode = false
+    appStore.publicSettingsLoaded = true
+    appStore.fetchPublicSettings.mockReset()
+  })
+
+  it.each([false, undefined])('blocks direct access when the opt-in switch is %s', async enabled => {
+    appStore.cachedPublicSettings = { recharge_promotion_enabled: enabled }
+    const { navigation, next } = runGuard({ requiresAdmin: true, requiresRechargePromotion: true }, '/admin/promotions')
+    await navigation
+    expect(next).toHaveBeenCalledWith('/admin/settings?tab=features')
+  })
+
+  it('waits for settings and allows an enabled center', async () => {
+    appStore.publicSettingsLoaded = false
+    appStore.cachedPublicSettings = null
+    appStore.fetchPublicSettings.mockImplementation(async () => {
+      appStore.cachedPublicSettings = { recharge_promotion_enabled: true }
+      appStore.publicSettingsLoaded = true
+    })
+    const { navigation, next } = runGuard({ requiresAdmin: true, requiresRechargePromotion: true }, '/admin/promotions')
+    await navigation
+    expect(appStore.fetchPublicSettings).toHaveBeenCalledOnce()
+    expect(next).toHaveBeenCalledWith()
   })
 })

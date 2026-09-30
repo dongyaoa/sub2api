@@ -188,6 +188,7 @@ export default {
     proxies: 'IP管理',
     redeemCodes: '兑换码',
     checkinConsole: '签到控制台',
+    promotionCenter: '活动中心',
     ops: '运维监控',
     promoCodes: '优惠码',
     settings: '系统设置',

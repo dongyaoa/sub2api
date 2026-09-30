@@ -154,6 +154,18 @@ func (_u *PaymentOrderUpdate) AddFeeRate(v float64) *PaymentOrderUpdate {
 	return _u
 }
 
+// SetPromotionSnapshot sets the "promotion_snapshot" field.
+func (_u *PaymentOrderUpdate) SetPromotionSnapshot(v map[string]interface{}) *PaymentOrderUpdate {
+	_u.mutation.SetPromotionSnapshot(v)
+	return _u
+}
+
+// ClearPromotionSnapshot clears the value of the "promotion_snapshot" field.
+func (_u *PaymentOrderUpdate) ClearPromotionSnapshot() *PaymentOrderUpdate {
+	_u.mutation.ClearPromotionSnapshot()
+	return _u
+}
+
 // SetRechargeCode sets the "recharge_code" field.
 func (_u *PaymentOrderUpdate) SetRechargeCode(v string) *PaymentOrderUpdate {
 	_u.mutation.SetRechargeCode(v)
@@ -881,6 +893,12 @@ func (_u *PaymentOrderUpdate) sqlSave(ctx context.Context) (_node int, err error
 	if value, ok := _u.mutation.AddedFeeRate(); ok {
 		_spec.AddField(paymentorder.FieldFeeRate, field.TypeFloat64, value)
 	}
+	if value, ok := _u.mutation.PromotionSnapshot(); ok {
+		_spec.SetField(paymentorder.FieldPromotionSnapshot, field.TypeJSON, value)
+	}
+	if _u.mutation.PromotionSnapshotCleared() {
+		_spec.ClearField(paymentorder.FieldPromotionSnapshot, field.TypeJSON)
+	}
 	if value, ok := _u.mutation.RechargeCode(); ok {
 		_spec.SetField(paymentorder.FieldRechargeCode, field.TypeString, value)
 	}
@@ -1214,6 +1232,18 @@ func (_u *PaymentOrderUpdateOne) SetNillableFeeRate(v *float64) *PaymentOrderUpd
 // AddFeeRate adds value to the "fee_rate" field.
 func (_u *PaymentOrderUpdateOne) AddFeeRate(v float64) *PaymentOrderUpdateOne {
 	_u.mutation.AddFeeRate(v)
+	return _u
+}
+
+// SetPromotionSnapshot sets the "promotion_snapshot" field.
+func (_u *PaymentOrderUpdateOne) SetPromotionSnapshot(v map[string]interface{}) *PaymentOrderUpdateOne {
+	_u.mutation.SetPromotionSnapshot(v)
+	return _u
+}
+
+// ClearPromotionSnapshot clears the value of the "promotion_snapshot" field.
+func (_u *PaymentOrderUpdateOne) ClearPromotionSnapshot() *PaymentOrderUpdateOne {
+	_u.mutation.ClearPromotionSnapshot()
 	return _u
 }
 
@@ -1973,6 +2003,12 @@ func (_u *PaymentOrderUpdateOne) sqlSave(ctx context.Context) (_node *PaymentOrd
 	}
 	if value, ok := _u.mutation.AddedFeeRate(); ok {
 		_spec.AddField(paymentorder.FieldFeeRate, field.TypeFloat64, value)
+	}
+	if value, ok := _u.mutation.PromotionSnapshot(); ok {
+		_spec.SetField(paymentorder.FieldPromotionSnapshot, field.TypeJSON, value)
+	}
+	if _u.mutation.PromotionSnapshotCleared() {
+		_spec.ClearField(paymentorder.FieldPromotionSnapshot, field.TypeJSON)
 	}
 	if value, ok := _u.mutation.RechargeCode(); ok {
 		_spec.SetField(paymentorder.FieldRechargeCode, field.TypeString, value)

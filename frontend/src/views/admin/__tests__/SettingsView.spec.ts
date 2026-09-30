@@ -32,6 +32,7 @@ const {
   updateProvider,
   createProvider,
   deleteProvider,
+  updatePaymentConfig,
   fetchPublicSettings,
   adminSettingsFetch,
   showError,
@@ -73,6 +74,7 @@ const {
   updateProvider: vi.fn(),
   createProvider: vi.fn(),
   deleteProvider: vi.fn(),
+  updatePaymentConfig: vi.fn(),
   fetchPublicSettings: vi.fn(),
   adminSettingsFetch: vi.fn(),
   showError: vi.fn(),
@@ -111,12 +113,18 @@ vi.mock("@/api", () => ({
       list: listProxies,
     },
     payment: {
+      updateConfig: updatePaymentConfig,
       getProviders,
       updateProvider,
       createProvider,
       deleteProvider,
     },
   },
+}));
+
+vi.mock("@/api/admin/payment", () => ({
+  adminPaymentAPI: { updateConfig: updatePaymentConfig },
+  default: { updateConfig: updatePaymentConfig },
 }));
 
 vi.mock("@/stores", () => ({
@@ -650,6 +658,7 @@ describe("admin SettingsView payment visible method controls", () => {
     updateProvider.mockReset();
     createProvider.mockReset();
     deleteProvider.mockReset();
+    updatePaymentConfig.mockReset();
     fetchPublicSettings.mockReset();
     adminSettingsFetch.mockReset();
     showError.mockReset();
@@ -777,6 +786,32 @@ describe("admin SettingsView payment visible method controls", () => {
         { ...menuItems[1], hide_open_button: false },
       ],
     }));
+    wrapper.unmount();
+  });
+
+  it.each([true, false])("loads the campaign master switch and explicitly saves %s through general settings", async (enabled) => {
+    getSettings.mockResolvedValueOnce({
+      ...baseSettingsResponse,
+      recharge_promotion_enabled: !enabled,
+    });
+    const wrapper = mountView();
+    await flushPromises();
+    const featuresTab = wrapper.findAll("button").find(node => node.text().includes("admin.settings.tabs.features"));
+    expect(featuresTab).toBeDefined();
+    await featuresTab?.trigger("click");
+    const toggle = wrapper.get('[data-testid="promotion-feature-toggle"]');
+    expect((toggle.element as HTMLInputElement).checked).toBe(!enabled);
+    await toggle.setValue(enabled);
+    expect(updateSettings).not.toHaveBeenCalled();
+    expect(updatePaymentConfig).not.toHaveBeenCalled();
+    await wrapper.get("form").trigger("submit.prevent");
+    await flushPromises();
+    expect(updateSettings).toHaveBeenCalledTimes(1);
+    expect(updateSettings).toHaveBeenCalledWith(expect.objectContaining({ recharge_promotion_enabled: enabled }));
+    expect(updateSettings.mock.calls[0]?.[0]).not.toHaveProperty("recharge_promotion");
+    expect(updatePaymentConfig).not.toHaveBeenCalled();
+    expect(fetchPublicSettings).toHaveBeenCalled();
+    expect((toggle.element as HTMLInputElement).checked).toBe(enabled);
     wrapper.unmount();
   });
 

@@ -670,16 +670,17 @@ func (s *CheckinService) queryEffectiveRecharge(ctx context.Context, client *dbe
 	const query = `
 		SELECT GREATEST(
 			COALESCE((
-				SELECT SUM(value)
-				FROM redeem_codes
-				WHERE used_by = $1
-				  AND status = 'used'
-				  AND type IN ('balance', 'admin_balance')
-				  AND value > 0
-				  AND used_at >= $2
+				SELECT SUM(COALESCE((po.promotion_snapshot->>'base_amount')::numeric, rc.value))
+				FROM redeem_codes rc
+				LEFT JOIN payment_orders po ON po.recharge_code = rc.code AND po.user_id = rc.used_by
+				WHERE rc.used_by = $1
+				  AND rc.status = 'used'
+				  AND rc.type IN ('balance', 'admin_balance')
+				  AND rc.value > 0
+				  AND rc.used_at >= $2
 			), 0)
 			- COALESCE((
-				SELECT SUM(refund_amount)
+				SELECT SUM(refund_amount * COALESCE((promotion_snapshot->>'base_amount')::numeric / NULLIF(amount, 0), 1))
 				FROM payment_orders
 				WHERE user_id = $1
 				  AND order_type = 'balance'

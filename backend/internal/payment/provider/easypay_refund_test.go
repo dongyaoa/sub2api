@@ -180,6 +180,35 @@ func TestEasyPayRefundResponseErrors(t *testing.T) {
 	}
 }
 
+func TestEasyPayRefundDistinguishesRejectionFromUnknownOutcome(t *testing.T) {
+	for _, tc := range []struct {
+		name, body string
+		failed     bool
+	}{
+		{"numeric rejection", `{"code":-1,"msg":"insufficient merchant funds"}`, true},
+		{"string rejection", `{"code":"-1","msg":"rejected"}`, true},
+		{"missing code", `{"msg":"unknown"}`, false},
+		{"invalid code", `{"code":1.5}`, false},
+		{"malformed body", `{`, false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { _, _ = w.Write([]byte(tc.body)) }))
+			defer server.Close()
+			resp, err := newTestEasyPay(t, server.URL).Refund(context.Background(), payment.RefundRequest{OrderID: "order-1", Amount: "100.00"})
+			if err == nil {
+				t.Fatal("expected refund response error")
+			}
+			if tc.failed {
+				if resp == nil || resp.Status != payment.ProviderStatusFailed {
+					t.Fatalf("expected definitive rejection, got %+v", resp)
+				}
+			} else if resp != nil {
+				t.Fatalf("unknown outcome must not declare failure: %+v", resp)
+			}
+		})
+	}
+}
+
 func TestSummarizeEasyPayResponsePreservesUTF8(t *testing.T) {
 	t.Parallel()
 

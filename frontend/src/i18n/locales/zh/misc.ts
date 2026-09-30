@@ -551,6 +551,7 @@ export default {
       alreadyRefunded: '已退款',
       deductBalance: '扣除余额',
       deductBalanceHint: '从用户余额中扣回充值金额',
+      promotionRefundHint: '活动订单仅支持整单退款，须扣回基础额度和赠送额度，再退回实付金额。余额不足时无法强制退款；已产生邀请返佣的活动订单暂不支持在线退款，需线下核对处理。',
       userBalance: '用户余额',
       orderAmount: '订单金额',
       insufficientBalance: '余额不足，将扣至 $0',

@@ -69,6 +69,11 @@ func RegisterPaymentRoutes(
 	}
 
 	// --- Admin payment endpoints (admin auth) ---
+	promotions := v1.Group("/admin/promotions")
+	promotions.Use(gin.HandlerFunc(adminAuth), gin.HandlerFunc(auditLog), middleware.AdminComplianceGuard(settingService))
+	promotions.GET("/summary", adminPaymentHandler.GetPromotionSummary)
+	promotions.GET("/orders", adminPaymentHandler.ListPromotionOrders)
+
 	adminGroup := v1.Group("/admin/payment")
 	adminGroup.Use(gin.HandlerFunc(adminAuth))
 	adminGroup.Use(gin.HandlerFunc(auditLog))

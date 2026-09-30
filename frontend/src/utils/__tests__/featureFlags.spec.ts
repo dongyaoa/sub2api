@@ -41,6 +41,11 @@ describe('FeatureFlags.subscription', () => {
 })
 
 describe('resolveFeatureFlag', () => {
+  it('hides promotion entry until its master switch is enabled', () => {
+    expect(resolveFeatureFlag(null, FeatureFlags.rechargePromotion)).toBe(false)
+    expect(resolveFeatureFlag({ recharge_promotion_enabled: false }, FeatureFlags.rechargePromotion)).toBe(false)
+    expect(resolveFeatureFlag({ recharge_promotion_enabled: true }, FeatureFlags.rechargePromotion)).toBe(true)
+  })
   beforeEach(() => {
     setActivePinia(createPinia())
   })

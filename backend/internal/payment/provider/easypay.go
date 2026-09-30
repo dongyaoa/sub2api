@@ -422,6 +422,9 @@ func (e *EasyPay) Refund(ctx context.Context, req payment.RefundRequest) (*payme
 			if i+1 < len(attempts) && isEasyPayRefundOrderNotFound(err) {
 				continue
 			}
+			if _, rejected := err.(*easyPayRefundRejectedError); rejected {
+				return &payment.RefundResponse{RefundID: attempt.refundID, Status: payment.ProviderStatusFailed}, err
+			}
 			return nil, err
 		}
 		return &payment.RefundResponse{RefundID: attempt.refundID, Status: payment.ProviderStatusSuccess}, nil
@@ -472,6 +475,10 @@ func isEasyPayRefundOrderNotFound(err error) bool {
 		strings.Contains(lower, "not exist")
 }
 
+type easyPayRefundRejectedError struct{ message string }
+
+func (e *easyPayRefundRejectedError) Error() string { return e.message }
+
 func parseEasyPayRefundResponse(status int, body []byte) error {
 	summary := summarizeEasyPayResponse(body)
 	if status < http.StatusOK || status >= http.StatusMultipleChoices {
@@ -496,25 +503,29 @@ func parseEasyPayRefundResponse(status int, body []byte) error {
 	if err := json.Unmarshal(body, &resp); err != nil {
 		return fmt.Errorf("easypay refund non-JSON response (HTTP %d): %s", status, summary)
 	}
-	if !easyPayResponseCodeIsSuccess(resp.Code) {
+	code, known := easyPayResponseCode(resp.Code)
+	if !known {
+		return fmt.Errorf("easypay refund invalid response code (HTTP %d): %s", status, summary)
+	}
+	if code != easypayCodeSuccess {
 		msg := strings.TrimSpace(resp.Msg)
 		if msg == "" {
 			msg = summary
 		}
-		return fmt.Errorf("easypay refund failed (HTTP %d): %s", status, msg)
+		return &easyPayRefundRejectedError{message: fmt.Sprintf("easypay refund failed (HTTP %d): %s", status, msg)}
 	}
 	return nil
 }
 
-func easyPayResponseCodeIsSuccess(code any) bool {
+func easyPayResponseCode(code any) (int, bool) {
 	switch v := code.(type) {
 	case float64:
-		return int(v) == easypayCodeSuccess
+		return int(v), float64(int(v)) == v
 	case string:
 		n, err := strconv.Atoi(strings.TrimSpace(v))
-		return err == nil && n == easypayCodeSuccess
+		return n, err == nil
 	default:
-		return false
+		return 0, false
 	}
 }
 

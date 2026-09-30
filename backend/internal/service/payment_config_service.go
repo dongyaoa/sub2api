@@ -2,11 +2,13 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math"
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
 	"github.com/Wei-Shaw/sub2api/ent/paymentproviderinstance"
@@ -50,15 +52,17 @@ const (
 
 // PaymentConfig holds the payment system configuration.
 type PaymentConfig struct {
-	Enabled                   bool     `json:"enabled"`
-	MinAmount                 float64  `json:"min_amount"`
-	MaxAmount                 float64  `json:"max_amount"`
-	DailyLimit                float64  `json:"daily_limit"`
-	OrderTimeoutMin           int      `json:"order_timeout_minutes"`
-	MaxPendingOrders          int      `json:"max_pending_orders"`
-	EnabledTypes              []string `json:"enabled_payment_types"`
-	BalanceDisabled           bool     `json:"balance_disabled"`
-	BalanceRechargeMultiplier float64  `json:"balance_recharge_multiplier"`
+	Enabled                   bool               `json:"enabled"`
+	MinAmount                 float64            `json:"min_amount"`
+	MaxAmount                 float64            `json:"max_amount"`
+	DailyLimit                float64            `json:"daily_limit"`
+	OrderTimeoutMin           int                `json:"order_timeout_minutes"`
+	MaxPendingOrders          int                `json:"max_pending_orders"`
+	EnabledTypes              []string           `json:"enabled_payment_types"`
+	BalanceDisabled           bool               `json:"balance_disabled"`
+	BalanceRechargeMultiplier float64            `json:"balance_recharge_multiplier"`
+	RechargePromotion         *RechargePromotion `json:"recharge_promotion"`
+	RechargePromotionEnabled  bool               `json:"recharge_promotion_enabled"`
 	// SubscriptionUSDToCNYRate 为 0 时订阅换算关闭（兼容存量行为）。
 	SubscriptionUSDToCNYRate float64 `json:"subscription_usd_to_cny_rate"`
 	RechargeFeeRate          float64 `json:"recharge_fee_rate"`
@@ -84,22 +88,23 @@ type PaymentConfig struct {
 
 // UpdatePaymentConfigRequest contains fields to update payment configuration.
 type UpdatePaymentConfigRequest struct {
-	Enabled                   *bool    `json:"enabled"`
-	MinAmount                 *float64 `json:"min_amount"`
-	MaxAmount                 *float64 `json:"max_amount"`
-	DailyLimit                *float64 `json:"daily_limit"`
-	OrderTimeoutMin           *int     `json:"order_timeout_minutes"`
-	MaxPendingOrders          *int     `json:"max_pending_orders"`
-	EnabledTypes              []string `json:"enabled_payment_types"`
-	BalanceDisabled           *bool    `json:"balance_disabled"`
-	BalanceRechargeMultiplier *float64 `json:"balance_recharge_multiplier"`
-	SubscriptionUSDToCNYRate  *float64 `json:"subscription_usd_to_cny_rate"`
-	RechargeFeeRate           *float64 `json:"recharge_fee_rate"`
-	LoadBalanceStrategy       *string  `json:"load_balance_strategy"`
-	ProductNamePrefix         *string  `json:"product_name_prefix"`
-	ProductNameSuffix         *string  `json:"product_name_suffix"`
-	HelpImageURL              *string  `json:"help_image_url"`
-	HelpText                  *string  `json:"help_text"`
+	Enabled                   *bool              `json:"enabled"`
+	MinAmount                 *float64           `json:"min_amount"`
+	MaxAmount                 *float64           `json:"max_amount"`
+	DailyLimit                *float64           `json:"daily_limit"`
+	OrderTimeoutMin           *int               `json:"order_timeout_minutes"`
+	MaxPendingOrders          *int               `json:"max_pending_orders"`
+	EnabledTypes              []string           `json:"enabled_payment_types"`
+	BalanceDisabled           *bool              `json:"balance_disabled"`
+	BalanceRechargeMultiplier *float64           `json:"balance_recharge_multiplier"`
+	RechargePromotion         *RechargePromotion `json:"recharge_promotion"`
+	SubscriptionUSDToCNYRate  *float64           `json:"subscription_usd_to_cny_rate"`
+	RechargeFeeRate           *float64           `json:"recharge_fee_rate"`
+	LoadBalanceStrategy       *string            `json:"load_balance_strategy"`
+	ProductNamePrefix         *string            `json:"product_name_prefix"`
+	ProductNameSuffix         *string            `json:"product_name_suffix"`
+	HelpImageURL              *string            `json:"help_image_url"`
+	HelpText                  *string            `json:"help_text"`
 
 	// Cancel rate limit settings
 	CancelRateLimitEnabled *bool   `json:"cancel_rate_limit_enabled"`
@@ -221,7 +226,7 @@ func (s *PaymentConfigService) GetPaymentConfig(ctx context.Context) (*PaymentCo
 		SettingDailyRechargeLimit, SettingOrderTimeoutMinutes, SettingMaxPendingOrders,
 		SettingEnabledPaymentTypes, SettingBalancePayDisabled, SettingBalanceRechargeMult, SettingSubscriptionUSDToCNYRate, SettingRechargeFeeRate, SettingLoadBalanceStrategy,
 		SettingProductNamePrefix, SettingProductNameSuffix,
-		SettingHelpImageURL, SettingHelpText,
+		SettingHelpImageURL, SettingHelpText, SettingRechargePromotion, SettingKeyRechargePromotionEnabled,
 		SettingCancelRateLimitOn, SettingCancelRateLimitMax,
 		SettingCancelWindowSize, SettingCancelWindowUnit, SettingCancelWindowMode,
 		SettingAlipayForceQRCode, SettingAlipayMobilePrecreateDeepLink,
@@ -248,6 +253,8 @@ func (s *PaymentConfigService) parsePaymentConfig(vals map[string]string) *Payme
 		MaxPendingOrders:          pcParseInt(vals[SettingMaxPendingOrders], defaultMaxPendingOrders),
 		BalanceDisabled:           vals[SettingBalancePayDisabled] == "true",
 		BalanceRechargeMultiplier: normalizeBalanceRechargeMultiplier(pcParseFloat(vals[SettingBalanceRechargeMult], defaultBalanceRechargeMultiplier)),
+		RechargePromotion:         parseRechargePromotion(vals[SettingRechargePromotion], time.Now()),
+		RechargePromotionEnabled:  vals[SettingKeyRechargePromotionEnabled] == "true",
 		SubscriptionUSDToCNYRate:  normalizeSubscriptionUSDToCNYRate(pcParseFloat(vals[SettingSubscriptionUSDToCNYRate], 0)),
 		RechargeFeeRate:           pcParseFloat(vals[SettingRechargeFeeRate], 0),
 		LoadBalanceStrategy:       vals[SettingLoadBalanceStrategy],
@@ -344,6 +351,20 @@ func (s *PaymentConfigService) UpdatePaymentConfig(ctx context.Context, req Upda
 		}
 	}
 	m := make(map[string]string)
+	if req.RechargePromotion != nil {
+		if !s.IsRechargePromotionEnabled(ctx) {
+			return rechargePromotionDisabledError()
+		}
+		promotion, err := normalizeRechargePromotion(req.RechargePromotion)
+		if err != nil {
+			return err
+		}
+		raw, err := json.Marshal(promotion)
+		if err != nil {
+			return err
+		}
+		m[SettingRechargePromotion] = string(raw)
+	}
 	if req.Enabled != nil {
 		m[SettingPaymentEnabled] = formatBoolOrEmpty(req.Enabled)
 	}
@@ -369,7 +390,7 @@ func (s *PaymentConfigService) UpdatePaymentConfig(ctx context.Context, req Upda
 		m[SettingBalancePayDisabled] = formatBoolOrEmpty(req.BalanceDisabled)
 	}
 	if req.BalanceRechargeMultiplier != nil {
-		m[SettingBalanceRechargeMult] = formatPositiveFloat(req.BalanceRechargeMultiplier)
+		m[SettingBalanceRechargeMult] = formatPositiveFloatExact(req.BalanceRechargeMultiplier)
 	}
 	if req.SubscriptionUSDToCNYRate != nil {
 		m[SettingSubscriptionUSDToCNYRate] = formatPositiveFloatExact(req.SubscriptionUSDToCNYRate)
@@ -426,6 +447,14 @@ func (s *PaymentConfigService) UpdatePaymentConfig(ctx context.Context, req Upda
 		m[SettingPaymentVisibleMethodWxpayEnabled] = formatBoolOrEmpty(req.VisibleMethodWxpayEnabled)
 	}
 	return s.settingRepo.SetMultiple(ctx, m)
+}
+
+func (s *PaymentConfigService) IsRechargePromotionEnabled(ctx context.Context) bool {
+	if s == nil || s.settingRepo == nil {
+		return false
+	}
+	value, err := s.settingRepo.GetValue(ctx, SettingKeyRechargePromotionEnabled)
+	return err == nil && value == "true"
 }
 
 func formatBoolOrEmpty(v *bool) string {

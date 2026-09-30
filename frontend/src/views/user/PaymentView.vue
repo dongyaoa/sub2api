@@ -27,6 +27,7 @@
                     <Icon name="sparkles" size="sm" />
                   </span>
                 </div>
+                <RechargePromotionNotice v-if="activePromotion" :promotion="activePromotion" variant="balance" />
               </div>
               <div class="rounded-2xl border border-gray-100 bg-gray-50/80 px-4 py-3 dark:border-dark-700 dark:bg-dark-900/50">
                 <p class="text-xs text-gray-500 dark:text-gray-400">{{ t('payment.rechargeAccount') }}</p>
@@ -88,7 +89,17 @@
                         <Icon name="dollar" size="sm" />
                       </div>
                     </div>
-                    <div class="p-5 sm:p-6 xl:flex xl:flex-1 xl:flex-col">
+                    <div class="p-5 sm:p-6 xl:flex xl:flex-1 xl:flex-col" data-testid="recharge-form">
+                      <RechargePromotionBanner
+                        v-if="activePromotion"
+                        :promotion="activePromotion"
+                        :amount="validAmount"
+                        :selected-currency="selectedCurrency"
+                        :disabled-tiers="disabledPromotionTiers"
+                        class="mb-4"
+                        selectable
+                        @select="amount = $event"
+                      />
                       <AmountInput
                         v-model="amount"
                         :amounts="[10, 20, 50, 100, 200, 500, 1000, 2000, 5000]"
@@ -143,6 +154,16 @@
                             <span class="text-gray-500 dark:text-gray-400">{{ t('payment.fee') }} ({{ feeRate }}%)</span>
                             <span class="font-medium text-gray-900 dark:text-white">{{ formatSelectedPaymentAmount(feeAmount) }}</span>
                           </div>
+                          <template v-if="promotionPreview.bonusAmount > 0">
+                            <div class="flex justify-between gap-4" data-testid="promotion-base">
+                              <span class="text-gray-500 dark:text-gray-400">{{ tp('promotion.baseAmount') }}</span>
+                              <span class="font-medium text-gray-900 dark:text-white">${{ promotionPreview.baseAmount.toFixed(2) }}</span>
+                            </div>
+                            <div class="flex justify-between gap-4" data-testid="promotion-bonus">
+                              <span class="text-gray-500 dark:text-gray-400">{{ tp('promotion.bonusAmount') }} <span class="text-xs">{{ promotionPreview.tier?.bonus_percent }}%</span></span>
+                              <span class="font-medium text-primary-600 dark:text-primary-300">+${{ promotionPreview.bonusAmount.toFixed(2) }}</span>
+                            </div>
+                          </template>
                           <div class="border-t border-gray-100 pt-4 dark:border-dark-700">
                             <div class="flex items-end justify-between gap-4">
                               <span class="font-medium text-gray-700 dark:text-gray-300">{{ t('payment.actualPay') }}</span>
@@ -153,12 +174,15 @@
                             </div>
                             <div class="mt-3 rounded-xl border border-emerald-100 bg-emerald-50/70 px-3 py-2 dark:border-emerald-900/40 dark:bg-emerald-950/20">
                               <div class="flex items-center justify-between gap-4">
-                                <span class="text-xs font-semibold text-emerald-700 dark:text-emerald-300">{{ t('payment.creditedBalance') }}</span>
+                                <span class="text-xs font-semibold text-emerald-700 dark:text-emerald-300">{{ promotionPreview.bonusAmount > 0 ? tp('promotion.totalAmount') : t('payment.creditedBalance') }}</span>
                                 <span class="inline-flex items-baseline gap-1 text-emerald-700 dark:text-emerald-200">
                                   <span class="text-sm font-black">$</span>
-                                  <span class="text-lg font-black tracking-tight">{{ creditedAmount.toFixed(2) }}</span>
+                                  <span class="text-lg font-black tracking-tight" data-testid="credited-amount">{{ creditedAmount.toFixed(2) }}</span>
                                 </span>
                               </div>
+                              <p v-if="activePromotion && activePromotion.max_bonus > 0 && promotionPreview.bonusAmount >= activePromotion.max_bonus" class="mt-1.5 text-[11px] text-gray-500 dark:text-gray-400">
+                                {{ tp('promotion.capApplied') }}
+                              </p>
                             </div>
                           </div>
                         </div>
@@ -357,6 +381,7 @@ import '@/styles/announcement-markdown.css'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { usePaymentStore } from '@/stores/payment'
+import { useRechargePromotionStore } from '@/stores/rechargePromotion'
 import { useSubscriptionStore } from '@/stores/subscriptions'
 import { useAppStore } from '@/stores'
 import { FeatureFlags, resolveFeatureFlag } from '@/utils/featureFlags'
@@ -367,6 +392,10 @@ import { hasPeakRate, formatPeakRateWindow, serverTimezoneLabel, type PeakRateFi
 import type { SubscriptionPlan, CheckoutInfoResponse, CreateOrderResult, OrderType } from '@/types/payment'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import AmountInput from '@/components/payment/AmountInput.vue'
+import RechargePromotionBanner from '@/components/payment/RechargePromotionBanner.vue'
+import RechargePromotionNotice from '@/components/payment/RechargePromotionNotice.vue'
+import { rechargePromotionMessages } from '@/components/payment/rechargePromotionMessages'
+import { calculateRechargePromotion, isRechargePromotionActive, useRechargePromotionClock } from '@/utils/rechargePromotion'
 import PaymentMethodSelector from '@/components/payment/PaymentMethodSelector.vue'
 import { METHOD_ORDER, getPaymentPopupFeatures, isBuiltInAlipayMethod, isBuiltInWxpayMethod } from '@/components/payment/providerConfig'
 import {
@@ -392,10 +421,12 @@ import { hasWechatResumeQuery, parseWechatResumeRoute, stripWechatResumeQuery } 
 
 const i18n = useI18n()
 const { t } = i18n
+const { t: tp } = useI18n({ useScope: 'local', messages: rechargePromotionMessages })
 const route = useRoute()
 const router = useRouter()
 const authStore = useAuthStore()
 const paymentStore = usePaymentStore()
+const promotionStore = useRechargePromotionStore()
 const subscriptionStore = useSubscriptionStore()
 const appStore = useAppStore()
 
@@ -645,7 +676,18 @@ const subscriptionUsdToCnyRate = computed(() => {
   const rate = checkout.value.subscription_usd_to_cny_rate
   return Number.isFinite(rate) && rate > 0 ? rate : 0
 })
-const creditedAmount = computed(() => Math.round((validAmount.value * balanceRechargeMultiplier.value) * 100) / 100)
+const promotionNow = useRechargePromotionClock()
+const activePromotion = computed(() => resolveFeatureFlag(appStore.cachedPublicSettings, FeatureFlags.rechargePromotion)
+  && resolveFeatureFlag(appStore.cachedPublicSettings, FeatureFlags.payment)
+  && !checkout.value.balance_disabled
+  && isRechargePromotionActive(checkout.value.recharge_promotion, promotionNow.value)
+  ? checkout.value.recharge_promotion
+  : null)
+const promotionPreview = computed(() => calculateRechargePromotion(activePromotion.value, validAmount.value, balanceRechargeMultiplier.value, selectedCurrency.value, promotionNow.value))
+const creditedAmount = computed(() => promotionPreview.value.totalAmount)
+const disabledPromotionTiers = computed(() => activePromotion.value?.tiers
+  .filter(tier => selectedLimit.value?.available === false || !amountFitsMethod(tier.min_amount, selectedMethod.value))
+  .map(tier => tier.min_amount) || [])
 
 // Adaptive grid: center single card, 2-col for 2 plans, 3-col for 3+
 const planGridClass = computed(() => {
@@ -1252,6 +1294,7 @@ onMounted(async () => {
   try {
     const res = await paymentAPI.getCheckoutInfo()
     checkout.value = res.data
+    promotionStore.acceptCheckout(res.data)
     if (enabledMethods.value.length) {
       const order: readonly string[] = METHOD_ORDER
       const sorted = [...enabledMethods.value].sort((a, b) => {
@@ -1302,7 +1345,10 @@ onMounted(async () => {
         }
       }
     }
-  } catch (err: unknown) { appStore.showError(extractI18nErrorMessage(err, t, 'payment.errors', t('common.error'))) }
+  } catch (err: unknown) {
+    promotionStore.clear()
+    appStore.showError(extractI18nErrorMessage(err, t, 'payment.errors', t('common.error')))
+  }
   finally { loading.value = false }
   // Fetch active subscriptions (uses cache, non-blocking); skipped when the subscription feature is off
   if (subscriptionEnabled.value) {

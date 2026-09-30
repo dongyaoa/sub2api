@@ -10,6 +10,7 @@ import (
 	"time"
 
 	dbent "github.com/Wei-Shaw/sub2api/ent"
+	"github.com/Wei-Shaw/sub2api/ent/paymentorder"
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/logger"
 	"github.com/Wei-Shaw/sub2api/internal/pkg/pagination"
@@ -37,6 +38,8 @@ const (
 )
 
 type ctxKeySkipRedeemAffiliate struct{}
+type ctxKeyPaymentBonus struct{}
+type ctxKeyPaymentFulfillment struct{}
 
 // ContextSkipRedeemAffiliate returns a context that suppresses the redeem-level
 // affiliate rebate. Used by payment fulfillment which handles rebate separately
@@ -399,7 +402,11 @@ func (s *RedeemService) Redeem(ctx context.Context, userID int64, code string) (
 // Payment retries must not be blocked by, or contribute to, a user's public
 // redeem failure counter. All code validation and transactional updates remain
 // identical to the public redemption path.
-func (s *RedeemService) redeemForPaymentFulfillment(ctx context.Context, userID int64, code string) (*RedeemCode, error) {
+func (s *RedeemService) redeemForPaymentFulfillment(ctx context.Context, userID int64, code string, bonusAmount ...float64) (*RedeemCode, error) {
+	ctx = context.WithValue(ctx, ctxKeyPaymentFulfillment{}, true)
+	if len(bonusAmount) > 0 && bonusAmount[0] > 0 {
+		ctx = context.WithValue(ctx, ctxKeyPaymentBonus{}, bonusAmount[0])
+	}
 	return s.redeem(ContextSkipRedeemAffiliate(ctx), userID, code, bypassRedeemRateLimit)
 }
 
@@ -461,6 +468,21 @@ func (s *RedeemService) redeem(ctx context.Context, userID int64, code string, r
 		return nil, unsupportedRedeemTypeError(redeemCode.Type)
 	}
 
+	// Payment codes are internal settlement records. Ordinary redemption would
+	// bypass the order owner, bonus accounting and order-level affiliate dedup.
+	if ctx.Value(ctxKeyPaymentFulfillment{}) != true {
+		linked, err := s.entClient.PaymentOrder.Query().Where(paymentorder.RechargeCodeEQ(redeemCode.Code)).Exist(ctx)
+		if err != nil {
+			return nil, fmt.Errorf("check payment redeem code: %w", err)
+		}
+		if linked {
+			if rateLimitPolicy == enforceRedeemRateLimit {
+				s.incrementRedeemErrorCount(ctx, userID)
+			}
+			return nil, ErrRedeemCodeNotFound
+		}
+	}
+
 	// 获取用户信息
 	_, err = s.userRepo.GetByID(ctx, userID)
 	if err != nil {
@@ -499,6 +521,15 @@ func (s *RedeemService) redeem(ctx context.Context, userID int64, code string, r
 			}
 		} else if err := s.userRepo.UpdateBalance(txCtx, userID, amount); err != nil {
 			return nil, fmt.Errorf("update user balance: %w", err)
+		}
+		// Keep paid-recharge notification thresholds independent from free credit.
+		if bonus, _ := ctx.Value(ctxKeyPaymentBonus{}).(float64); bonus > 0 {
+			if !finitePromotionNumber(bonus, 0, amount) {
+				return nil, errors.New("invalid payment bonus")
+			}
+			if _, err := tx.User.UpdateOneID(userID).AddTotalRecharged(-bonus).Save(txCtx); err != nil {
+				return nil, fmt.Errorf("exclude payment bonus from recharge total: %w", err)
+			}
 		}
 
 	case RedeemTypeConcurrency:

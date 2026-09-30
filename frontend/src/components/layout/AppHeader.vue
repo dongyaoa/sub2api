@@ -26,7 +26,7 @@
         <router-link
           v-if="user"
           to="/checkin"
-          class="flex items-center gap-2 rounded-xl bg-amber-100 px-3 py-1.5 text-sm font-medium text-amber-700 transition-colors hover:bg-amber-200 dark:bg-amber-900/40 dark:text-amber-300 dark:hover:bg-amber-900/60"
+          class="flex items-center gap-2 rounded-xl bg-amber-100 px-2 py-1.5 text-sm font-medium text-amber-700 transition-colors hover:bg-amber-200 sm:px-3 dark:bg-amber-900/40 dark:text-amber-300 dark:hover:bg-amber-900/60"
           :aria-label="t('nav.checkin')"
           :title="t('nav.checkin')"
         >
@@ -37,7 +37,7 @@
         <button
           v-if="user"
           type="button"
-          class="flex items-center gap-2 rounded-xl bg-sky-100 px-3 py-1.5 text-sm font-medium text-sky-700 transition-colors hover:bg-sky-200 dark:bg-sky-950/40 dark:text-sky-300 dark:hover:bg-sky-950/60"
+          class="flex items-center gap-2 rounded-xl bg-sky-100 px-2 py-1.5 text-sm font-medium text-sky-700 transition-colors hover:bg-sky-200 sm:px-3 dark:bg-sky-950/40 dark:text-sky-300 dark:hover:bg-sky-950/60"
           aria-label="客服群聊"
           title="客服群聊"
           @click="openSupportModal"
@@ -129,7 +129,7 @@
         <button
           v-if="user && paymentEnabled"
           type="button"
-          class="flex items-center gap-2 rounded-xl bg-emerald-50 px-3 py-1.5 text-sm font-medium text-emerald-700 transition-colors hover:bg-emerald-100 dark:bg-emerald-950/30 dark:text-emerald-300 dark:hover:bg-emerald-950/60"
+          class="flex items-center gap-2 rounded-xl bg-emerald-50 px-2 py-1.5 text-sm font-medium text-emerald-700 transition-colors hover:bg-emerald-100 sm:px-3 dark:bg-emerald-950/30 dark:text-emerald-300 dark:hover:bg-emerald-950/60"
           aria-label="充值"
           title="充值"
           @click="goToRecharge"

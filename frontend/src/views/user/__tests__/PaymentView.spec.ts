@@ -4,10 +4,12 @@ import PaymentView from '../PaymentView.vue'
 import { PAYMENT_RECOVERY_STORAGE_KEY } from '@/components/payment/paymentFlow'
 import { formatPaymentAmount } from '@/components/payment/currency'
 import AmountInput from '@/components/payment/AmountInput.vue'
+import RechargePromotionBanner from '@/components/payment/RechargePromotionBanner.vue'
+import PaymentMethodSelector from '@/components/payment/PaymentMethodSelector.vue'
 import SubscriptionPlanCard from '@/components/payment/SubscriptionPlanCard.vue'
 import en from '@/i18n/locales/en'
 import zh from '@/i18n/locales/zh'
-import type { CheckoutInfoResponse, MethodLimit, SubscriptionPlan } from '@/types/payment'
+import type { CheckoutInfoResponse, MethodLimit, RechargePromotion, SubscriptionPlan } from '@/types/payment'
 
 const routeState = vi.hoisted(() => ({
   path: '/purchase',
@@ -69,6 +71,10 @@ vi.mock('@/stores/payment', () => ({
   usePaymentStore: () => ({
     createOrder,
   }),
+}))
+
+vi.mock('@/stores/rechargePromotion', () => ({
+  useRechargePromotionStore: () => ({ acceptCheckout: vi.fn(), clear: vi.fn() }),
 }))
 
 vi.mock('@/stores/subscriptions', () => ({
@@ -408,6 +414,101 @@ describe('PaymentView recharge rate preview', () => {
     })
     expect(en.payment.rechargeRatePreview).toBe('Current rate: 1 {currency} = {usd} USD')
     expect(zh.payment.rechargeRatePreview).toBe('当前倍率：1 {currency} = {usd} USD')
+  })
+})
+
+describe('PaymentView recharge promotion', () => {
+  const promotion: RechargePromotion = {
+    enabled: true, active: true, title: 'Holiday rewards', subtitle: '', currency: 'CNY', max_bonus: 0,
+    starts_at: '2026-10-01T00:00:00+08:00', ends_at: '2026-10-08T00:00:00+08:00',
+    tiers: [{ min_amount: 50, bonus_percent: 5 }, { min_amount: 100, bonus_percent: 10 }],
+  }
+
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-10-02T00:00:00+08:00'))
+    routeState.path = '/purchase'
+    routeState.query = {}
+    window.localStorage.clear()
+    appStoreState.setPublicSettings({ recharge_promotion_enabled: true })
+    createOrder.mockReset()
+  })
+  afterEach(() => { vi.useRealTimers(); appStoreState.setPublicSettings(undefined) })
+
+  async function mountPromotion(overrides: Partial<CheckoutInfoResponse> = {}) {
+    getCheckoutInfo.mockReset().mockResolvedValue(checkoutInfoFixture({
+      recharge_promotion: promotion, balance_recharge_multiplier: 0.5, recharge_fee_rate: 2, ...overrides,
+    }))
+    const wrapper = shallowMount(PaymentView, {
+      global: { stubs: { AppLayout: { template: '<div><slot /></div>' }, Teleport: true, Transition: false } },
+    })
+    await flushPromises()
+    return wrapper
+  }
+
+  it('selects a promotion tier and separates base credit, bonus and total without changing payment fees', async () => {
+    const wrapper = await mountPromotion()
+    expect(wrapper.get('[data-testid="recharge-form"]').findComponent(RechargePromotionBanner).exists()).toBe(true)
+    wrapper.getComponent(RechargePromotionBanner).vm.$emit('select', 100)
+    await wrapper.vm.$nextTick()
+    expect(wrapper.getComponent(AmountInput).props('modelValue')).toBe(100)
+    expect(wrapper.get('[data-testid="promotion-base"]').text()).toContain('$50.00')
+    expect(wrapper.get('[data-testid="promotion-bonus"]').text()).toContain('+$5.00')
+    expect(wrapper.get('[data-testid="credited-amount"]').text()).toBe('55.00')
+    expect(wrapper.text()).toContain(formatPaymentAmount(102, 'CNY'))
+    expect(createOrder).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it.each([undefined, false])('hides promotions when the master feature flag is %s', async (enabled) => {
+    appStoreState.setPublicSettings(enabled === undefined ? undefined : { recharge_promotion_enabled: enabled })
+    const wrapper = await mountPromotion()
+    wrapper.getComponent(AmountInput).vm.$emit('update:modelValue', 100)
+    await wrapper.vm.$nextTick()
+    expect(wrapper.findComponent(RechargePromotionBanner).exists()).toBe(false)
+    expect(wrapper.find('[data-testid="promotion-bonus"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="credited-amount"]').text()).toBe('50.00')
+    wrapper.unmount()
+  })
+
+  it('removes an existing promotion when the master switch is turned off', async () => {
+    const wrapper = await mountPromotion()
+    wrapper.getComponent(RechargePromotionBanner).vm.$emit('select', 100)
+    await wrapper.vm.$nextTick()
+    expect(wrapper.get('[data-testid="credited-amount"]').text()).toBe('55.00')
+    appStoreState.setPublicSettings({ recharge_promotion_enabled: false })
+    await wrapper.vm.$nextTick()
+    expect(wrapper.findComponent(RechargePromotionBanner).exists()).toBe(false)
+    expect(wrapper.find('[data-testid="promotion-bonus"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="credited-amount"]').text()).toBe('50.00')
+    wrapper.unmount()
+  })
+
+  it('removes the bonus after switching to a different currency', async () => {
+    const base = checkoutInfoFixture().data.methods.wxpay
+    const wrapper = await mountPromotion({ methods: { wxpay: { ...base, currency: 'CNY' }, stripe: { ...base, currency: 'USD' } } })
+    wrapper.getComponent(RechargePromotionBanner).vm.$emit('select', 100)
+    await wrapper.vm.$nextTick()
+    expect(wrapper.get('[data-testid="credited-amount"]').text()).toBe('55.00')
+    wrapper.getComponent(PaymentMethodSelector).vm.$emit('select', 'stripe')
+    await wrapper.vm.$nextTick()
+    expect(wrapper.find('[data-testid="promotion-bonus"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="credited-amount"]').text()).toBe('50.00')
+    expect(wrapper.getComponent(RechargePromotionBanner).props('selectedCurrency')).toBe('USD')
+    wrapper.unmount()
+  })
+
+  it('withdraws event styling and bonus preview when the activity expires', async () => {
+    vi.setSystemTime(new Date('2026-10-07T23:59:59+08:00'))
+    const wrapper = await mountPromotion()
+    wrapper.getComponent(RechargePromotionBanner).vm.$emit('select', 100)
+    await wrapper.vm.$nextTick()
+    vi.advanceTimersByTime(1000)
+    await wrapper.vm.$nextTick()
+    expect(wrapper.findComponent(RechargePromotionBanner).exists()).toBe(false)
+    expect(wrapper.find('[data-testid="promotion-bonus"]').exists()).toBe(false)
+    expect(wrapper.get('[data-testid="credited-amount"]').text()).toBe('50.00')
+    wrapper.unmount()
   })
 })
 

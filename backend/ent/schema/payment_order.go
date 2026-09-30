@@ -50,6 +50,9 @@ func (PaymentOrder) Fields() []ent.Field {
 		field.Float("fee_rate").
 			SchemaType(map[string]string{dialect.Postgres: "decimal(10,4)"}).
 			Default(0),
+		field.JSON("promotion_snapshot", map[string]any{}).
+			Optional().
+			SchemaType(map[string]string{dialect.Postgres: "jsonb"}),
 		field.String("recharge_code").
 			MaxLen(64),
 
@@ -189,6 +192,7 @@ func (PaymentOrder) Indexes() []ent.Index {
 			Unique().
 			Annotations(entsql.IndexWhere("out_trade_no <> ''")),
 		index.Fields("user_id"),
+		index.Fields("recharge_code"),
 		index.Fields("status"),
 		index.Fields("expires_at"),
 		index.Fields("created_at"),

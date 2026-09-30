@@ -61,6 +61,9 @@ func (s *PaymentService) CreateOrder(ctx context.Context, req CreateOrderRequest
 	} else if req.OrderType == payment.OrderTypeBalance {
 		orderAmount = calculateCreditedBalance(req.Amount, cfg.BalanceRechargeMultiplier)
 	}
+	if !isValidProviderAmount(orderAmount) {
+		return nil, infraerrors.BadRequest("INVALID_AMOUNT", "credited amount must be a finite positive number after rounding")
+	}
 	feeRate := cfg.RechargeFeeRate
 	methodCurrency := payment.DefaultPaymentCurrency
 	if s.configService != nil {
@@ -115,6 +118,9 @@ func (s *PaymentService) CreateOrder(ctx context.Context, req CreateOrderRequest
 }
 
 func (s *PaymentService) validateOrderInput(ctx context.Context, req CreateOrderRequest, cfg *PaymentConfig) (*dbent.SubscriptionPlan, error) {
+	if req.OrderType != payment.OrderTypeBalance && req.OrderType != payment.OrderTypeSubscription {
+		return nil, infraerrors.BadRequest("INVALID_ORDER_TYPE", "order type must be balance or subscription")
+	}
 	if req.OrderType == payment.OrderTypeBalance && cfg.BalanceDisabled {
 		return nil, infraerrors.Forbidden("BALANCE_PAYMENT_DISABLED", "balance recharge has been disabled")
 	}
@@ -171,6 +177,17 @@ func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderReq
 		return nil, err
 	}
 	providerSnapshot := buildPaymentOrderProviderSnapshot(sel, req)
+	currency := payment.DefaultPaymentCurrency
+	if sel != nil {
+		currency = paymentProviderConfigCurrency(sel.ProviderKey, sel.Config)
+	}
+	var promotionSnapshot map[string]any
+	if cfg.RechargePromotionEnabled {
+		promotionSnapshot = buildRechargePromotionSnapshot(cfg.RechargePromotion, req.OrderType, limitAmount, orderAmount, cfg.BalanceRechargeMultiplier, currency, time.Now())
+	}
+	if promotionSnapshot != nil {
+		orderAmount = decimal.NewFromFloat(orderAmount).Add(decimal.NewFromFloat(promotionSnapshot["bonus_amount"].(float64))).InexactFloat64()
+	}
 	selectedInstanceID := ""
 	selectedProviderKey := ""
 	if sel != nil {
@@ -183,6 +200,7 @@ func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderReq
 		SetUserName(user.Username).
 		SetNillableUserNotes(psNilIfEmpty(user.Notes)).
 		SetAmount(orderAmount).
+		SetPromotionSnapshot(promotionSnapshot).
 		SetPayAmount(payAmount).
 		SetFeeRate(feeRate).
 		SetRechargeCode("").
@@ -731,26 +749,29 @@ func classifyCreatePaymentError(req CreateOrderRequest, providerKey string, err 
 
 func buildCreateOrderResponse(order *dbent.PaymentOrder, req CreateOrderRequest, payAmount float64, sel *payment.InstanceSelection, pr *payment.CreatePaymentResponse, resultType payment.CreatePaymentResultType) *CreateOrderResponse {
 	return &CreateOrderResponse{
-		OrderID:      order.ID,
-		Amount:       order.Amount,
-		PayAmount:    payAmount,
-		FeeRate:      order.FeeRate,
-		Status:       OrderStatusPending,
-		ResultType:   resultType,
-		PaymentType:  req.PaymentType,
-		OutTradeNo:   order.OutTradeNo,
-		PayURL:       pr.PayURL,
-		QRCode:       pr.QRCode,
-		ClientSecret: pr.ClientSecret,
-		IntentID:     pr.IntentID,
-		Currency:     pr.Currency,
-		CountryCode:  pr.CountryCode,
-		PaymentEnv:   pr.PaymentEnv,
-		OAuth:        pr.OAuth,
-		JSAPI:        pr.JSAPI,
-		JSAPIPayload: pr.JSAPI,
-		ExpiresAt:    order.ExpiresAt,
-		PaymentMode:  sel.PaymentMode,
+		OrderID:           order.ID,
+		Amount:            order.Amount,
+		BaseAmount:        PaymentOrderBaseAmount(order),
+		BonusAmount:       PaymentOrderBonusAmount(order),
+		PromotionSnapshot: order.PromotionSnapshot,
+		PayAmount:         payAmount,
+		FeeRate:           order.FeeRate,
+		Status:            OrderStatusPending,
+		ResultType:        resultType,
+		PaymentType:       req.PaymentType,
+		OutTradeNo:        order.OutTradeNo,
+		PayURL:            pr.PayURL,
+		QRCode:            pr.QRCode,
+		ClientSecret:      pr.ClientSecret,
+		IntentID:          pr.IntentID,
+		Currency:          pr.Currency,
+		CountryCode:       pr.CountryCode,
+		PaymentEnv:        pr.PaymentEnv,
+		OAuth:             pr.OAuth,
+		JSAPI:             pr.JSAPI,
+		JSAPIPayload:      pr.JSAPI,
+		ExpiresAt:         order.ExpiresAt,
+		PaymentMode:       sel.PaymentMode,
 	}
 }
 

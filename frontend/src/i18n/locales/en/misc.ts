@@ -527,6 +527,7 @@ export default {
       alreadyRefunded: 'Already Refunded',
       deductBalance: 'Deduct Balance',
       deductBalanceHint: 'Subtract recharged amount from user balance',
+      promotionRefundHint: 'Promotion orders require a full refund: recover both base and bonus credits before returning the payment. Insufficient balance cannot be overridden. Orders with affiliate rebates require offline reconciliation and cannot be refunded here.',
       userBalance: 'User Balance',
       orderAmount: 'Order Amount',
       insufficientBalance: 'Insufficient balance — will deduct to $0',

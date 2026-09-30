@@ -25,8 +25,35 @@ export type OrderType = 'balance' | 'subscription'
 
 // ==================== Configuration ====================
 
+export interface RechargePromotionTier {
+  min_amount: number
+  bonus_percent: number
+}
+
+/** A reusable, scheduled promotion. Thresholds use currency; rewards use balance credits. */
+export interface RechargePromotion {
+  enabled: boolean
+  title: string
+  subtitle: string
+  starts_at: string
+  ends_at: string
+  currency: string
+  tiers: RechargePromotionTier[]
+  max_bonus: number
+  active: boolean
+}
+
+/** Immutable amounts captured when an eligible recharge order is created. */
+export interface RechargePromotionSnapshot {
+  title: string
+  base_amount: number
+  bonus_amount: number
+  bonus_percent: number
+  currency: string
+}
+
 export interface PaymentConfig {
-  payment_enabled: boolean
+  enabled: boolean
   min_amount: number
   max_amount: number
   daily_limit: number
@@ -34,6 +61,7 @@ export interface PaymentConfig {
   order_timeout_minutes: number
   balance_disabled: boolean
   balance_recharge_multiplier: number
+  recharge_promotion?: RechargePromotion | null
   subscription_usd_to_cny_rate: number
   enabled_payment_types: PaymentType[]
   help_image_url: string
@@ -68,6 +96,7 @@ export interface CheckoutInfoResponse {
   plans: SubscriptionPlan[]
   balance_disabled: boolean
   balance_recharge_multiplier: number
+  recharge_promotion?: RechargePromotion | null
   /** Subscription CNY conversion rate (1 USD = X CNY); 0 = disabled, plan price is charged as-is */
   subscription_usd_to_cny_rate: number
   recharge_fee_rate: number
@@ -86,6 +115,9 @@ export interface PaymentOrder {
   id: number
   user_id: number
   amount: number
+  base_amount?: number
+  bonus_amount?: number
+  promotion_snapshot?: RechargePromotionSnapshot | null
   pay_amount: number
   currency?: string
   fee_rate: number
@@ -201,6 +233,9 @@ export interface WechatJSAPIPayload {
 export interface CreateOrderResult {
   order_id: number
   amount: number
+  base_amount?: number
+  bonus_amount?: number
+  promotion_snapshot?: RechargePromotionSnapshot | null
   pay_url?: string
   qr_code?: string
   client_secret?: string

@@ -657,6 +657,7 @@ export interface SystemSettings {
   // Payment configuration
   payment_enabled: boolean;
   risk_control_enabled: boolean;
+  recharge_promotion_enabled: boolean;
 
   // Cyber session block
   cyber_session_block_enabled: boolean;
@@ -979,6 +980,7 @@ export interface UpdateSettingsRequest {
   // Payment configuration
   payment_enabled?: boolean;
   risk_control_enabled?: boolean;
+  recharge_promotion_enabled?: boolean;
 
   // Cyber session block
   cyber_session_block_enabled?: boolean;

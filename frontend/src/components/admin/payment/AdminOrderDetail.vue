@@ -67,6 +67,8 @@
         </div>
       </div>
 
+      <RechargePromotionReceipt :snapshot="order.promotion_snapshot" />
+
       <div
         v-if="order.refund_amount"
         class="rounded-lg border border-red-200 bg-red-50 p-3 dark:border-red-800 dark:bg-red-900/20"
@@ -117,6 +119,7 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
+import RechargePromotionReceipt from '@/components/payment/RechargePromotionReceipt.vue'
 import type { PaymentOrder } from '@/types/payment'
 import { statusBadgeClass, canRefund as canRefundStatus, formatOrderDateTime } from '@/components/payment/orderUtils'
 import { currencySymbol } from '@/components/payment/currency'

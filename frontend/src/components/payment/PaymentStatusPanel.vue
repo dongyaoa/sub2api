@@ -30,6 +30,7 @@
               </div>
             </div>
           </div>
+          <RechargePromotionReceipt v-if="paidOrder" class="w-full" :snapshot="paidOrder.promotion_snapshot" />
           <button class="btn btn-primary" @click="handleDone">{{ t('common.confirm') }}</button>
         </div>
       </div>
@@ -228,6 +229,7 @@ import { getPaymentPopupFeatures, isBuiltInAlipayMethod, isBuiltInWxpayMethod } 
 import { currencySymbol, formatPaymentAmount, normalizePaymentCurrency } from '@/components/payment/currency'
 import type { PaymentOrder } from '@/types/payment'
 import Icon from '@/components/icons/Icon.vue'
+import RechargePromotionReceipt from '@/components/payment/RechargePromotionReceipt.vue'
 import QRCode from 'qrcode'
 import alipayIcon from '@/assets/icons/alipay.svg'
 import wxpayIcon from '@/assets/icons/wxpay.svg'
