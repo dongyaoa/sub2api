@@ -186,7 +186,9 @@ func (s *PaymentService) createOrderInTx(ctx context.Context, req CreateOrderReq
 		promotionSnapshot = buildRechargePromotionSnapshot(cfg.RechargePromotion, req.OrderType, limitAmount, orderAmount, cfg.BalanceRechargeMultiplier, currency, time.Now())
 	}
 	if promotionSnapshot != nil {
-		orderAmount = decimal.NewFromFloat(orderAmount).Add(decimal.NewFromFloat(promotionSnapshot["bonus_amount"].(float64))).InexactFloat64()
+		if bonusAmount, ok := promotionSnapshot["bonus_amount"].(float64); ok {
+			orderAmount = decimal.NewFromFloat(orderAmount).Add(decimal.NewFromFloat(bonusAmount)).InexactFloat64()
+		}
 	}
 	selectedInstanceID := ""
 	selectedProviderKey := ""

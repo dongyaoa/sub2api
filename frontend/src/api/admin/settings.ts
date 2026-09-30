@@ -660,6 +660,7 @@ export interface SystemSettings {
   recharge_promotion_enabled: boolean;
 
   // Cyber session block
+  cyber_policy_user_allowlist: string;
   cyber_session_block_enabled: boolean;
   cyber_session_block_ttl_seconds: number;
 
@@ -983,6 +984,7 @@ export interface UpdateSettingsRequest {
   recharge_promotion_enabled?: boolean;
 
   // Cyber session block
+  cyber_policy_user_allowlist?: string;
   cyber_session_block_enabled?: boolean;
   cyber_session_block_ttl_seconds?: number;
 
