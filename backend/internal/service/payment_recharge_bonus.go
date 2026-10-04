@@ -323,6 +323,11 @@ func paymentOrderAmountWithoutBonus(o *dbent.PaymentOrder) float64 {
 	if o == nil {
 		return 0
 	}
+	// The reporting helper rejects an out-of-range bonus; for affiliate
+	// payouts, an oversized recorded bonus must instead yield a zero base.
+	if o.OrderType == payment.OrderTypeBalance && o.BonusAmount > o.Amount {
+		return 0
+	}
 	base := PaymentOrderBaseAmount(o)
 	if base < 0 {
 		return 0
