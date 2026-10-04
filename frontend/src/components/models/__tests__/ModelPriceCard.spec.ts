@@ -254,3 +254,93 @@ describe('ModelPriceCard video pricing', () => {
     expect(wrapper.text()).not.toContain('modelSquare.input')
   })
 })
+
+function tokenVariant(inputPrice: number | null = 0.00000075): ModelPricingVariant {
+  return {
+    channelName: 'Codex GPT',
+    groupIds: [1],
+    pricing: {
+      billing_mode: 'token',
+      input_price: inputPrice,
+      output_price: 0.0000045,
+      cache_write_price: 0,
+      cache_read_price: null,
+      image_input_price: null,
+      image_output_price: null,
+      per_request_price: null,
+      intervals: [],
+    },
+  }
+}
+
+function mountAdjustedCard(variant: ModelPricingVariant, rate = 0.15) {
+  return mount(ModelPriceCard, {
+    props: {
+      model: { ...model, name: 'gpt-5.4-mini', platform: 'openai' },
+      variant,
+      showMultiplier: true,
+      multiplier: {
+        value: rate,
+        baseValue: rate,
+        source: 'group',
+        imageIndependent: false,
+        peakActive: false,
+        peakFactor: 1,
+      },
+    },
+    global: {
+      stubs: { Icon: true, PlatformIcon: true, Teleport: true },
+    },
+  })
+}
+
+describe('ModelPriceCard group multiplier prices', () => {
+  it('shows adjusted token prices with their base prices, multiplier and units', () => {
+    const wrapper = mountAdjustedCard(tokenVariant())
+    const rows = wrapper.findAll('.metric-box')
+
+    expect(rows.map((row) => row.get('.price').text())).toEqual(['$0.1125', '$0.675', '$0', '—'])
+    expect(rows.map((row) => row.get('.unit').text())).toEqual(['/ 1M', '/ 1M', '/ 1M', '/ 1M'])
+    expect(rows[0].get('.base-price').text()).toBe('$0.75 / 1M')
+    expect(rows[1].get('.base-price').text()).toBe('$4.5 / 1M')
+    expect(rows[2].get('.base-price').text()).toBe('$0 / 1M')
+    expect(wrapper.findAll('.multiplier-pill').map((pill) => pill.text())).toEqual(['×0.15', '×0.15', '×0.15'])
+    expect(rows[3].find('.adjusted-meta').exists()).toBe(false)
+  })
+
+  it('restores the original token prices and removes multiplier metadata when switched off', async () => {
+    const wrapper = mountAdjustedCard(tokenVariant())
+
+    await wrapper.setProps({ showMultiplier: false })
+
+    expect(wrapper.findAll('.price').map((price) => price.text())).toEqual(['$0.75', '$4.5', '$0', '—'])
+    expect(wrapper.find('.base-price').exists()).toBe(false)
+    expect(wrapper.find('.multiplier-pill').exists()).toBe(false)
+    expect(wrapper.find('.price--adjusted').exists()).toBe(false)
+
+    await wrapper.setProps({ showMultiplier: true })
+
+    expect(wrapper.get('.price').text()).toBe('$0.1125')
+    expect(wrapper.get('.base-price').text()).toBe('$0.75 / 1M')
+    expect(wrapper.get('.multiplier-pill').text()).toBe('×0.15')
+  })
+
+  it('keeps long decimal prices and fractional multipliers in the visible text', () => {
+    const wrapper = mountAdjustedCard(tokenVariant(0.00000000123456), 0.12345678)
+    const input = wrapper.findAll('.metric-box')[0]
+
+    expect(input.get('.price').text()).toBe('$0.00015241')
+    expect(input.get('.base-price').text()).toBe('$0.00123456 / 1M')
+    expect(input.get('.multiplier-pill').text()).toBe('×0.12345678')
+  })
+
+  it('preserves per-second units for both the adjusted and original video price', () => {
+    const wrapper = mountAdjustedCard(videoVariant(0.3))
+
+    expect(wrapper.get('.price').text()).toBe('$0.045')
+    expect(wrapper.get('.unit').text()).toBe('modelSquare.perSecond')
+    expect(wrapper.get('.base-price').text()).toBe('$0.3 modelSquare.perSecond')
+    expect(wrapper.get('.multiplier-pill').text()).toBe('×0.15')
+    expect(wrapper.get('.type-badge').text()).toBe('modelSquare.billingVideo')
+  })
+})
