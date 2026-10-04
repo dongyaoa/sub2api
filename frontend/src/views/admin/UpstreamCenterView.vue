@@ -1,0 +1,212 @@
+<template>
+  <AppLayout>
+    <div class="mx-auto w-full min-w-0 max-w-[1600px] space-y-4 pb-6">
+      <div class="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 dark:border-dark-700">
+        <div class="flex min-w-0 gap-3 overflow-x-auto sm:gap-5" role="tablist" :aria-label="t('upstreamCenter.title')"><button v-for="item in tabs" :id="`upstream-tab-${item}`" :key="item" type="button" role="tab" :aria-selected="tab === item" aria-controls="upstream-panel" class="relative flex shrink-0 items-center gap-1.5 border-b-2 pb-3 pt-1 text-sm transition-colors" :class="tab === item ? 'border-primary-600 font-semibold text-primary-700 dark:border-primary-400 dark:text-primary-300' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-dark-400 dark:hover:text-dark-200'" @click="tab = item"><Icon :name="item === 'suppliers' ? 'server' : item === 'monitors' ? 'chart' : item === 'oauth' ? 'shield' : item === 'local' ? 'grid' : 'lightbulb'" size="sm" />{{ item === 'oauth' ? t('intelligenceMonitor.oauth.title') : t(`upstreamCenter.tabs.${item}`) }}<span v-if="item === 'suppliers' || item === 'monitors'" class="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-normal text-gray-500 dark:bg-dark-800 dark:text-dark-400">{{ item === 'suppliers' ? overview?.suppliers.length || 0 : overview?.monitors.length || 0 }}</span></button></div>
+        <div class="mb-2 flex items-center gap-2"><button type="button" class="btn btn-secondary btn-sm" data-testid="intelligence-concurrency" @click="concurrencyDialog = true"><Icon name="cog" size="sm" class="mr-1.5" />{{ t('intelligenceMonitor.concurrency.title') }}</button><button type="button" class="btn btn-secondary btn-sm" data-testid="upstream-storage" @click="storageDialog = true"><Icon name="database" size="sm" class="mr-1.5" />{{ t('upstreamCenter.storage.title') }}</button><button v-if="tab === 'suppliers' || tab === 'monitors'" type="button" class="btn btn-primary btn-sm" @click="tab === 'suppliers' ? openSupplier() : openTarget()"><Icon name="plus" size="sm" class="mr-1.5" />{{ t(tab === 'suppliers' ? 'upstreamCenter.addSupplier' : 'upstreamCenter.addMonitor') }}</button></div>
+      </div>
+      <div v-if="error" role="alert" class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm text-rose-600 dark:border-rose-900 dark:bg-rose-500/10 dark:text-rose-400"><span>{{ error }}</span><button type="button" class="font-medium underline" @click="reload()">{{ t('upstreamCenter.retry') }}</button></div>
+      <div id="upstream-panel" role="tabpanel" :aria-labelledby="`upstream-tab-${tab}`" :aria-busy="loading" class="space-y-4">
+        <IntelligenceMonitorPanel v-if="visitedMonitorTabs.intelligence" v-show="tab === 'intelligence'" :hidden="tab !== 'intelligence'" :active="tab === 'intelligence'" :overview="overview" :refresh-key="storageRevision" @refresh-overview="reload()" />
+        <IntelligenceMonitorPanel v-if="visitedMonitorTabs.local" v-show="tab === 'local'" :hidden="tab !== 'local'" :active="tab === 'local'" local-only :overview="overview" :refresh-key="storageRevision" @refresh-overview="reload()" />
+        <IntelligenceMonitorPanel v-if="visitedMonitorTabs.oauth" v-show="tab === 'oauth'" :hidden="tab !== 'oauth'" :active="tab === 'oauth'" oauth-only :overview="overview" :refresh-key="storageRevision" @refresh-overview="reload()" />
+        <template v-if="tab === 'suppliers' || tab === 'monitors'">
+          <section v-if="overview" class="grid grid-cols-2 gap-3 lg:grid-cols-4" :aria-label="t(tab === 'suppliers' ? 'upstreamCenter.finance.title' : 'upstreamCenter.tabs.monitors')">
+            <div v-for="metric in tab === 'suppliers' ? supplierMetrics : monitorMetrics" :key="metric.key" class="card flex min-w-0 items-center gap-3 px-3 py-3 sm:px-4"><div class="shrink-0 rounded-lg bg-primary-50 p-2 text-primary-600 dark:bg-primary-500/10 dark:text-primary-400"><Icon :name="metric.icon" size="md" :stroke-width="2" /></div><div class="min-w-0"><p class="text-[11px] font-medium text-gray-500 dark:text-dark-400">{{ t(metric.key) }}</p><p class="mt-0.5 truncate text-xl font-bold tabular-nums text-gray-900 dark:text-white" :class="metric.color">{{ metric.value }}</p><p v-if="metric.note" class="mt-0.5 truncate text-[10px] text-gray-400 dark:text-dark-400">{{ metric.note }}</p></div></div>
+          </section>
+          <div v-if="tab === 'suppliers' && overview?.suppliers.length" class="rounded-xl border border-gray-200/80 bg-white p-1.5 dark:border-dark-700 dark:bg-dark-800">
+            <div class="flex min-w-0 flex-wrap items-center gap-1" role="tablist" :aria-label="t('upstreamCenter.quickSwitch')" data-testid="supplier-quick-tabs" @keydown="navigateSupplierTabs">
+              <button v-for="item in supplierTabs" :id="`supplier-filter-${item.id ?? 'all'}`" :key="item.id ?? 'all'" type="button" role="tab" :aria-selected="selectedSupplierId === item.id" :tabindex="selectedSupplierId === item.id ? 0 : -1" aria-controls="supplier-results" :title="item.name" class="flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-500" :class="selectedSupplierId === item.id ? 'bg-primary-50 font-semibold text-primary-700 dark:bg-primary-500/15 dark:text-primary-300' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900 dark:text-dark-300 dark:hover:bg-dark-700 dark:hover:text-white'" @click="selectedSupplierId = item.id">
+                <Icon v-if="item.id === null" name="server" size="sm" />
+                <span class="max-w-[180px] truncate">{{ item.name }}</span>
+                <span class="rounded-md px-1.5 py-0.5 text-[10px] font-medium tabular-nums" :class="selectedSupplierId === item.id ? 'bg-primary-100/70 text-primary-700 dark:bg-primary-500/20 dark:text-primary-300' : 'bg-gray-100 text-gray-400 dark:bg-dark-700 dark:text-dark-400'">{{ item.count }}</span>
+              </button>
+            </div>
+          </div>
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <div class="relative w-full sm:max-w-[280px]"><Icon name="search" size="sm" class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" /><input v-model="search" class="input !py-2 !pl-9 !text-xs" :aria-label="t('upstreamCenter.search')" :placeholder="t('upstreamCenter.search')" /></div>
+            <div class="flex w-full flex-wrap items-center justify-between gap-3 sm:w-auto">
+              <div class="flex items-center gap-0.5 rounded-lg bg-gray-100 p-0.5 dark:bg-dark-800" role="group" :aria-label="t('upstreamCenter.range')"><button v-for="value in windows" :key="value" type="button" class="rounded-md px-2.5 py-1.5 text-[11px] transition-colors" :class="window === value ? 'bg-white font-medium text-gray-900 shadow-sm dark:bg-dark-700 dark:text-gray-100' : 'text-gray-500 dark:text-dark-400'" :aria-pressed="window === value" @click="window = value">{{ t(`upstreamCenter.ranges.${value}`) }}</button></div>
+              <div class="flex items-center gap-2 text-[10px] text-gray-400 dark:text-dark-400">
+                <span class="hidden xl:inline" :title="t('upstreamCenter.refreshHint')">{{ updatedAt ? t('upstreamCenter.updated', { time: shortTime(updatedAt) }) : t('upstreamCenter.refreshHint') }}</span>
+                <button type="button" class="btn btn-secondary btn-sm" data-testid="upstream-order" :disabled="!canOrder" @click="openOrder()"><Icon name="menu" size="sm" class="mr-1.5" />{{ t('upstreamCenter.order.open') }}</button>
+                <button type="button" class="flex items-center gap-1.5 rounded-lg px-2 py-2 text-xs text-gray-500 hover:bg-gray-100 hover:text-primary-600 disabled:opacity-50 dark:text-dark-400 dark:hover:bg-dark-800" :aria-busy="loading" data-testid="upstream-refresh" @click="reload()"><Icon name="refresh" size="sm" :class="loading && 'animate-spin'" />{{ t('upstreamCenter.refresh') }}</button>
+              </div>
+            </div>
+          </div>
+          <div v-if="!overview && loading" class="space-y-3"><div v-for="n in 2" :key="n" class="card grid animate-pulse gap-6 p-5 lg:grid-cols-[220px_1fr]"><div class="h-28 rounded-lg bg-gray-100 dark:bg-dark-700"></div><div class="space-y-3"><div class="h-12 rounded-lg bg-gray-100 dark:bg-dark-700"></div><div class="h-12 rounded-lg bg-gray-100 dark:bg-dark-700"></div></div></div></div>
+          <div v-else-if="overview" :id="tab === 'suppliers' ? 'supplier-results' : undefined" :role="tab === 'suppliers' ? 'tabpanel' : undefined" :aria-labelledby="tab === 'suppliers' ? `supplier-filter-${selectedSupplierId ?? 'all'}` : undefined">
+            <div v-if="tab === 'suppliers' && filteredSuppliers.length" class="space-y-4"><UpstreamSupplierCard v-for="supplier in filteredSuppliers" :key="supplier.id" :supplier="supplier" :busy-ids="busyIds" :running-ids="runningIds" @edit="openSupplier" @delete="confirmSupplierDelete" @add-target="supplier => openTarget(null, supplier)" @order-groups="openGroupOrder" @edit-target="item => openTarget(item)" @delete-target="confirmTargetDelete" @intelligence="openGroupIntelligence" @target-details="showTargetDetails" @finance="showSupplierDetails" @run="runTarget" @toggle="toggleTarget" @sync="syncBalance" /></div>
+            <div v-else-if="tab === 'monitors' && filteredMonitors.length" class="grid items-start gap-4 lg:grid-cols-2 2xl:grid-cols-3"><UpstreamTargetCard v-for="target in filteredMonitors" :key="target.id" :target="target" :busy="busyIds.has(target.id)" :running="runningIds.has(target.id)" @edit="item => openTarget(item)" @delete="confirmTargetDelete" @details="showTargetDetails" @run="runTarget" @toggle="toggleTarget" /></div>
+            <EmptyState v-else-if="search" class="card py-12" :title="t('upstreamCenter.noMatches')" />
+            <EmptyState v-else class="card py-12" :title="t(tab === 'suppliers' ? 'upstreamCenter.emptySuppliers' : 'upstreamCenter.emptyMonitors')" :description="t(tab === 'suppliers' ? 'upstreamCenter.emptySuppliersHint' : 'upstreamCenter.emptyMonitorsHint')" :action-text="t(tab === 'suppliers' ? 'upstreamCenter.addSupplier' : 'upstreamCenter.addMonitor')" @action="tab === 'suppliers' ? openSupplier() : openTarget()"><template #icon><Icon :name="tab === 'suppliers' ? 'server' : 'chart'" size="xl" class="text-primary-500" /></template></EmptyState>
+          </div>
+          <p v-if="overview && tab === 'suppliers'" class="text-[10px] leading-5 text-gray-400 dark:text-dark-400">{{ t('upstreamCenter.finance.note') }}<span class="ml-1">{{ t('upstreamCenter.finance.accountingDate', { from: dateTime(overview.summary.from), to: dateTime(overview.summary.to) }) }}</span></p>
+          <p v-else-if="overview" class="text-[10px] leading-5 text-gray-400 dark:text-dark-400">{{ t('upstreamCenter.latencyHint') }}</p>
+        </template>
+      </div>
+    </div>
+    <UpstreamIntelligenceDialog v-if="intelligenceTarget" :key="intelligenceTarget.id" :target="intelligenceTarget" :overview="overview" @close="intelligenceTargetId = null" @changed="storageRevision++" @refresh-overview="reload()" />
+    <UpstreamOrderDialog :show="!!ordering" :scope="ordering?.scope || 'suppliers'" :supplier-id="ordering?.supplierId" :supplier-name="ordering?.supplierName" @close="ordering = null" @saved="orderSaved" />
+    <UpstreamSupplierDialog :show="supplierDialog" :supplier="editingSupplier" @close="supplierDialog = false" @saved="saved" @changed="reload()" />
+    <UpstreamTargetDialog :show="targetDialog" :target="editingTarget" :supplier="targetSupplier" @close="targetDialog = false" @saved="saved" />
+    <UpstreamDetailDialog :show="detailDialog" :target="detailTarget" :supplier="detailSupplier" :model="detailModel" :record="detailRecord" :window="window" :busy="!!detailTarget && busyIds.has(detailTarget.id)" @close="detailDialog = false" @run="runTarget" @sync="syncBalance" @window-change="window = $event" />
+    <IntelligenceConcurrencyDialog v-if="concurrencyDialog" :show="true" @close="concurrencyDialog = false" />
+    <UpstreamStorageDialog :show="storageDialog" @close="storageDialog = false" @changed="storageChanged" />
+    <UpstreamDeleteDialog :show="!!deleteItem" :item="deleteItem" :busy="deleting" :error="deleteError" @close="deleteItem = null" @confirm="deleteConfirmed" />
+  </AppLayout>
+</template>
+<script setup lang="ts">
+import { computed, defineAsyncComponent, onBeforeUnmount, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
+import AppLayout from '@/components/layout/AppLayout.vue'
+import Icon from '@/components/icons/Icon.vue'
+import EmptyState from '@/components/common/EmptyState.vue'
+import UpstreamDeleteDialog from '@/components/admin/upstream/UpstreamDeleteDialog.vue'
+import UpstreamStorageDialog from '@/components/admin/upstream/UpstreamStorageDialog.vue'
+import IntelligenceMonitorPanel from '@/components/admin/upstream/IntelligenceMonitorPanel.vue'
+import UpstreamSupplierCard from '@/components/admin/upstream/UpstreamSupplierCard.vue'
+import UpstreamTargetCard from '@/components/admin/upstream/UpstreamTargetCard.vue'
+import UpstreamSupplierDialog from '@/components/admin/upstream/UpstreamSupplierDialog.vue'
+import UpstreamTargetDialog from '@/components/admin/upstream/UpstreamTargetDialog.vue'
+import UpstreamDetailDialog from '@/components/admin/upstream/UpstreamDetailDialog.vue'
+import UpstreamOrderDialog from '@/components/admin/upstream/UpstreamOrderDialog.vue'
+import { upstreamCenterAPI, type UpstreamHistoryRecord, type UpstreamOverview, type UpstreamSupplier, type UpstreamTarget, type UpstreamWindow } from '@/api/admin/upstreamCenter'
+import { dateTime, money, shortTime, overallTargetStatus } from '@/components/admin/upstream/format'
+import { extractApiErrorMessage } from '@/utils/apiError'
+import { useAppStore } from '@/stores/app'
+import { useMonitorRefresh } from '@/composables/useMonitorRefresh'
+import { reconcileMonitorData } from '@/components/admin/upstream/monitorReconcile'
+const IntelligenceConcurrencyDialog = defineAsyncComponent(() => import('@/components/admin/upstream/IntelligenceConcurrencyDialog.vue'))
+const UpstreamIntelligenceDialog = defineAsyncComponent(() => import('@/components/admin/upstream/UpstreamIntelligenceDialog.vue'))
+const { t } = useI18n()
+const app = useAppStore()
+const tabs = ['suppliers', 'monitors', 'intelligence', 'local', 'oauth'] as const
+const windows: UpstreamWindow[] = ['24h', '7d', '30d']
+const tab = ref<typeof tabs[number]>('suppliers'), window = ref<UpstreamWindow>('24h'), search = ref('')
+const visitedMonitorTabs = ref({ intelligence: false, local: false, oauth: false })
+watch(tab, value => {
+  if (value === 'intelligence' || value === 'local' || value === 'oauth') visitedMonitorTabs.value[value] = true
+})
+const overview = ref<UpstreamOverview | null>(null), error = ref(''), updatedAt = ref('')
+const selectedSupplierId = ref<number | null>(null)
+const supplierTabs = computed(() => [
+  { id: null as number | null, name: t('upstreamCenter.allSuppliers'), count: overview.value?.suppliers.length || 0 },
+  ...(overview.value?.suppliers.map(supplier => ({ id: supplier.id, name: supplier.name, count: supplier.targets.length })) || []),
+])
+function navigateSupplierTabs(event: KeyboardEvent) {
+  if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
+  const buttons = Array.from((event.currentTarget as HTMLElement).querySelectorAll<HTMLButtonElement>('[role="tab"]'))
+  const index = buttons.indexOf(event.target as HTMLButtonElement)
+  if (index < 0) return
+  event.preventDefault()
+  const nextIndex = event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + buttons.length) % buttons.length
+  const next = buttons[nextIndex]
+  next?.click()
+  next?.focus({ preventScroll: true })
+  next?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
+}
+watch(() => overview.value?.suppliers, suppliers => {
+  if (suppliers && selectedSupplierId.value !== null && !suppliers.some(supplier => supplier.id === selectedSupplierId.value)) selectedSupplierId.value = null
+})
+const storageDialog = ref(false), concurrencyDialog = ref(false), storageRevision = ref(0)
+function storageChanged() { storageRevision.value++; void reload() }
+const busyIds = ref(new Set<number>()), runningIds = ref(new Set<number>())
+const allGroups = computed(() => overview.value?.suppliers.flatMap(supplier => supplier.targets) || [])
+const intelligenceTargetId = ref<number | null>(null)
+const intelligenceTarget = computed(() => tab.value === 'suppliers' ? allGroups.value.find(target => target.id === intelligenceTargetId.value && target.provider === 'openai') || null : null)
+function openGroupIntelligence(target: UpstreamTarget) { if (target.provider === 'openai') intelligenceTargetId.value = target.id }
+watch([tab, allGroups], () => {
+  if (tab.value !== 'suppliers' || !allGroups.value.some(target => target.id === intelligenceTargetId.value && target.provider === 'openai')) intelligenceTargetId.value = null
+})
+const allTargets = computed(() => [...allGroups.value, ...(overview.value?.monitors || [])])
+const match = (value: string) => value.toLowerCase().includes(search.value.toLowerCase().trim())
+const matchesTarget = (target: UpstreamTarget) => match(`${target.name} ${target.endpoint} ${target.models.join(' ')}`)
+const filteredSuppliers = computed(() => overview.value?.suppliers.filter(supplier =>
+  (selectedSupplierId.value === null || supplier.id === selectedSupplierId.value) &&
+  (match(`${supplier.name} ${supplier.website}`) || supplier.targets.some(matchesTarget)),
+) || [])
+const filteredMonitors = computed(() => overview.value?.monitors.filter(matchesTarget) || [])
+const ordering = ref<{ scope: 'suppliers' | 'monitors' | 'groups'; supplierId?: number; supplierName?: string } | null>(null)
+const canOrder = computed(() => ((tab.value === 'suppliers' ? overview.value?.suppliers.length : overview.value?.monitors.length) ?? 0) > 1)
+function openOrder() {
+  if (canOrder.value && (tab.value === 'suppliers' || tab.value === 'monitors')) ordering.value = { scope: tab.value }
+}
+function openGroupOrder(supplier: UpstreamSupplier) { ordering.value = { scope: 'groups', supplierId: supplier.id, supplierName: supplier.name } }
+function orderSaved() { ordering.value = null; void reload() }
+const supplierMetrics = computed(() => {
+  const summary = overview.value?.summary
+  return [
+    { key: 'upstreamCenter.supplierCount', value: overview.value?.suppliers.length || 0, icon: 'server' as const, color: '', note: t('upstreamCenter.groupCount', { count: allGroups.value.length }) },
+    { key: 'upstreamCenter.finance.todayCost', value: money(summary?.business_cost, summary?.currency), icon: 'creditCard' as const, color: '', note: t(`upstreamCenter.finance.${summary?.cost_source || 'unknown'}`) },
+    { key: 'upstreamCenter.finance.todayRevenue', value: money(summary?.revenue, summary?.currency), icon: 'chart' as const, color: '', note: t('upstreamCenter.finance.requests', { count: summary?.request_count || 0 }) },
+    { key: 'upstreamCenter.finance.todayProfit', value: summary?.profit == null ? t('upstreamCenter.finance.pending') : money(summary.profit, summary.currency), icon: 'chart' as const, color: summary?.profit == null ? '!text-sm !text-amber-600 dark:!text-amber-400' : summary.profit < 0 ? '!text-rose-600 dark:!text-rose-400' : '!text-primary-700 dark:!text-primary-300', note: `${t('upstreamCenter.finance.monitorCost')} ${money(summary?.monitor_cost, summary?.currency)}` },
+  ]
+})
+const monitorMetrics = computed(() => {
+  const monitors = overview.value?.monitors || []
+  return [
+    { key: 'upstreamCenter.monitorCount', value: monitors.length, icon: 'chart' as const, note: '', color: '' },
+    { key: 'upstreamCenter.status.operational', value: monitors.filter(item => overallTargetStatus(item) === 'operational').length, icon: 'checkCircle' as const, note: '', color: '!text-emerald-600 dark:!text-emerald-400' },
+    { key: 'upstreamCenter.status.degraded', value: monitors.filter(item => ['degraded', 'stale'].includes(overallTargetStatus(item))).length, icon: 'exclamationCircle' as const, note: '', color: '!text-amber-600 dark:!text-amber-400' },
+    { key: 'upstreamCenter.status.error', value: monitors.filter(item => ['failed', 'error'].includes(overallTargetStatus(item))).length, icon: 'xCircle' as const, note: '', color: '!text-rose-600 dark:!text-rose-400' },
+  ]
+})
+let disposed = false
+const { loading, refresh: reload } = useMonitorRefresh({
+  paused: () => !!ordering.value,
+  // Artwork tabs need source/rate metadata less often than the live monitors.
+  intervalMs: () => tab.value === 'suppliers' || tab.value === 'monitors' ? 5000 : 30000,
+  request: signal => upstreamCenterAPI.overview(window.value, signal),
+  apply: result => { overview.value = reconcileMonitorData(overview.value, result); updatedAt.value = new Date().toISOString(); error.value = '' },
+  onError: err => { error.value = extractApiErrorMessage(err, t('upstreamCenter.loadFailed')) },
+})
+watch(window, () => void reload())
+watch(tab, (value, previous) => {
+  search.value = ''
+  if ((value === 'suppliers' || value === 'monitors') && (previous === 'intelligence' || previous === 'local' || previous === 'oauth')) void reload()
+})
+const supplierDialog = ref(false), targetDialog = ref(false), editingSupplier = ref<UpstreamSupplier | null>(null), editingTarget = ref<UpstreamTarget | null>(null), targetSupplier = ref<UpstreamSupplier | null>(null)
+function openSupplier(supplier: UpstreamSupplier | null = null) { editingSupplier.value = supplier; supplierDialog.value = true }
+function openTarget(target: UpstreamTarget | null = null, supplier: UpstreamSupplier | null = null) { editingTarget.value = target; targetSupplier.value = supplier || overview.value?.suppliers.find(item => item.id === target?.supplier_id) || null; targetDialog.value = true }
+function saved() { app.showSuccess(t('upstreamCenter.saved')); void reload() }
+const detailDialog = ref(false), detailTargetId = ref<number | null>(null), detailSupplierId = ref<number | null>(null), detailModel = ref(''), detailRecord = ref<UpstreamHistoryRecord | null>(null)
+const detailTarget = computed(() => allTargets.value.find(item => item.id === detailTargetId.value) || null)
+const detailSupplier = computed(() => overview.value?.suppliers.find(item => item.id === detailSupplierId.value) || null)
+function showTargetDetails(target: UpstreamTarget, model: string, record?: UpstreamHistoryRecord) { detailTargetId.value = target.id; detailSupplierId.value = target.supplier_id; detailModel.value = model; detailRecord.value = record || null; detailDialog.value = true }
+function showSupplierDetails(supplier: UpstreamSupplier) { detailTargetId.value = null; detailSupplierId.value = supplier.id; detailModel.value = ''; detailRecord.value = null; detailDialog.value = true }
+async function targetAction(id: number, action: () => Promise<void>) {
+  if (busyIds.value.has(id)) return
+  busyIds.value = new Set([...busyIds.value, id])
+  try { await action(); if (!disposed) await reload() }
+  catch (err) { app.showError(extractApiErrorMessage(err, t('upstreamCenter.saveFailed'))) }
+  finally { const ids = new Set(busyIds.value); ids.delete(id); busyIds.value = ids }
+}
+function runTarget(target: UpstreamTarget) {
+  if (busyIds.value.has(target.id)) return
+  void targetAction(target.id, async () => {
+    runningIds.value = new Set([...runningIds.value, target.id])
+    try { await upstreamCenterAPI.run(target.id); app.showSuccess(t('upstreamCenter.runComplete')) }
+    finally { const ids = new Set(runningIds.value); ids.delete(target.id); runningIds.value = ids }
+  })
+}
+function toggleTarget(target: UpstreamTarget) { void targetAction(target.id, async () => { await upstreamCenterAPI.updateTarget(target.id, { enabled: !target.enabled }) }) }
+function syncBalance(id: number) { void targetAction(id, async () => { const balance = await upstreamCenterAPI.syncBalance(id); if (balance.status === 'ok') app.showSuccess(t('upstreamCenter.balanceSynced')); else if (balance.status === 'unsupported') app.showInfo(t('upstreamCenter.wallet.unsupported')); else app.showError(balance.error || t('upstreamCenter.balanceFailed')) }) }
+const deleteItem = ref<{ kind: 'supplier' | 'target'; id: number; name: string } | null>(null)
+const deleting = ref(false), deleteError = ref('')
+function confirmSupplierDelete(supplier: UpstreamSupplier) { deleteError.value = ''; deleteItem.value = { kind: 'supplier', id: supplier.id, name: supplier.name } }
+function confirmTargetDelete(target: UpstreamTarget) { deleteError.value = ''; deleteItem.value = { kind: 'target', id: target.id, name: target.name } }
+async function deleteConfirmed(mode: 'archive' | 'purge') {
+  if (!deleteItem.value || deleting.value) return
+  const item = deleteItem.value; deleting.value = true; deleteError.value = ''
+  try {
+    if (mode === 'purge') await upstreamCenterAPI.purge({ kind: item.kind, id: item.id, confirm_name: item.name })
+    else if (item.kind === 'supplier') await upstreamCenterAPI.deleteSupplier(item.id)
+    else await upstreamCenterAPI.deleteTarget(item.id)
+    if (disposed) return
+    deleteItem.value = null; app.showSuccess(t(mode === 'purge' ? 'upstreamCenter.storage.purged' : 'upstreamCenter.storage.archived')); storageRevision.value++; await reload()
+  } catch (err) { if (!disposed) deleteError.value = extractApiErrorMessage(err, t('upstreamCenter.storage.actionFailed')) }
+  finally { deleting.value = false }
+}
+onBeforeUnmount(() => { disposed = true })
+</script>

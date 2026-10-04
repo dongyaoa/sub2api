@@ -800,6 +800,7 @@ func (s *OpenAIGatewayService) readOpenAICompatBufferedTerminal(
 		streamInterval = time.Duration(s.cfg.Gateway.StreamDataIntervalTimeout) * time.Second
 	}
 	var timeoutCh <-chan time.Time
+	streamInterval = intelligenceMonitorStreamInterval(c, streamInterval)
 	var timeoutTimer *time.Timer
 	resetTimeout := func() {
 		if streamInterval <= 0 {

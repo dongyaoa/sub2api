@@ -17,6 +17,9 @@ vi.mock('vue-i18n', async (importOriginal) => {
   return { ...await importOriginal<typeof import('vue-i18n')>(), useI18n: () => ({ t: (key: string) => key, locale: state.locale }) }
 })
 vi.mock('@/api/payment', () => ({ paymentAPI: { getConfig } }))
+vi.mock('@/api/pelicanMonitor', () => ({
+  pelicanMonitorAPI: { config: async () => ({ enabled: false, title: '', description: '', notice: '' }) },
+}))
 vi.mock('@/composables/useBatchImageAccess', () => ({
   useBatchImageAccess: () => ({ canUseBatchImage: ref(false), refreshBatchImageAccess: vi.fn() }),
 }))

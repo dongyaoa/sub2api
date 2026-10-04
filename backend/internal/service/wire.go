@@ -987,6 +987,9 @@ var ProviderSet = wire.NewSet(
 	ProvidePaymentOrderExpiryService,
 	ProvideBalanceNotifyService,
 	ProvideChannelMonitorService,
+	ProvideUpstreamCenterService,
+	NewUpstreamFinanceService,
+	ProvideIntelligenceMonitorService,
 	ProvideChannelMonitorRunner,
 	NewChannelMonitorQuotaFetcher,
 	ProvideChannelMonitorV2Service,
@@ -1097,4 +1100,27 @@ func ProvideClaudeResetCreditService(accounts AccountRepository, tokens *ClaudeT
 	s := NewClaudeResetCreditService(accounts, tokens, proxies, settings)
 	s.ConfigureRedemption(idem, locks)
 	return s
+}
+
+// ProvideUpstreamCenterService starts administrator-only probes independently
+// of the existing channel-monitor display mode.
+func ProvideUpstreamCenterService(
+	repo UpstreamCenterRepository,
+	encryptor SecretEncryptor,
+	accountRepo AccountRepository,
+	finance *UpstreamFinanceService,
+	apiKeys *APIKeyService,
+) *UpstreamCenterService {
+	svc := NewUpstreamCenterService(repo, encryptor, accountRepo, finance)
+	svc.storageKeys = apiKeys
+	svc.Start()
+	return svc
+}
+
+// ProvideIntelligenceMonitorService starts artwork and candy monitoring.
+func ProvideIntelligenceMonitorService(repo IntelligenceMonitorRepository, encryptor SecretEncryptor, upstreamRepo UpstreamCenterRepository, groups GroupRepository, apiKeys *APIKeyService, finance *UpstreamFinanceService, cfg *config.Config, accounts AccountRepository, gateway *OpenAIGatewayService, concurrency *ConcurrencyService) *IntelligenceMonitorService {
+	svc := NewIntelligenceMonitorService(repo, encryptor, upstreamRepo, groups, apiKeys, finance, cfg)
+	svc.ConfigureOpenAIOAuth(accounts, gateway, concurrency)
+	svc.Start()
+	return svc
 }

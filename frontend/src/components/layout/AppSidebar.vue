@@ -198,6 +198,7 @@ import { useI18n } from 'vue-i18n'
 import { useAdminSettingsStore, useAppStore, useAuthStore, useOnboardingStore } from '@/stores'
 import VersionBadge from '@/components/common/VersionBadge.vue'
 import Icon from '@/components/icons/Icon.vue'
+import { usePelicanMonitorStore } from '@/stores/pelicanMonitor'
 import { sanitizeSvg } from '@/utils/sanitize'
 import { sanitizeUrl } from '@/utils/url'
 import { FeatureFlags, makeSidebarFlag } from '@/utils/featureFlags'
@@ -250,6 +251,8 @@ const appStore = useAppStore()
 const authStore = useAuthStore()
 const onboardingStore = useOnboardingStore()
 const adminSettingsStore = useAdminSettingsStore()
+const pelicanMonitorStore = usePelicanMonitorStore()
+watch(() => route.path, () => { void pelicanMonitorStore.load() })
 const { canUseBatchImage, refreshBatchImageAccess } = useBatchImageAccess()
 // The purchase page already loads checkout data and seeds the shared promotion cache.
 const { activePromotion: activeRechargePromotion } = useRechargePromotion(() => route.path !== '/purchase')
@@ -643,6 +646,7 @@ const ChevronDoubleRightIcon = {
     )
 }
 
+const PelicanIcon = { render: () => h(Icon, { name: 'lightbulb', size: 'md' }) }
 const SignalIcon = {
   render: () =>
     h(
@@ -753,6 +757,7 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
     { path: '/model-square', label: locale.value === 'zh' ? '模型广场' : 'Model Square', icon: PriceTagIcon, hideInSimpleMode: true },
     { path: '/available-channels', label: t('nav.availableChannels'), icon: ChannelIcon, hideInSimpleMode: true, featureFlag: flagAvailableChannels },
     { path: '/monitor', label: t('nav.channelStatus'), icon: SignalIcon, featureFlag: flagChannelMonitor },
+    { path: '/pelican-monitor', label: t('pelicanMonitor.title'), icon: PelicanIcon, featureFlag: () => pelicanMonitorStore.enabled },
     { path: '/subscriptions', label: t('nav.mySubscriptions'), icon: CreditCardIcon, hideInSimpleMode: true, featureFlag: flagSubscription },
     { path: '/purchase', label: purchaseNavLabel.value, icon: RechargeSubscriptionIcon, hideInSimpleMode: true, featureFlag: flagPayment },
     { path: '/orders', label: t('nav.myOrders'), icon: OrderListIcon, hideInSimpleMode: true, featureFlag: flagPayment },
@@ -818,6 +823,7 @@ const adminNavItems = computed((): NavItem[] => {
     // 「仅充值」站点连管理端的「订阅管理」入口也一并收起（路由本身不拦截）。
     { path: '/admin/subscriptions', label: t('nav.subscriptions'), icon: CreditCardIcon, hideInSimpleMode: true, featureFlag: flagSubscription },
     { path: '/admin/accounts', label: t('nav.accounts'), icon: GlobeIcon },
+    { path: '/admin/upstreams', label: t('upstreamCenter.title'), icon: ServerIcon },
     { path: '/admin/plugins', label: t('nav.plugins'), icon: PluginIcon, featureFlag: flagPluginManagement },
     { path: '/admin/announcements', label: t('nav.announcements'), icon: BellIcon },
     { path: '/admin/proxies', label: t('nav.proxies'), icon: ServerIcon },

@@ -1,0 +1,167 @@
+import { apiClient } from '../client'
+
+export const PELICAN_MODEL = 'gpt-6-astra'
+export const PELICAN_REASONING = 'high'
+export const PELICAN_PROMPT = '创建一个 HTML，内容是用 SVG 绘制一个鹈鹕骑自行车的 2D 动画。你不需要任何测试。'
+export type IntelligenceSource = 'external' | 'upstream' | 'local_group' | 'openai_oauth'
+export type IntelligenceRunStatus = 'pending' | 'running' | 'succeeded' | 'failed'
+export type IntelligenceTestKind = 'pelican' | 'candy'
+export type IntelligenceRate = Record<string, unknown> | null
+export interface IntelligenceOrderInput { scope: 'intelligence' | 'oauth'; ids: number[] }
+export interface IntelligenceConcurrencyInput {
+  max_concurrency: number
+  candy_max_concurrency: number
+}
+export interface IntelligenceConcurrency extends IntelligenceConcurrencyInput {
+  source: 'deployment' | 'database'
+  pelican_running: number
+  pelican_pending: number
+  candy_running: number
+  candy_pending: number
+}
+
+export interface IntelligencePublicDisplaySettings {
+  enabled: boolean
+  hide_failed?: boolean
+  title: string
+  description: string
+  notice: string
+  plan_ids: number[]
+}
+
+export interface IntelligencePlanInput {
+  name: string
+  model?: string
+  source_type: IntelligenceSource
+  endpoint?: string
+  api_key?: string
+  upstream_target_id?: number | null
+  account_id?: number | null
+  group_id?: number | null
+  supplier_note: string
+  group_note: string
+  rate_note: string
+  notes: string
+  api_mode: 'responses' | 'chat_completions'
+  enabled: boolean
+  candy_enabled?: boolean
+  candy_interval_seconds?: number
+  local_api_key_id?: number | null
+  interval_seconds: number
+  timeout_seconds: number
+}
+export interface IntelligenceRun {
+  id: number
+  plan_id: number
+  status: IntelligenceRunStatus
+  test_kind?: IntelligenceTestKind
+  correct?: boolean | null
+  answer?: string
+  trigger: 'manual' | 'scheduled'
+  created_at: string
+  started_at: string | null
+  finished_at: string | null
+  duration_ms: number | null
+  http_status: number | null
+  error: string
+  model: string
+  reasoning_effort: string
+  prompt: string
+  source_type: IntelligenceSource
+  source_name: string
+  source_endpoint: string
+  source_snapshot: Record<string, unknown> | null
+  rate_snapshot: IntelligenceRate
+  notes_snapshot: Record<string, unknown> | string | null
+  html?: string
+  raw_text?: string
+}
+export interface IntelligencePlan extends Omit<IntelligencePlanInput, 'api_key'> {
+  oauth_account_status?: {
+    status: 'normal' | 'weekly_limited' | 'unavailable'
+    monitoring_paused: boolean
+    groups?: { id: number; name: string }[]
+    reset_at?: string | null
+    weekly_used_percent?: number | null
+  }
+  id: number
+  model: string
+  reasoning_effort: string
+  prompt: string
+  api_key_masked: string
+  source_name: string
+  rate_snapshot: IntelligenceRate
+  created_by: number
+  created_at: string
+  updated_at: string
+  last_run_at: string | null
+  next_run_at: string | null
+  latest_run: IntelligenceRun | null
+  recent_runs?: IntelligenceRun[]
+  candy_latest_run?: IntelligenceRun | null
+  candy_recent_runs?: IntelligenceRun[]
+  candy_next_run_at?: string | null
+  candy_last_run_at?: string | null
+  local_api_key_managed?: boolean
+  local_api_key_name?: string
+  local_group_name?: string
+  local_group_rate_multiplier?: number | null
+  local_group_status?: string
+}
+export interface IntelligenceRunPage {
+  items: IntelligenceRun[]
+  total: number
+  page: number
+  page_size: number
+}
+const base = '/admin/intelligence-monitors'
+export const intelligenceMonitorAPI = {
+  async publicDisplay(signal?: AbortSignal): Promise<IntelligencePublicDisplaySettings> {
+    return (await apiClient.get(`${base}/public-display`, { signal })).data
+  },
+  async updatePublicDisplay(input: IntelligencePublicDisplaySettings): Promise<IntelligencePublicDisplaySettings> {
+    return (await apiClient.put(`${base}/public-display`, input)).data
+  },
+  async concurrency(signal?: AbortSignal): Promise<IntelligenceConcurrency> {
+    return (await apiClient.get(`${base}/concurrency`, { signal })).data
+  },
+  async updateConcurrency(input: IntelligenceConcurrencyInput): Promise<IntelligenceConcurrency> {
+    return (await apiClient.put(`${base}/concurrency`, input)).data
+  },
+  async reorder(input: IntelligenceOrderInput): Promise<void> {
+    await apiClient.put(`${base}/plans/order`, input)
+  },
+  async plans(signal?: AbortSignal, upstreamTargetID?: number): Promise<{ items: IntelligencePlan[] }> {
+    return (await apiClient.get(`${base}/plans`, { signal, ...(upstreamTargetID === undefined ? {} : { params: { upstream_target_id: upstreamTargetID } }) })).data
+  },
+  async plansForOAuthAccount(accountID: number, signal?: AbortSignal): Promise<{ items: IntelligencePlan[] }> {
+    return (await apiClient.get(`${base}/plans`, { signal, params: { account_id: accountID } })).data
+  },
+  async create(input: IntelligencePlanInput): Promise<IntelligencePlan> {
+    return (await apiClient.post(`${base}/plans`, input)).data
+  },
+  async update(id: number, input: Partial<IntelligencePlanInput>): Promise<IntelligencePlan> {
+    return (await apiClient.put(`${base}/plans/${id}`, input)).data
+  },
+  async archive(id: number): Promise<void> { await apiClient.delete(`${base}/plans/${id}`) },
+  async permanentDelete(id: number): Promise<void> { await apiClient.delete(`${base}/plans/${id}/permanent`) },
+  async deleteRun(id: number): Promise<void> { await apiClient.delete(`${base}/runs/${id}`) },
+  async scheduleStatus(signal?: AbortSignal): Promise<{ total: number; enabled: number }> {
+    return (await apiClient.get(`${base}/plans/schedule-status`, { signal })).data
+  },
+  async setAllEnabled(enabled: boolean): Promise<{ updated: number; total: number; enabled: number }> {
+    return (await apiClient.put(`${base}/plans/enabled`, { enabled })).data
+  },
+  async run(id: number): Promise<IntelligenceRun> {
+    return (await apiClient.post(`${base}/plans/${id}/run`)).data
+  },
+  async runCandy(id: number): Promise<IntelligenceRun> {
+    return (await apiClient.post(`${base}/plans/${id}/candy/run`)).data
+  },
+  async runs(planID: number, page = 1, signal?: AbortSignal, testKind?: IntelligenceTestKind): Promise<IntelligenceRunPage> {
+    return (await apiClient.get(`${base}/runs`, { params: { plan_id: planID, page, page_size: 12, ...(testKind ? { test_kind: testKind } : {}) }, signal })).data
+  },
+  async detail(id: number, signal?: AbortSignal): Promise<IntelligenceRun> {
+    return (await apiClient.get(`${base}/runs/${id}`, { signal })).data
+  },
+}

@@ -501,6 +501,7 @@ export default {
         thresholdPlaceholder: 'Enter percentage',
       },
       testConnection: 'Test Connection',
+      monitorAction: 'Monitor',
       reAuthorize: 'Re-Authorize',
       refreshToken: 'Refresh Token',
       noAccountsYet: 'No accounts yet',

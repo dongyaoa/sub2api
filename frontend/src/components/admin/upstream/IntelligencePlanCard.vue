@@ -1,0 +1,216 @@
+<template>
+  <article :class="compact && 'intelligence-card-compact'" class="grid min-w-0 overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm lg:grid-cols-[256px_minmax(0,1fr)] dark:border-dark-700 dark:bg-dark-800">
+    <aside class="plan-sidebar flex min-w-0 flex-col border-b border-gray-100 p-4 lg:border-b-0 lg:border-r dark:border-dark-700">
+      <div class="plan-identity flex items-start gap-2.5">
+        <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary-50 text-primary-600 dark:bg-primary-500/10 dark:text-primary-400"><Icon :name="oauth ? 'shield' : 'server'" size="sm" /></div>
+        <div class="min-w-0 flex-1">
+          <div class="flex min-w-0 items-center gap-1.5">
+            <h3 class="min-w-0 flex-1 truncate text-sm font-semibold text-gray-900 dark:text-white" :title="plan.name">{{ plan.name }}</h3>
+            <span class="shrink-0 whitespace-nowrap rounded-md border px-1.5 py-0.5 text-[10px] font-semibold leading-3" :class="sourceBadgeClass" :title="t(`intelligenceMonitor.source.${plan.source_type}`)">{{ oauth ? 'OAuth' : t(`intelligenceMonitor.source.${plan.source_type}`) }}</span>
+          </div>
+          <div v-if="oauth" class="mt-1 flex items-start justify-between gap-2">
+            <p class="shrink-0 text-[11px] leading-4 text-gray-500 dark:text-dark-400">{{ siteName }}</p>
+            <div class="flex min-w-0 flex-wrap justify-end gap-1" role="group" :aria-label="t('intelligenceMonitor.oauth.groups')" data-testid="oauth-account-groups">
+              <span v-for="group in accountStatus?.groups || []" :key="group.id" class="max-w-full truncate rounded-md border border-sky-200/80 bg-sky-50 px-1.5 py-0.5 text-[10px] font-medium leading-3 text-sky-700 dark:border-sky-500/20 dark:bg-sky-500/10 dark:text-sky-300" :title="group.name">{{ group.name }}</span>
+              <span v-if="!accountStatus?.groups?.length" class="rounded-md border border-gray-200 bg-gray-50 px-1.5 py-0.5 text-[10px] leading-3 text-gray-400 dark:border-dark-600 dark:bg-dark-900/40">{{ t(accountStatus?.groups ? 'intelligenceMonitor.oauth.ungrouped' : 'intelligenceMonitor.oauth.groupsUnknown') }}</span>
+            </div>
+          </div>
+          <p v-else class="mt-1 truncate text-[11px] text-gray-500 dark:text-dark-400" :title="siteName">{{ siteName }}</p>
+        </div>
+      </div>
+      <p v-if="!compact && !oauth" class="plan-endpoint mt-2 truncate font-mono text-[10px] text-gray-400 dark:text-dark-400" :title="endpoint">{{ endpoint || '—' }}</p>
+      <div class="plan-group flex items-end justify-between gap-3" :class="!compact && 'mt-3'">
+        <div class="min-w-0"><p class="text-[10px] text-gray-400">{{ t(oauth ? 'intelligenceMonitor.oauth.account' : 'intelligenceMonitor.group') }}</p><p class="mt-1 truncate text-xs font-medium text-gray-700 dark:text-gray-200" :title="groupName">{{ groupName }}</p></div>
+        <div v-if="!oauth" class="shrink-0 text-right"><p class="text-[10px] text-gray-400">{{ t('intelligenceMonitor.rate') }}</p><p class="mt-0.5 text-lg font-semibold tabular-nums" :class="rate?.stale ? 'text-amber-500' : 'text-primary-600 dark:text-primary-400'">{{ intelligenceRateLabel(rate) || '—' }}</p></div>
+      </div>
+      <p v-if="plan.rate_note || plan.notes" class="plan-notes mt-2 line-clamp-1 text-[10px] text-gray-400" :title="[plan.rate_note, plan.notes].filter(Boolean).join(' · ')">{{ [plan.rate_note, plan.notes].filter(Boolean).join(' · ') }}</p>
+      <div v-if="oauth" class="mt-3 rounded-lg border px-2.5 py-2" :class="accountStatusClass" data-testid="oauth-account-status">
+        <div class="flex items-center justify-between gap-2 text-[10px]">
+          <span class="text-gray-500 dark:text-dark-400">{{ t('intelligenceMonitor.oauth.accountStatus') }}</span>
+          <span class="inline-flex items-center gap-1.5 font-semibold"><span class="h-1.5 w-1.5 rounded-full bg-current" />{{ t(`intelligenceMonitor.oauth.accountStates.${accountStatus?.status || 'unknown'}`) }}</span>
+        </div>
+        <template v-if="monitoringPaused">
+          <p class="mt-1.5 text-[10px] leading-4 opacity-90">{{ t(accountStatus?.status === 'weekly_limited' ? 'intelligenceMonitor.oauth.cooldownHint' : 'intelligenceMonitor.oauth.unavailableHint') }}</p>
+          <p v-if="accountStatus?.reset_at" class="mt-1 text-[10px] tabular-nums"><span class="mr-1 opacity-75">{{ t('intelligenceMonitor.oauth.resetAt') }}</span><time :datetime="accountStatus.reset_at">{{ dateTime(accountStatus.reset_at) }}</time></p>
+        </template>
+      </div>
+      <div class="plan-interval mt-3 flex items-center justify-between gap-2 text-[10px]"><span class="inline-flex items-center gap-1" :class="plan.enabled ? 'text-primary-600 dark:text-primary-400' : 'text-gray-400'"><Icon name="clock" size="xs" />{{ plan.enabled ? intervalLabel : t('intelligenceMonitor.manual') }}</span><span class="rounded-md px-1.5 py-0.5 font-medium" :class="statusClass(plan.latest_run?.status)">{{ t(`intelligenceMonitor.status.${plan.latest_run?.status || 'idle'}`) }}</span></div>
+      <IntelligenceModelInfo :model="plan.model" :effort="plan.reasoning_effort" class="plan-model mt-2" data-testid="intelligence-plan-model" />
+      <div v-if="plan.enabled && !monitoringPaused" class="plan-countdown mt-2 flex min-h-5 items-center justify-between gap-2 text-[10px]" data-testid="intelligence-schedule">
+        <span class="shrink-0 text-gray-400 dark:text-dark-400">{{ t('intelligenceMonitor.nextCheck') }}</span>
+        <span v-if="active" class="text-right text-gray-500 dark:text-dark-400">{{ t('intelligenceMonitor.afterCurrentRun') }}</span>
+        <time v-else-if="remainingSeconds !== null && remainingSeconds > 0" :datetime="plan.next_run_at || undefined" :title="dateTime(plan.next_run_at)" class="font-mono text-xs font-semibold tabular-nums text-primary-600 dark:text-primary-400" data-testid="intelligence-countdown">{{ countdownLabel }}</time>
+        <span v-else class="text-amber-600 dark:text-amber-400" data-testid="intelligence-waiting-schedule">{{ t('intelligenceMonitor.waitingSchedule') }}</span>
+      </div>
+      <div class="plan-actions mt-3 flex items-center justify-between gap-2 border-t border-gray-100 pt-3 dark:border-dark-700">
+        <button type="button" class="inline-flex items-center gap-1 text-xs font-semibold text-primary-600 disabled:opacity-40 dark:text-primary-400" :disabled="busy || active || monitoringPaused" @click="emit('run')"><Icon :name="active ? 'clock' : 'play'" size="xs" />{{ t(active ? `intelligenceMonitor.status.${plan.latest_run?.status}` : 'intelligenceMonitor.run') }}</button>
+        <div class="flex items-center gap-0.5"><button class="action" :disabled="busy || (!plan.enabled && monitoringPaused)" :title="t(plan.enabled ? 'intelligenceMonitor.pause' : 'intelligenceMonitor.resume')" :aria-label="t(plan.enabled ? 'intelligenceMonitor.pause' : 'intelligenceMonitor.resume')" @click="emit('toggle')"><Icon :name="plan.enabled ? 'clock' : 'play'" size="sm" /></button><button class="action" :disabled="busy || planActive" :title="t('intelligenceMonitor.edit')" :aria-label="t('intelligenceMonitor.edit')" @click="emit('edit')"><Icon name="edit" size="sm" /></button><button class="action hover:!text-rose-500" :disabled="busy || (!oauth && planActive)" :title="t(oauth ? 'intelligenceMonitor.permanentDelete' : 'intelligenceMonitor.archive')" :aria-label="t(oauth ? 'intelligenceMonitor.permanentDelete' : 'intelligenceMonitor.archive')" @click="emit('archive')"><Icon name="trash" size="sm" /></button></div>
+      </div>
+    </aside>
+    <section class="plan-works flex min-w-0 flex-col px-4 py-3">
+      <IntelligenceCandyBar v-if="plan.candy_enabled" class="plan-candy" :plan="plan" :busy="busy" :compact="compact" @run="emit('candyRun')" @select="run => emit('candySelect', run)" />
+      <div class="plan-works-heading mb-3 flex shrink-0 flex-wrap items-center justify-between gap-2"><div class="flex items-center gap-2"><span class="text-xs font-medium text-gray-700 dark:text-gray-200">{{ t('intelligenceMonitor.recentWorks') }}</span><span class="text-[10px] text-gray-400">{{ t('intelligenceMonitor.newestFirst') }}</span></div><button type="button" class="text-[11px] text-primary-600 dark:text-primary-400" @click="emit('history')">{{ t('intelligenceMonitor.history') }}<span class="ml-1 text-gray-400">{{ completedWorks.length }}/20</span></button></div>
+      <div v-if="works.length" ref="worksScroller" class="plan-works-scroller flex min-h-0 flex-1 snap-x items-stretch gap-3 overflow-x-auto" :aria-label="t('intelligenceMonitor.recentWorks')">
+        <div v-for="(work, index) in works" :key="work.id" class="flex w-[176px] shrink-0 snap-start flex-col overflow-hidden rounded-xl border" :class="index === 0 ? 'border-primary-200 dark:border-primary-600/40' : 'border-gray-100 dark:border-dark-700'">
+          <IntelligenceArtifactPreview class="plan-preview" :run="work" @open="emit('history', work.id)" />
+          <button type="button" class="plan-work-caption w-full shrink-0 p-2.5 text-left hover:bg-gray-50 dark:hover:bg-dark-700/50" @click="emit('history', work.id)">
+            <div class="flex items-center justify-between gap-1"><span class="text-[10px] font-semibold" :class="index === 0 ? 'text-primary-600 dark:text-primary-400' : 'text-gray-400'">{{ isActive(work) ? t(`intelligenceMonitor.status.${work.status}`) : index === 0 ? t('intelligenceMonitor.latest') : `#${work.id}` }}</span><span class="h-1.5 w-1.5 rounded-full" :class="work.status === 'succeeded' ? 'bg-emerald-500' : work.status === 'failed' ? 'bg-rose-500' : 'bg-amber-400'"></span></div>
+            <p class="mt-1 text-[10px] tabular-nums text-gray-600 dark:text-dark-300" :title="dateTime(work.started_at || work.created_at)">{{ dateTime(work.started_at || work.created_at) }}</p>
+            <div class="mt-1 flex min-w-0 items-center justify-between gap-2 text-[9px]" data-testid="artwork-metadata">
+              <span class="min-w-0 truncate text-gray-400" :title="`${work.model} · ${work.reasoning_effort}`">{{ work.model }} · {{ work.reasoning_effort }}</span>
+              <span v-if="work.status === 'succeeded' && intelligenceDurationLabel(work, t)" class="ml-auto shrink-0 whitespace-nowrap font-medium tabular-nums text-gray-600 dark:text-dark-300" :title="`${t('intelligenceMonitor.duration')} · ${intelligenceDurationLabel(work, t)}`" data-testid="artwork-duration">{{ intelligenceDurationLabel(work, t) }}</span>
+            </div>
+          </button>
+        </div>
+      </div>
+      <div v-else class="plan-works-empty flex min-h-[196px] flex-1 items-center justify-center rounded-xl border border-dashed border-gray-200 bg-gray-50/50 text-xs text-gray-400 dark:border-dark-700 dark:bg-dark-900/30"><Icon name="lightbulb" size="sm" class="mr-2" />{{ t('intelligenceMonitor.waiting') }}</div>
+    </section>
+  </article>
+</template>
+<script setup lang="ts">
+import { computed, inject, nextTick, onBeforeUnmount, provide, ref, watch } from 'vue'
+import { useI18n } from 'vue-i18n'
+import IntelligenceModelInfo from './IntelligenceModelInfo.vue'
+import Icon from '@/components/icons/Icon.vue'
+import type { IntelligencePlan, IntelligenceRate, IntelligenceRun } from '@/api/admin/intelligenceMonitor'
+import type { UpstreamOverview } from '@/api/admin/upstreamCenter'
+import IntelligenceArtifactPreview from './IntelligenceArtifactPreview.vue'
+import IntelligenceCandyBar from './IntelligenceCandyBar.vue'
+import { isIntelligencePlanActive } from './intelligenceCandy'
+import { intelligenceRateLabel } from './intelligencePreview'
+import { intelligenceDurationLabel } from './intelligenceDuration'
+import { intelligencePanelActiveKey } from './intelligenceMonitorContext'
+import { dateTime } from './format'
+const props = withDefaults(defineProps<{ plan: IntelligencePlan; overview: UpstreamOverview | null; busy: boolean; visible?: boolean; compact?: boolean }>(), { visible: true, compact: false })
+const emit = defineEmits<{ run: []; candyRun: []; candySelect: [run: IntelligenceRun]; toggle: []; edit: []; archive: []; history: [runID?: number] }>()
+const { t } = useI18n()
+const panelActive = inject(intelligencePanelActiveKey, ref(true))
+const cardActive = computed(() => panelActive.value && props.visible)
+// Filtered cards retain their artwork DOM; hidden cards must pause playback.
+provide(intelligencePanelActiveKey, cardActive)
+const oauth = computed(() => props.plan.source_type === 'openai_oauth')
+const accountStatus = computed(() => oauth.value ? props.plan.oauth_account_status : undefined)
+const monitoringPaused = computed(() => !!accountStatus.value?.monitoring_paused)
+const accountStatusClass = computed(() => accountStatus.value?.status === 'weekly_limited'
+  ? 'border-amber-200/70 bg-amber-50/70 text-amber-700 dark:border-amber-500/20 dark:bg-amber-500/5 dark:text-amber-300'
+  : accountStatus.value?.status === 'normal'
+    ? 'border-emerald-100 bg-emerald-50/50 text-emerald-700 dark:border-emerald-500/15 dark:bg-emerald-500/5 dark:text-emerald-300'
+    : 'border-gray-100 bg-gray-50 text-gray-500 dark:border-dark-600 dark:bg-dark-900/40 dark:text-dark-300')
+const sourceBadgeClass = computed(() => ({
+  external: 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-500/20 dark:bg-amber-500/10 dark:text-amber-300',
+  upstream: 'border-blue-200 bg-blue-50 text-blue-600 dark:border-blue-500/20 dark:bg-blue-500/10 dark:text-blue-300',
+  local_group: 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-500/20 dark:bg-emerald-500/10 dark:text-emerald-300',
+  openai_oauth: 'border-violet-200 bg-violet-50 text-violet-600 dark:border-violet-500/20 dark:bg-violet-500/10 dark:text-violet-300'
+})[props.plan.source_type])
+const supplier = computed(() => props.overview?.suppliers.find(item => item.targets.some(target => target.id === props.plan.upstream_target_id)))
+const target = computed(() => supplier.value?.targets.find(item => item.id === props.plan.upstream_target_id) || props.overview?.monitors?.find(item => item.id === props.plan.upstream_target_id))
+const siteName = computed(() => oauth.value ? 'OpenAI' : supplier.value?.name || props.plan.supplier_note || props.plan.source_name || t(`intelligenceMonitor.source.${props.plan.source_type}`))
+const endpoint = computed(() => oauth.value ? 'https://chatgpt.com' : target.value?.endpoint || props.plan.endpoint || props.plan.latest_run?.source_endpoint || '')
+const groupName = computed(() => target.value?.name || props.plan.group_note || props.plan.source_name || props.plan.name)
+const rate = computed<IntelligenceRate>(() => target.value?.balance?.billing as unknown as IntelligenceRate || props.plan.rate_snapshot)
+const isActive = (run: IntelligenceRun) => run.status === 'running' || run.status === 'pending'
+const active = computed(() => !!props.plan.latest_run && isActive(props.plan.latest_run))
+const planActive = computed(() => isIntelligencePlanActive(props.plan))
+const now = ref(Date.now())
+const nextRunTime = computed(() => {
+  const timestamp = props.plan.next_run_at ? Date.parse(props.plan.next_run_at) : NaN
+  return Number.isFinite(timestamp) ? timestamp : null
+})
+const remainingSeconds = computed(() => nextRunTime.value === null ? null : Math.max(0, Math.ceil((nextRunTime.value - now.value) / 1000)))
+const countdownLabel = computed(() => {
+  const seconds = remainingSeconds.value ?? 0
+  return [Math.floor(seconds / 3600), Math.floor(seconds / 60) % 60, seconds % 60].map(value => String(value).padStart(2, '0')).join(':')
+})
+const worksScroller = ref<HTMLElement | null>(null)
+let countdownTimer: ReturnType<typeof setInterval> | undefined
+function stopCountdown() {
+  clearInterval(countdownTimer)
+  countdownTimer = undefined
+}
+// Active runs only have a provisional next_run_at; completion sets the actual deadline.
+watch([() => props.plan.enabled, active, nextRunTime, cardActive, monitoringPaused], () => {
+  stopCountdown()
+  now.value = Date.now()
+  if (!cardActive.value || !props.plan.enabled || monitoringPaused.value || active.value || !remainingSeconds.value) return
+  countdownTimer = setInterval(() => {
+    now.value = Date.now()
+    if (!remainingSeconds.value) stopCountdown()
+  }, 1000)
+}, { immediate: true })
+onBeforeUnmount(stopCountdown)
+const completedWorks = computed(() => {
+  const recent = props.plan.recent_runs || []
+  const latest = props.plan.latest_run
+  const candidates = [...recent]
+  if (latest && !isActive(latest)) {
+    const existing = candidates.findIndex(run => run.id === latest.id)
+    if (existing >= 0) candidates[existing] = latest
+    else candidates.unshift(latest)
+  }
+  const seen = new Set<number>()
+  return candidates.filter(run => {
+    if (isActive(run) || seen.has(run.id) || (active.value && run.id === latest?.id)) return false
+    seen.add(run.id)
+    return true
+  }).slice(0, 20)
+})
+const works = computed(() => active.value && props.plan.latest_run ? [props.plan.latest_run, ...completedWorks.value] : completedWorks.value)
+watch(() => props.plan.latest_run?.id, async () => {
+  if (!active.value) return
+  await nextTick()
+  if (worksScroller.value) worksScroller.value.scrollLeft = 0
+})
+const intervalLabel = computed(() => {
+  const seconds = props.plan.interval_seconds
+  if (seconds % 3600 === 0) return t('intelligenceMonitor.hours', { count: seconds / 3600 })
+  if (seconds % 60 === 0) return t('intelligenceMonitor.minutes', { count: seconds / 60 })
+  return t('intelligenceMonitor.seconds', { count: seconds })
+})
+function statusClass(status?: string) {
+  if (status === 'succeeded') return 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400'
+  if (status === 'failed') return 'bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-400'
+  if (status === 'running' || status === 'pending') return 'bg-amber-50 text-amber-600 dark:bg-amber-500/10'
+  return 'bg-gray-100 text-gray-500 dark:bg-dark-700 dark:text-dark-400'
+}
+</script>
+<style scoped>
+.action { @apply flex h-7 w-7 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-gray-100 hover:text-primary-600 disabled:opacity-40 dark:text-dark-400 dark:hover:bg-dark-700; }
+/* Only dual-model group dialogs opt in; normal cards keep their existing dimensions. */
+@media (min-width: 1024px) {
+  .intelligence-card-compact { min-height: 0; grid-template-columns: 256px minmax(0, 1fr); }
+  .intelligence-card-compact .plan-sidebar { padding-bottom: 8px; }
+  .intelligence-card-compact .plan-works { min-height: 0; padding: 10px 12px 4px; }
+  .intelligence-card-compact .plan-works-scroller { align-items: flex-start; }
+  /* Keep all three metadata rows visible as the previews shrink on shorter windows. */
+  .intelligence-card-compact .plan-works-scroller > div { width: 180px; height: 214px; max-height: 100%; }
+  .intelligence-card-compact .plan-works-heading { margin-bottom: 6px; }
+  .intelligence-card-compact .plan-candy { margin-bottom: 6px; padding: 6px 8px; }
+  .intelligence-card-compact .plan-preview,
+  .intelligence-card-compact .plan-works-empty { min-height: 0; }
+
+}
+/* Keep all original fields and their order; only tighten spacing on shorter windows. */
+@media (min-width: 1024px) and (min-height: 900px) and (max-height: 949px) {
+  .intelligence-card-compact .plan-model,
+  .intelligence-card-compact .plan-countdown { margin-top: 6px; }
+  .intelligence-card-compact .plan-interval,
+  .intelligence-card-compact .plan-actions { margin-top: 8px; }
+  .intelligence-card-compact .plan-actions { padding-top: 8px; }
+}
+@media (min-width: 1024px) and (max-height: 899px) {
+  .intelligence-card-compact .plan-sidebar { padding: 8px 12px; }
+  .intelligence-card-compact .plan-sidebar > * { flex-shrink: 0; }
+  .intelligence-card-compact .plan-identity { gap: 8px; }
+  .intelligence-card-compact .plan-identity > :first-child { width: 28px; height: 28px; }
+  .intelligence-card-compact .plan-identity h3 { font-size: 12px; line-height: 16px; }
+  .intelligence-card-compact .plan-identity > div > p { margin-top: 2px; font-size: 10px; line-height: 12px; }
+  .intelligence-card-compact .plan-group > div > p:first-child { line-height: 12px; }
+  .intelligence-card-compact .plan-group > div > p:last-child { margin-top: 2px; line-height: 16px; }
+  .intelligence-card-compact .plan-group > div:last-child > p:last-child { font-size: 16px; line-height: 18px; }
+  .intelligence-card-compact .plan-notes { margin-top: 3px; line-height: 12px; }
+  .intelligence-card-compact .plan-interval { margin-top: 4px; line-height: 12px; }
+  .intelligence-card-compact .plan-model { margin-top: 4px; }
+  .intelligence-card-compact .plan-countdown { min-height: 16px; margin-top: 4px; line-height: 12px; }
+  .intelligence-card-compact .plan-actions { margin-top: 5px; padding-top: 4px; }
+}
+</style>

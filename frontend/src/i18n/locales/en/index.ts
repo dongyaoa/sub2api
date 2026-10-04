@@ -2,6 +2,9 @@ import landing from './landing'
 import common from './common'
 import dashboard from './dashboard'
 import channelMonitorV2 from './channelMonitorV2'
+import upstreamCenter from './upstreamCenter'
+import intelligenceMonitor from './intelligenceMonitor'
+import pelicanMonitor from './pelicanMonitor'
 import batchImage from './batchImage'
 import imageStudio from './imageStudio'
 import checkin from './checkin'
@@ -16,6 +19,9 @@ export default {
   ...common,
   ...dashboard,
   ...channelMonitorV2,
+  ...upstreamCenter,
+  ...intelligenceMonitor,
+  ...pelicanMonitor,
   ...batchImage,
   ...imageStudio,
   ...checkin,

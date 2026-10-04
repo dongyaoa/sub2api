@@ -6,6 +6,16 @@ import AccountsView from '../AccountsView.vue'
 import AccountActionMenu from '@/components/admin/account/AccountActionMenu.vue'
 import AccountRecentRequestsCell from '@/components/account/AccountRecentRequestsCell.vue'
 
+vi.mock('@/components/admin/account/AccountMonitorDialog.vue', () => ({
+  __esModule: true,
+  default: {
+    name: 'AccountMonitorDialog',
+    props: ['account'],
+    emits: ['close'],
+    template: '<div data-test="account-pelican-dialog">{{ account.name }}<button data-test="close-pelican" @click="$emit(\'close\')" /></div>'
+  }
+}))
+
 const {
   listAccounts,
   listWithEtag,
@@ -185,6 +195,77 @@ describe('admin AccountsView lite account list', () => {
     vi.restoreAllMocks()
   })
 
+  it.each([
+    { platform: 'openai', type: 'oauth' },
+    { platform: 'openai', type: 'apikey' },
+    { platform: 'anthropic', type: 'apikey' },
+    { platform: 'gemini', type: 'apikey' }
+  ])('opens shared monitoring directly from the supported row without loading credentials: %o', async fields => {
+    const row = { ...listRow, ...fields, status: 'error', schedulable: false, credentials: { access_token: 'private-token' } }
+    listAccounts.mockResolvedValueOnce({ items: [row], total: 1, page: 1, page_size: 20, pages: 1 })
+    const wrapper = mountView()
+    await flushPromises()
+    expect(wrapper.find('[data-test="account-pelican-dialog"]').exists()).toBe(false)
+    const trigger = wrapper.get('[data-testid="account-monitor"]')
+    expect(trigger.attributes('aria-label')).toBe('admin.accounts.monitorAction: compact row')
+    expect(trigger.attributes('disabled')).toBeUndefined()
+    await trigger.trigger('click')
+    await flushPromises()
+    await flushPromises()
+    const dialog = wrapper.getComponent({ name: 'AccountMonitorDialog' })
+    expect(dialog.props('account')).toEqual({ id: 42, name: 'compact row', ...fields, parent_account_id: undefined, extra: {} })
+    expect(getById).not.toHaveBeenCalled()
+    expect(wrapper.text()).not.toContain('private-token')
+    await wrapper.get('[data-test="close-pelican"]').trigger('click')
+    expect(wrapper.find('[data-test="account-pelican-dialog"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
+  it.each([
+    { platform: 'anthropic' }, { platform: 'gemini' },
+    { platform: 'grok', type: 'apikey' }, { type: 'setup-token' },
+    { parent_account_id: 1 }, { parent_account_id: 0 },
+    { extra: { synthetic_ui_test: true } },
+    { type: 'apikey', extra: { synthetic_ui_test: true } }
+  ])('does not offer a monitor button for unsupported or synthetic accounts %o', async fields => {
+    listAccounts.mockResolvedValueOnce({ items: [{ ...listRow, ...fields }], total: 1, page: 1, page_size: 20, pages: 1 })
+    const wrapper = mountView(); await flushPromises()
+    expect(wrapper.find('[data-testid="account-monitor"]').exists()).toBe(false)
+    expect(wrapper.find('[data-test="account-pelican-dialog"]').exists()).toBe(false)
+    expect(getById).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('keeps the open monitoring dialog mounted and updates its account name after a list refresh', async () => {
+    const wrapper = mountView(); await flushPromises()
+    await wrapper.get('[data-testid="account-monitor"]').trigger('click')
+    await flushPromises(); await flushPromises()
+    const previousElement = wrapper.getComponent({ name: 'AccountMonitorDialog' }).element
+    listAccounts.mockResolvedValueOnce({ items: [{ ...listRow, name: 'renamed account' }], total: 1, page: 1, page_size: 20, pages: 1 })
+    await wrapper.get('[data-test="refresh-accounts"]').trigger('click')
+    await flushPromises()
+    const dialog = wrapper.getComponent({ name: 'AccountMonitorDialog' })
+    expect(dialog.element).toBe(previousElement)
+    expect(dialog.props('account').name).toBe('renamed account')
+    expect(getById).not.toHaveBeenCalled()
+    wrapper.unmount()
+  })
+
+  it('pauses account-list automatic refresh while the pelican dialog is open and resumes after closing', async () => {
+    vi.useFakeTimers()
+    vi.spyOn(document, 'hidden', 'get').mockReturnValue(false)
+    localStorage.setItem('account-auto-refresh', JSON.stringify({ enabled: true, interval_seconds: 5 }))
+    const wrapper = mountView(); await flushPromises()
+    await wrapper.get('[data-testid="account-monitor"]').trigger('click')
+    await flushPromises(); await flushPromises()
+    await vi.advanceTimersByTimeAsync(20000)
+    expect(listWithEtag).not.toHaveBeenCalled()
+    await wrapper.get('[data-test="close-pelican"]').trigger('click')
+    await vi.advanceTimersByTimeAsync(6000)
+    expect(listWithEtag).toHaveBeenCalledTimes(1)
+    wrapper.unmount()
+  })
+
   it('keeps lite=1 on the initial list request', async () => {
     const wrapper = mountView()
     await flushPromises()
@@ -302,7 +383,7 @@ describe('admin AccountsView lite account list', () => {
     wrapper.unmount()
   })
 
-  it('opens the existing test modal from the shortcut immediately before edit', async () => {
+  it('opens the existing test modal from the shortcut before monitor and edit', async () => {
     const wrapper = mountView()
     await flushPromises()
 
@@ -310,7 +391,8 @@ describe('admin AccountsView lite account list', () => {
     const testIndex = actionButtons.findIndex(button => button.text() === 'admin.accounts.testShortcut')
     expect(testIndex).toBeGreaterThanOrEqual(0)
     expect(actionButtons[testIndex].attributes('title')).toBe('admin.accounts.testConnection')
-    expect(actionButtons[testIndex + 1].text()).toBe('common.edit')
+    expect(actionButtons[testIndex + 1].text()).toBe('admin.accounts.monitorAction')
+    expect(actionButtons[testIndex + 2].text()).toBe('common.edit')
     expect(getById).not.toHaveBeenCalled()
 
     await actionButtons[testIndex].trigger('click')

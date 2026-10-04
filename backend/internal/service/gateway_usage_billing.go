@@ -434,7 +434,8 @@ func finalizePostUsageBilling(ctx context.Context, p *postUsageBillingParams, de
 			deps.billingCacheService.IncrementUserPlatformQuotaUsage(p.User.ID, p.Platform, p.Cost.ActualCost)
 			if deps.cfg == nil || !deps.cfg.Database.UserPlatformQuotaFlusherEnabled {
 				// 降级路径:flusher 未启用时保留原有异步直写 DB
-				dbCtx, dbCancel := detachUpstreamContext(ctx)
+				// Quota persistence outlives a bound monitoring request deadline.
+				dbCtx, dbCancel := detachedBillingContext(ctx)
 				userID, platform, cost := p.User.ID, p.Platform, p.Cost.ActualCost
 				go func() {
 					defer func() {
@@ -574,15 +575,20 @@ func detachStreamUpstreamContext(ctx context.Context, stream bool) (context.Cont
 	if ctx == nil {
 		return context.Background(), func() {}
 	}
-	if !stream {
+	if !stream || ctx.Value(boundUpstreamLifecycleContextKey{}) == true {
 		return ctx, func() {}
 	}
 	return context.WithoutCancel(ctx), func() {}
 }
 
+type boundUpstreamLifecycleContextKey struct{}
+
 func detachUpstreamContext(ctx context.Context) (context.Context, context.CancelFunc) {
 	if ctx == nil {
 		return context.Background(), func() {}
+	}
+	if bound, _ := ctx.Value(boundUpstreamLifecycleContextKey{}).(bool); bound {
+		return ctx, func() {}
 	}
 	return context.WithoutCancel(ctx), func() {}
 }

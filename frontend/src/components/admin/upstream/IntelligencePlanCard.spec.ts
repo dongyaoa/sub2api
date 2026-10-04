@@ -1,0 +1,466 @@
+import { defineComponent, ref } from 'vue'
+import { flushPromises, mount } from '@vue/test-utils'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { IntelligencePlan, IntelligenceRun } from '@/api/admin/intelligenceMonitor'
+import type { UpstreamOverview, UpstreamTarget } from '@/api/admin/upstreamCenter'
+import IntelligencePlanCard from './IntelligencePlanCard.vue'
+import IntelligenceArtifactPreview from './IntelligenceArtifactPreview.vue'
+import { intelligencePanelActiveKey } from './intelligenceMonitorContext'
+
+vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (key: string, values?: { count?: number }) => values?.count === undefined ? key : `${key}:${values.count}` }) }))
+vi.mock('@/api/admin/intelligenceMonitor', () => ({ intelligenceMonitorAPI: { detail: vi.fn() } }))
+const preview = defineComponent({ name: 'IntelligenceArtifactPreview', props: ['run'], emits: ['open'], template: '<button class="test-preview" @click="$emit(\'open\')">{{ run.id }}</button>' })
+const run = (id: number, status: IntelligenceRun['status'] = 'succeeded') => ({ id, status, created_at: '2026-09-23T10:00:00Z', started_at: null, model: 'gpt-6-astra', reasoning_effort: 'high' } as IntelligenceRun)
+const plan = (changes: Partial<IntelligencePlan> = {}): IntelligencePlan => ({ id: 1, name: 'Primary plan', source_type: 'external', source_name: 'Primary source', endpoint: 'https://relay.example', rate_snapshot: { effective_rate_multiplier: 0.3 }, interval_seconds: 3600, enabled: false, latest_run: null, ...changes } as IntelligencePlan)
+function render(value: IntelligencePlan, busy = false) {
+  return mount(IntelligencePlanCard, { props: { plan: value, overview: null, busy }, global: { stubs: { Icon: true, IntelligenceArtifactPreview: preview } } })
+}
+
+describe('intelligence plan card result selection', () => {
+  it('keeps artwork playback DOM and history/candy actions available when switching between dual and regular layouts', async () => {
+    const completed = { ...run(91), html: '<svg></svg>' }
+    const candy = { ...run(100), plan_id: 1, test_kind: 'candy' as const, correct: true, answer: '21' }
+    const value = plan({ source_type: 'upstream', latest_run: completed, recent_runs: [completed], candy_enabled: true, candy_latest_run: candy })
+    vi.stubGlobal('IntersectionObserver', undefined)
+    const view = mount(IntelligencePlanCard, {
+      attachTo: document.body,
+      props: { plan: value, overview: null, busy: false, compact: true },
+      global: { stubs: { Icon: true } },
+    })
+    try {
+      await flushPromises()
+      const artwork = view.getComponent(IntelligenceArtifactPreview)
+      const frame = artwork.get('iframe').element
+      const candyStrip = view.get('[data-testid="candy-monitor"]').element
+      await artwork.get('[aria-label="intelligenceMonitor.open"]').trigger('click')
+      await view.get('[data-testid="candy-run"]').trigger('click')
+      await view.get('[data-candy-status="correct"]').trigger('click')
+      expect(view.emitted('history')).toEqual([[91]])
+      expect(view.emitted('candyRun')).toEqual([[]])
+      expect(view.emitted('candySelect')).toEqual([[candy]])
+
+      for (const compact of [false, true]) {
+        await view.setProps({ compact, plan: { ...value, recent_runs: [{ ...completed }] } })
+        const retainedArtwork = view.getComponent(IntelligenceArtifactPreview)
+        expect(retainedArtwork.element).toBe(artwork.element)
+        expect(retainedArtwork.get('iframe').element).toBe(frame)
+        expect(view.get('[data-testid="candy-monitor"]').element).toBe(candyStrip)
+      }
+      const history = view.findAll('button').find(button => button.text().includes('intelligenceMonitor.history'))!
+      await history.trigger('click')
+      expect(view.emitted('history')).toEqual([[91], []])
+      await view.get('[data-testid="candy-run"]').trigger('click')
+      expect(view.emitted('candyRun')).toHaveLength(2)
+    } finally {
+      view.unmount()
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('uses live independent target details and rates without remounting its shared artworks', async () => {
+    const artwork = run(90)
+    const value = plan({ source_type: 'upstream', upstream_target_id: 31, source_name: 'Independent source', group_note: 'Old group note', latest_run: artwork, recent_runs: [artwork] })
+    const target = { id: 31, supplier_id: null, name: 'Current API group', endpoint: 'https://current.example/v1', balance: { billing: { effective_rate_multiplier: 0.65, stale: false } } } as UpstreamTarget
+    const overview = { suppliers: [], monitors: [target] } as unknown as UpstreamOverview
+    const view = render(value)
+    await view.setProps({ overview })
+    const previewElement = view.get('.test-preview').element
+    const aside = view.get('aside')
+    expect(aside.text()).toContain('Independent source')
+    expect(aside.get('[title="Current API group"]').text()).toBe('Current API group')
+    expect(aside.get('[title="https://current.example/v1"]').text()).toBe('https://current.example/v1')
+    expect(aside.text()).toContain('0.65×')
+    expect(aside.text()).not.toContain('Old group note')
+    expect(aside.text()).not.toContain('https://relay.example')
+    expect(aside.text()).not.toContain('0.3×')
+    const updated = { ...target, name: 'Renamed API group', endpoint: 'https://updated.example/v1', balance: { ...target.balance!, billing: { ...target.balance!.billing!, effective_rate_multiplier: 0.8, stale: true } } }
+    await view.setProps({ plan: { ...value, source_name: 'Renamed independent source' }, overview: { ...overview, monitors: [updated] } })
+    expect(aside.text()).toContain('Renamed independent source')
+    expect(aside.get('[title="Renamed API group"]').text()).toBe('Renamed API group')
+    expect(aside.get('[title="https://updated.example/v1"]').text()).toBe('https://updated.example/v1')
+    expect(aside.findAll('p').find(item => item.text() === '0.8×')!.classes()).toContain('text-amber-500')
+    expect(aside.text()).not.toContain('Current API group')
+    expect(aside.text()).not.toContain('https://current.example/v1')
+    expect(view.get('.test-preview').element).toBe(previewElement)
+    await view.setProps({ overview: { ...overview, monitors: [] } })
+    expect(aside.text()).toContain('Old group note')
+    expect(aside.text()).toContain('https://relay.example')
+    expect(aside.text()).toContain('0.3×')
+    expect(view.get('.test-preview').element).toBe(previewElement)
+    view.unmount()
+  })
+
+  it('updates all current OAuth group badges on refresh without remounting artworks', async () => {
+    const artwork = run(90)
+    const value = plan({ source_type: 'openai_oauth', latest_run: artwork, recent_runs: [artwork], oauth_account_status: { status: 'normal', monitoring_paused: false, groups: [{ id: 5, name: 'PLUS' }, { id: 8, name: 'Premium group with a long name' }] } })
+    const view = render(value)
+    const previewElement = view.get('.test-preview').element
+    const badges = view.get('aside [data-testid="oauth-account-groups"]')
+    expect(badges.findAll('span').map(item => item.text())).toEqual(['PLUS', 'Premium group with a long name'])
+    expect(badges.findAll('span')[1]!.attributes('title')).toBe('Premium group with a long name')
+    await view.setProps({ plan: { ...value, oauth_account_status: { status: 'normal', monitoring_paused: false, groups: [{ id: 8, name: 'Renamed group' }] } } })
+    expect(badges.text()).toBe('Renamed group')
+    expect(view.get('.test-preview').element).toBe(previewElement)
+    await view.setProps({ plan: { ...value, oauth_account_status: { status: 'normal', monitoring_paused: false, groups: [] } } })
+    expect(badges.text()).toBe('intelligenceMonitor.oauth.ungrouped')
+    await view.setProps({ plan: { ...value, oauth_account_status: undefined } })
+    expect(badges.text()).toBe('intelligenceMonitor.oauth.groupsUnknown')
+    await view.setProps({ plan: { ...value, source_type: 'external' } })
+    expect(view.find('[data-testid="oauth-account-groups"]').exists()).toBe(false)
+    view.unmount()
+  })
+  it('shows weekly cooldown on the left, suspends both tests, and resumes without remounting artwork', async () => {
+    const artwork = run(90)
+    const value = plan({ source_type: 'openai_oauth', enabled: true, candy_enabled: true, latest_run: artwork, recent_runs: [artwork], next_run_at: new Date(Date.now() + 300000).toISOString(), candy_next_run_at: new Date(Date.now() + 180000).toISOString(), oauth_account_status: { status: 'weekly_limited', monitoring_paused: true, reset_at: '2026-10-02T00:00:00Z' } })
+    const view = render(value)
+    const previewElement = view.get('.test-preview').element
+    const status = view.get('aside [data-testid="oauth-account-status"]')
+    expect(status.text()).toContain('intelligenceMonitor.oauth.accountStates.weekly_limited')
+    expect(status.text()).toContain('intelligenceMonitor.oauth.resetAt')
+    expect(view.find('[data-testid="intelligence-schedule"]').exists()).toBe(false)
+    expect(view.find('[data-testid="candy-countdown"]').exists()).toBe(false)
+    const runButton = view.get('aside').findAll('button').find(button => button.text() === 'intelligenceMonitor.run')!
+    expect(runButton.attributes('disabled')).toBeDefined()
+    expect(view.get('[data-testid="candy-run"]').attributes('disabled')).toBeDefined()
+    expect(view.get('[aria-label="intelligenceMonitor.pause"]').attributes('disabled')).toBeUndefined()
+    await runButton.trigger('click')
+    await view.get('[data-testid="candy-run"]').trigger('click')
+    expect(view.emitted('run')).toBeUndefined()
+    expect(view.emitted('candyRun')).toBeUndefined()
+    await view.setProps({ plan: { ...value, oauth_account_status: { status: 'normal', monitoring_paused: false } } })
+    expect(status.text()).toContain('intelligenceMonitor.oauth.accountStates.normal')
+    expect(view.find('[data-testid="intelligence-countdown"]').exists()).toBe(true)
+    expect(view.find('[data-testid="candy-countdown"]').exists()).toBe(true)
+    expect(runButton.attributes('disabled')).toBeUndefined()
+    expect(view.get('[data-testid="candy-run"]').attributes('disabled')).toBeUndefined()
+    expect(view.get('.test-preview').element).toBe(previewElement)
+    view.unmount()
+  })
+  it('adds the candy strip only after opt-in and preserves the original card and artwork DOM when absent', async () => {
+    const artwork = run(90)
+    const view = render(plan({ latest_run: artwork, recent_runs: [artwork] }))
+    const article = view.get('article').element
+    const sectionClass = view.get('section').attributes('class')
+    const previewElement = view.get('.test-preview').element
+    expect(view.find('[data-testid="candy-monitor"]').exists()).toBe(false)
+    const candy = { ...run(100), plan_id: 1, test_kind: 'candy' as const, correct: true, answer: '21' }
+    await view.setProps({ plan: plan({ latest_run: artwork, recent_runs: [artwork], candy_enabled: true, candy_latest_run: candy }) })
+    expect(view.find('[data-testid="candy-monitor"]').exists()).toBe(true)
+    expect(view.get('.test-preview').element).toBe(previewElement)
+    await view.get('[data-testid="candy-run"]').trigger('click')
+    expect(view.get('[data-candy-status="correct"]').classes()).toContain('candy-bar-correct')
+    await view.get('[data-candy-status="correct"]').trigger('click')
+    expect(view.emitted('candyRun')).toEqual([[]])
+    expect(view.emitted('candySelect')).toEqual([[candy]])
+    expect(view.emitted('run')).toBeUndefined()
+    await view.setProps({ plan: plan({ latest_run: artwork, candy_enabled: false, candy_latest_run: candy }) })
+    expect(view.find('[data-testid="candy-monitor"]').exists()).toBe(false)
+    expect(view.get('article').element).toBe(article)
+    expect(view.get('section').attributes('class')).toBe(sectionClass)
+    view.unmount()
+  })
+
+  it('allows pelican while candy is active but protects edit/archive and keeps artwork separate', () => {
+    const artwork = run(90)
+    const view = render(plan({ candy_enabled: true, latest_run: artwork, recent_runs: [artwork], candy_latest_run: { ...run(100, 'running'), test_kind: 'candy' } }))
+    expect(view.findAllComponents(preview).map(child => child.props('run').id)).toEqual([90])
+    expect(view.get('aside').findAll('button').find(button => button.text() === 'intelligenceMonitor.run')!.attributes('disabled')).toBeUndefined()
+    expect(view.get('[aria-label="intelligenceMonitor.edit"]').attributes('disabled')).toBeDefined()
+    expect(view.get('[aria-label="intelligenceMonitor.archive"]').attributes('disabled')).toBeDefined()
+    expect(view.get('[data-testid="candy-run"]').attributes('disabled')).toBeDefined()
+    view.unmount()
+  })
+  it('replaces a stale recent record with the completed latest run of the same ID', () => {
+    const latest = { ...run(91), html: '<svg>completed</svg>' }
+    const view = render(plan({ latest_run: latest, recent_runs: [run(91, 'pending'), run(90)] }))
+    expect(view.findAllComponents(preview).map(child => child.props('run'))).toEqual([latest, run(90)])
+    expect(view.text()).toContain('2/20')
+    view.unmount()
+  })
+
+  it('returns the artwork strip to the newest active run while preserving user scroll on ordinary polls', async () => {
+    const previous = run(90)
+    const view = render(plan({ latest_run: previous, recent_runs: [previous] }))
+    const scroller = view.get('[aria-label="intelligenceMonitor.recentWorks"]').element as HTMLElement
+    scroller.scrollLeft = 400
+    await view.setProps({ plan: plan({ latest_run: { ...previous }, recent_runs: [previous] }) })
+    expect(scroller.scrollLeft).toBe(400)
+    await view.setProps({ plan: plan({ latest_run: run(91, 'running'), recent_runs: [previous] }) })
+    await flushPromises()
+    expect(scroller.scrollLeft).toBe(0)
+    expect(view.findAllComponents(preview)[0]!.props('run').id).toBe(91)
+    scroller.scrollLeft = 176
+    await view.setProps({ plan: plan({ latest_run: run(91, 'running'), recent_runs: [previous] }) })
+    expect(scroller.scrollLeft).toBe(176)
+    view.unmount()
+  })
+
+  it('pauses filtered artwork and keeps its iframe while respecting the parent panel visibility', async () => {
+    const panelActive = ref(true)
+    const completed = { ...run(91), html: '<svg></svg>' }
+    vi.stubGlobal('IntersectionObserver', undefined)
+    const view = mount(IntelligencePlanCard, {
+      attachTo: document.body,
+      props: { plan: plan({ latest_run: completed, recent_runs: [completed] }), overview: null, busy: false },
+      global: { stubs: { Icon: true }, provide: { [intelligencePanelActiveKey as symbol]: panelActive } }
+    })
+    try {
+      await flushPromises()
+      const artwork = view.getComponent(IntelligenceArtifactPreview)
+      const frame = artwork.get('iframe').element as HTMLIFrameElement
+      const postMessage = vi.spyOn(frame.contentWindow!, 'postMessage')
+      await artwork.trigger('mouseenter')
+      expect(postMessage).toHaveBeenLastCalledWith({ type: 'intelligence-preview-playback', playing: true }, '*')
+
+      await view.setProps({ visible: false })
+      expect(postMessage).toHaveBeenLastCalledWith({ type: 'intelligence-preview-playback', playing: false }, '*')
+      await view.setProps({ visible: true })
+      await artwork.trigger('mouseenter')
+      expect(artwork.get('iframe').element).toBe(frame)
+      expect(postMessage).toHaveBeenLastCalledWith({ type: 'intelligence-preview-playback', playing: true }, '*')
+
+      panelActive.value = false
+      await flushPromises()
+      expect(postMessage).toHaveBeenLastCalledWith({ type: 'intelligence-preview-playback', playing: false }, '*')
+      await view.setProps({ visible: false })
+      await view.setProps({ visible: true })
+      await artwork.trigger('mouseenter')
+      expect(postMessage).toHaveBeenLastCalledWith({ type: 'intelligence-preview-playback', playing: false }, '*')
+      expect(artwork.get('iframe').element).toBe(frame)
+    } finally {
+      view.unmount()
+      vi.unstubAllGlobals()
+    }
+  })
+
+  it('places completed artwork duration at the right end of the model and reasoning row', () => {
+    const completed = { ...run(91), duration_ms: 14500 }
+    const view = render(plan({ recent_runs: [completed], latest_run: completed }))
+    const metadata = view.get('[data-testid="artwork-metadata"]')
+    expect(metadata.text()).toContain('gpt-6-astra · high')
+    const duration = metadata.get('[data-testid="artwork-duration"]')
+    expect(duration.text()).toBe('intelligenceMonitor.seconds:14.5')
+    expect(metadata.element.lastElementChild).toBe(duration.element)
+    expect(duration.classes()).toEqual(expect.arrayContaining(['ml-auto', 'shrink-0', 'whitespace-nowrap']))
+    expect(duration.attributes('title')).toBe('intelligenceMonitor.duration · intelligenceMonitor.seconds:14.5')
+    view.unmount()
+  })
+
+  it.each(['pending', 'running', 'failed'] as const)('does not label a %s run with a completed artwork duration', status => {
+    const latest = { ...run(91, status), duration_ms: 14500 }
+    const view = render(plan({ recent_runs: [latest], latest_run: latest }))
+    expect(view.find('[data-testid="artwork-duration"]').exists()).toBe(false)
+    view.unmount()
+  })
+
+  it.each([
+    [30, 'seconds', 30],
+    [75, 'seconds', 75],
+    [90, 'seconds', 90],
+    [300, 'minutes', 5],
+    [3660, 'minutes', 61],
+    [3600, 'hours', 1],
+    [86400, 'hours', 24],
+  ])('shows a %i-second interval without rounding away custom seconds', (interval, unit, count) => {
+    const view = render(plan({ enabled: true, interval_seconds: Number(interval) }))
+    expect(view.get('aside').text()).toContain(`intelligenceMonitor.${unit}:${count}`)
+    view.unmount()
+  })
+
+  it('shows at most twenty results in server order and opens the specifically selected result', async () => {
+    const ids = [91, 105, 82, ...Array.from({ length: 19 }, (_, i) => 70 - i)]
+    const view = render(plan({ recent_runs: ids.map(id => run(id)), latest_run: run(91) }))
+    expect(view.findAllComponents(preview).map(child => child.props('run').id)).toEqual(ids.slice(0, 20))
+    expect(view.text()).toContain('20/20')
+    await view.findAll('.test-preview')[0].trigger('click')
+    const secondCaption = view.findAll('button').find(button => button.text().includes('#105'))!
+    await secondCaption.trigger('click')
+    expect(view.emitted('history')).toEqual([[91], [105]])
+    const history = view.findAll('button').find(button => button.text().includes('intelligenceMonitor.history'))!
+    await history.trigger('click')
+    expect(view.emitted('history')?.[2]).toEqual([])
+    view.unmount()
+  })
+
+  it('allows quick permanent removal of an active OAuth monitor and labels its model', async () => {
+    const view = render(plan({ source_type: 'openai_oauth', model: 'gpt-6.1-sol', latest_run: run(12, 'running') }))
+    expect(view.get('[data-testid="intelligence-plan-model"]').text()).toContain('GPT-6.1 Sol')
+    const remove = view.get('[aria-label="intelligenceMonitor.permanentDelete"]')
+    expect(remove.attributes('disabled')).toBeUndefined()
+    await remove.trigger('click')
+    expect(view.emitted('archive')).toHaveLength(1)
+    expect(view.find('[aria-label="intelligenceMonitor.archive"]').exists()).toBe(false)
+    view.unmount()
+  })
+
+  it('labels OAuth accounts and never displays an upstream multiplier for them', () => {
+    const view = render(plan({ name: 'OAuth Account A', source_type: 'openai_oauth', source_name: 'OAuth Account A', endpoint: '', rate_snapshot: { effective_rate_multiplier: 9.99 } }))
+    expect(view.get('h3').text()).toBe('OAuth Account A')
+    expect(view.text()).toContain('OAuth')
+    expect(view.text()).toContain('OpenAI')
+    expect(view.text()).toContain('intelligenceMonitor.oauth.account')
+    expect(view.text()).not.toContain('intelligenceMonitor.rate')
+    expect(view.text()).not.toContain('9.99')
+    view.unmount()
+  })
+
+  it('retains previous results while a run is active and prevents duplicate runs or edits', async () => {
+    const view = render(plan({ latest_run: run(12, 'running'), recent_runs: [run(11, 'failed')] }))
+    expect(view.findAllComponents(preview).map(child => child.props('run').id)).toEqual([12, 11])
+    expect(view.text()).toContain('1/20')
+    const runButton = view.get('aside').findAll('button').find(button => button.text() === 'intelligenceMonitor.status.running')!
+    expect(runButton.attributes('disabled')).toBeDefined()
+    expect(view.get('[aria-label="intelligenceMonitor.edit"]').attributes('disabled')).toBeDefined()
+    expect(view.get('[aria-label="intelligenceMonitor.archive"]').attributes('disabled')).toBeDefined()
+    await view.findAll('.test-preview')[1]!.trigger('click')
+    expect(view.emitted('history')).toEqual([[11]])
+    await view.setProps({ busy: true })
+    expect(view.get('[aria-label="intelligenceMonitor.resume"]').attributes('disabled')).toBeDefined()
+    view.unmount()
+  })
+
+  it.each(['pending', 'running'] as const)('shows the %s preview in addition to all twenty stored results', status => {
+    const previous = Array.from({ length: 20 }, (_, index) => run(50 - index))
+    const view = render(plan({ latest_run: run(51, status), recent_runs: previous }))
+    expect(view.findAllComponents(preview).map(child => child.props('run').id)).toEqual([51, ...previous.map(item => item.id)])
+    expect(view.text()).toContain('20/20')
+    expect(view.text()).not.toContain('21/20')
+    expect(view.text()).toContain(`intelligenceMonitor.status.${status}`)
+    view.unmount()
+  })
+
+  it('shows a first active run as a preview while the completed result count remains zero', () => {
+    const view = render(plan({ latest_run: run(1, 'pending'), recent_runs: [] }))
+    expect(view.findAllComponents(preview).map(child => child.props('run').id)).toEqual([1])
+    expect(view.text()).toContain('0/20')
+    expect(view.text()).not.toContain('intelligenceMonitor.waiting')
+    view.unmount()
+  })
+
+  it('preserves preview instances through polling and the active run completing before recent results refresh', async () => {
+    const previous = Array.from({ length: 20 }, (_, index) => run(50 - index))
+    const view = render(plan({ latest_run: run(51, 'running'), recent_runs: previous }))
+    const activePreview = view.findAllComponents(preview)[0]!.vm
+    const previousPreview = view.findAllComponents(preview)[1]!.vm
+    await view.setProps({ plan: plan({ latest_run: { ...run(51, 'running'), duration_ms: 2000 }, recent_runs: previous.map(item => ({ ...item })) }) })
+    expect(view.findAllComponents(preview)[0]!.vm).toBe(activePreview)
+    expect(view.findAllComponents(preview)[1]!.vm).toBe(previousPreview)
+
+    await view.setProps({ plan: plan({ latest_run: run(51), recent_runs: previous }) })
+    expect(view.findAllComponents(preview).map(child => child.props('run').id)).toEqual([51, ...previous.slice(0, 19).map(item => item.id)])
+    expect(view.findAllComponents(preview)[0]!.vm).toBe(activePreview)
+    expect(view.findAllComponents(preview)[1]!.vm).toBe(previousPreview)
+    expect(view.text()).toContain('20/20')
+
+    await view.setProps({ plan: plan({ latest_run: run(51), recent_runs: [run(51), ...previous.slice(0, 19)] }) })
+    expect(view.findAllComponents(preview)[0]!.vm).toBe(activePreview)
+    expect(view.findAllComponents(preview)).toHaveLength(20)
+    view.unmount()
+  })
+})
+
+describe('intelligence plan schedule countdown', () => {
+  let view: ReturnType<typeof render> | undefined
+  beforeEach(() => {
+    vi.useFakeTimers()
+    vi.setSystemTime(new Date('2026-09-24T00:00:00Z'))
+  })
+  afterEach(() => {
+    view?.unmount()
+    view = undefined
+    vi.useRealTimers()
+  })
+
+  it('keeps the pelican countdown independent of a candy-only active request', async () => {
+    const value = plan({ enabled: true, candy_enabled: true, candy_latest_run: { ...run(100, 'running'), test_kind: 'candy' }, next_run_at: '2026-09-24T00:05:00Z' })
+    view = render(value)
+    expect(view.get('[data-testid="intelligence-countdown"]').text()).toBe('00:05:00')
+    expect(vi.getTimerCount()).toBe(1)
+    await view.setProps({ plan: { ...value, candy_latest_run: { ...run(100), test_kind: 'candy', correct: true } } })
+    expect(view.get('[data-testid="intelligence-countdown"]').text()).toBe('00:05:00')
+    expect(vi.getTimerCount()).toBe(1)
+  })
+
+  it('stops hidden card countdowns and restores the current deadline when shown again', async () => {
+    view = render(plan({ enabled: true, next_run_at: '2026-09-24T00:05:00Z' }))
+    expect(vi.getTimerCount()).toBe(1)
+    await view.setProps({ visible: false })
+    expect(vi.getTimerCount()).toBe(0)
+    await vi.advanceTimersByTimeAsync(60000)
+    await view.setProps({ visible: true })
+    expect(view.get('[data-testid="intelligence-countdown"]').text()).toBe('00:04:00')
+    expect(vi.getTimerCount()).toBe(1)
+  })
+
+  it('counts down to the server deadline across polling and browser timer delays', async () => {
+    const value = plan({ enabled: true, next_run_at: '2026-09-24T01:02:03Z' })
+    view = render(value)
+    const countdown = () => view!.get('[data-testid="intelligence-countdown"]')
+    expect(countdown().text()).toBe('01:02:03')
+    expect(countdown().attributes('datetime')).toBe(value.next_run_at)
+    expect(countdown().attributes('title')).toBe(new Date(value.next_run_at!).toLocaleString())
+    await vi.advanceTimersByTimeAsync(3000)
+    expect(countdown().text()).toBe('01:02:00')
+    await view.setProps({ plan: { ...value } })
+    expect(countdown().text()).toBe('01:02:00')
+    expect(vi.getTimerCount()).toBe(1)
+
+    vi.setSystemTime(new Date('2026-09-24T01:00:00Z'))
+    await vi.advanceTimersByTimeAsync(1000)
+    expect(countdown().text()).toBe('00:02:02')
+    view.unmount()
+    view = undefined
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it('waits for the scheduler at zero without inventing another cycle and accepts a new deadline', async () => {
+    view = render(plan({ enabled: true, next_run_at: '2026-09-24T00:00:01.500Z' }))
+    expect(view.get('[data-testid="intelligence-countdown"]').text()).toBe('00:00:02')
+    await vi.advanceTimersByTimeAsync(2000)
+    expect(view.find('[data-testid="intelligence-countdown"]').exists()).toBe(false)
+    expect(view.get('[data-testid="intelligence-waiting-schedule"]').text()).toBe('intelligenceMonitor.waitingSchedule')
+    expect(vi.getTimerCount()).toBe(0)
+    await vi.advanceTimersByTimeAsync(5000)
+    expect(view.find('[data-testid="intelligence-countdown"]').exists()).toBe(false)
+    await view.setProps({ plan: plan({ enabled: true, next_run_at: '2026-09-24T00:05:07Z' }) })
+    expect(view.get('[data-testid="intelligence-countdown"]').text()).toBe('00:05:00')
+    expect(vi.getTimerCount()).toBe(1)
+  })
+
+  it.each([null, 'invalid-date', '2026-09-23T23:59:00Z'])('shows waiting instead of a false countdown for deadline %s', next_run_at => {
+    view = render(plan({ enabled: true, next_run_at }))
+    expect(view.get('[data-testid="intelligence-waiting-schedule"]').text()).toBe('intelligenceMonitor.waitingSchedule')
+    expect(view.find('[data-testid="intelligence-countdown"]').exists()).toBe(false)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it.each(['pending', 'running'] as const)('does not count down a provisional deadline while %s, then starts after completion', async status => {
+    const value = plan({ enabled: true, latest_run: run(21, status), next_run_at: '2026-09-24T00:05:00Z' })
+    view = render(value)
+    expect(view.get('[data-testid="intelligence-schedule"]').text()).toContain('intelligenceMonitor.afterCurrentRun')
+    expect(view.find('[data-testid="intelligence-countdown"]').exists()).toBe(false)
+    expect(vi.getTimerCount()).toBe(0)
+    await vi.advanceTimersByTimeAsync(30000)
+    await view.setProps({ plan: { ...value, latest_run: run(21), next_run_at: '2026-09-24T00:05:30Z' } })
+    expect(view.get('[data-testid="intelligence-countdown"]').text()).toBe('00:05:00')
+    expect(vi.getTimerCount()).toBe(1)
+    await view.setProps({ plan: { ...value, latest_run: run(22, 'running') } })
+    expect(view.find('[data-testid="intelligence-countdown"]').exists()).toBe(false)
+    expect(vi.getTimerCount()).toBe(0)
+  })
+
+  it.each(['external', 'openai_oauth'] as const)('hides and stops the %s schedule when disabled, and resumes from the new deadline', async source_type => {
+    const value = plan({ source_type, enabled: false, next_run_at: '2026-09-24T00:05:00Z' })
+    view = render(value)
+    expect(view.find('[data-testid="intelligence-schedule"]').exists()).toBe(false)
+    expect(vi.getTimerCount()).toBe(0)
+    await view.setProps({ plan: { ...value, enabled: true } })
+    expect(view.get('[data-testid="intelligence-countdown"]').text()).toBe('00:05:00')
+    await view.setProps({ plan: { ...value, enabled: false, next_run_at: null } })
+    expect(view.find('[data-testid="intelligence-schedule"]').exists()).toBe(false)
+    expect(vi.getTimerCount()).toBe(0)
+    await vi.advanceTimersByTimeAsync(60000)
+    await view.setProps({ plan: { ...value, enabled: true, next_run_at: '2026-09-24T00:11:00Z' } })
+    expect(view.get('[data-testid="intelligence-countdown"]').text()).toBe('00:10:00')
+  })
+})

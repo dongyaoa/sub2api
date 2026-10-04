@@ -7,6 +7,8 @@ import (
 
 // AdminHandlers contains all admin-related HTTP handlers
 type AdminHandlers struct {
+	UpstreamCenter         *admin.UpstreamCenterHandler
+	IntelligenceMonitor    *admin.IntelligenceMonitorHandler
 	Dashboard              *admin.DashboardHandler
 	User                   *admin.UserHandler
 	Group                  *admin.GroupHandler

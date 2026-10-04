@@ -1,0 +1,250 @@
+import { apiClient } from '../client'
+
+export type UpstreamWindow = '24h' | '7d' | '30d'
+export type UpstreamStatus = 'operational' | 'degraded' | 'failed' | 'error' | 'unknown'
+export type UpstreamProvider = 'openai' | 'anthropic' | 'gemini'
+export type UpstreamOrderInput =
+  | { scope: 'suppliers' | 'monitors'; ids: number[] }
+  | { scope: 'groups'; supplier_id: number; ids: number[] }
+
+export interface UpstreamHistoryRecord {
+  id: number
+  target_id: number
+  model: string
+  status: UpstreamStatus
+  latency_ms: number | null
+  ping_latency_ms: number | null
+  http_status: number | null
+  message: string
+  checked_at: string
+  cost: number | null
+  cost_source: 'unknown' | 'estimated' | 'reported'
+}
+
+export interface UpstreamModelStatistics {
+  model: string
+  status: UpstreamStatus
+  availability: number | null
+  availability_7d: number | null
+  latest_latency_ms: number | null
+  avg_latency_ms: number | null
+  p95_latency_ms: number | null
+  sample_count: number
+  success_count: number
+  last_checked_at: string | null
+  timeline: UpstreamHistoryRecord[]
+}
+
+export interface UpstreamBalanceSnapshot {
+  target_id: number
+  wallet_ref: string
+  kind: 'wallet' | 'key_quota' | 'subscription' | 'unsupported' | 'unknown'
+  balance: number | null
+  quota_remaining: number | null
+  unlimited_quota?: boolean
+  today_used: number | null
+  total_used: number | null
+  currency: string
+  status: 'ok' | 'error' | 'unsupported' | 'pending'
+  synced_at: string | null
+  last_attempt_at?: string | null
+  currency_source?: 'reported' | 'sub2api_default' | 'newapi_status'
+  error: string
+  billing?: UpstreamBillingSnapshot | null
+}
+
+export interface UpstreamBillingSnapshot {
+  group_id: number | null
+  group_name: string | null
+  group_rate_multiplier: number | null
+  user_rate_multiplier: number | null
+  resolved_rate_multiplier: number | null
+  effective_rate_multiplier: number | null
+  billing_scope: 'token'
+  source: 'sub2api_billing' | 'sub2api_usage' | 'newapi_token' | 'newapi_account' | 'newapi_pricing' | 'unknown'
+  provider?: 'newapi'
+  status: 'ok' | 'error' | 'unsupported' | 'pending'
+  stale: boolean
+  synced_at: string | null
+  last_attempt_at: string | null
+  observed_at: string | null
+  error: string
+}
+
+export interface UpstreamFinanceSummary {
+  revenue: number
+  business_cost: number
+  monitor_cost: number | null
+  profit: number | null
+  request_count: number
+  total_tokens: number | null
+  unknown_token_requests: number
+  account_billed: number
+  cost_source: 'estimated' | 'reported' | 'mixed' | 'unknown'
+  currency: string
+  from: string
+  to: string
+  remote_used: number | null
+  reconciliation_delta: number | null
+  unpriced_monitor_count: number
+}
+
+export interface UpstreamTargetInput {
+  supplier_id: number | null
+  name: string
+  provider: UpstreamProvider
+  api_mode: 'chat_completions' | 'responses'
+  endpoint: string
+  api_key?: string
+  newapi_user_id?: number
+  newapi_access_token?: string
+  source_account_id?: number
+  models: string[]
+  enabled: boolean
+  interval_seconds: number
+  timeout_seconds: number
+  degraded_threshold_ms: number
+  account_ids: number[]
+  wallet_ref: string
+  notes: string
+}
+
+export interface UpstreamTarget extends Omit<UpstreamTargetInput, 'api_key' | 'source_account_id' | 'newapi_access_token'> {
+  id: number
+  api_key_masked: string
+  newapi_access_token_configured?: boolean
+  created_at: string
+  updated_at: string
+  last_checked_at: string | null
+  next_check_at: string | null
+  statistics: UpstreamModelStatistics[]
+  balance: UpstreamBalanceSnapshot | null
+  finance: UpstreamFinanceSummary
+}
+
+export interface UpstreamSupplierInput { name: string; website: string; notes: string }
+export interface UpstreamSupplier extends UpstreamSupplierInput {
+  id: number
+  created_at: string
+  updated_at: string
+  targets: UpstreamTarget[]
+  finance: UpstreamFinanceSummary
+  wallets: UpstreamBalanceSnapshot[]
+}
+export interface UpstreamOverview {
+  suppliers: UpstreamSupplier[]
+  monitors: UpstreamTarget[]
+  summary: UpstreamFinanceSummary
+}
+export interface AccountUpstreamMonitor {
+  account_id: number
+  account_name: string
+  provider: UpstreamProvider
+  pelican_supported: boolean
+  target: UpstreamTarget | null
+  supplier: UpstreamSupplier | null
+}
+export interface UpstreamFinanceRow {
+  id: number
+  created_at: string
+  target_id: number
+  target_name: string
+  supplier_id: number | null
+  supplier_name: string
+  account_id: number | null
+  group_id: number | null
+  model: string
+  request_id: string
+  revenue: number
+  business_cost: number
+  profit: number
+  billing_type: number
+}
+export interface UpstreamPage<T> { items: T[]; total: number; page: number; page_size: number }
+export interface UpstreamFinancePage extends UpstreamPage<UpstreamFinanceRow> { summary: UpstreamFinanceSummary }
+export interface UpstreamPageQuery { page?: number; page_size?: number; from?: string; to?: string }
+export interface UpstreamCleanupResult {
+  history_deleted: number
+  balance_deleted: number
+  billing_deleted: number
+  has_more: boolean
+}
+export interface UpstreamStoragePolicyInput {
+  enabled: boolean
+  history_retention_days: number
+  snapshot_retention_days: number
+}
+export interface UpstreamStoragePolicy extends UpstreamStoragePolicyInput {
+  last_cleanup_at: string | null
+  last_result: UpstreamCleanupResult | null
+}
+export type UpstreamArchiveKind = 'supplier' | 'target' | 'intelligence'
+export interface UpstreamArchiveItem {
+  kind: UpstreamArchiveKind
+  id: number
+  name: string
+  deleted_at: string
+  source_type: string
+  supplier_name: string
+}
+export interface UpstreamPurgeInput { kind: UpstreamArchiveKind; id: number; confirm_name: string }
+const base = '/admin/upstream-center'
+
+export const upstreamCenterAPI = {
+  async accountMonitor(id: number, signal?: AbortSignal): Promise<AccountUpstreamMonitor> {
+    return (await apiClient.get<AccountUpstreamMonitor>(`${base}/accounts/${id}/monitor`, { signal })).data
+  },
+  async ensureAccountMonitor(id: number, signal?: AbortSignal): Promise<AccountUpstreamMonitor> {
+    return (await apiClient.post<AccountUpstreamMonitor>(`${base}/accounts/${id}/monitor`, undefined, { signal })).data
+  },
+  async storage(signal?: AbortSignal): Promise<UpstreamStoragePolicy> {
+    return (await apiClient.get<UpstreamStoragePolicy>(`${base}/storage`, { signal })).data
+  },
+  async updateStorage(input: UpstreamStoragePolicyInput): Promise<UpstreamStoragePolicy> {
+    return (await apiClient.put<UpstreamStoragePolicy>(`${base}/storage`, input)).data
+  },
+  async cleanupStorage(): Promise<UpstreamCleanupResult> {
+    return (await apiClient.post<UpstreamCleanupResult>(`${base}/storage/cleanup`, undefined, { timeout: 60000 })).data
+  },
+  async archives(signal?: AbortSignal): Promise<{ items: UpstreamArchiveItem[]; total: number }> {
+    return (await apiClient.get<{ items: UpstreamArchiveItem[]; total: number }>(`${base}/storage/archives`, { signal })).data
+  },
+  async purge(input: UpstreamPurgeInput): Promise<void> {
+    await apiClient.post(`${base}/storage/purge`, input, { timeout: 60000 })
+  },
+  async reorder(input: UpstreamOrderInput): Promise<void> {
+    await apiClient.put(`${base}/order`, input)
+  },
+  async overview(window: UpstreamWindow = '24h', signal?: AbortSignal): Promise<UpstreamOverview> {
+    return (await apiClient.get<UpstreamOverview>(`${base}/overview`, { params: { window }, signal })).data
+  },
+  async createSupplier(input: UpstreamSupplierInput): Promise<UpstreamSupplier> {
+    return (await apiClient.post<UpstreamSupplier>(`${base}/suppliers`, input)).data
+  },
+  async updateSupplier(id: number, input: UpstreamSupplierInput): Promise<UpstreamSupplier> {
+    return (await apiClient.put<UpstreamSupplier>(`${base}/suppliers/${id}`, input)).data
+  },
+  async deleteSupplier(id: number): Promise<void> { await apiClient.delete(`${base}/suppliers/${id}`) },
+  async createTarget(input: UpstreamTargetInput): Promise<UpstreamTarget> {
+    return (await apiClient.post<UpstreamTarget>(`${base}/targets`, input)).data
+  },
+  async updateTarget(id: number, input: Partial<UpstreamTargetInput>): Promise<UpstreamTarget> {
+    return (await apiClient.put<UpstreamTarget>(`${base}/targets/${id}`, input)).data
+  },
+  async deleteTarget(id: number): Promise<void> { await apiClient.delete(`${base}/targets/${id}`) },
+  async run(id: number): Promise<UpstreamHistoryRecord[]> {
+    return (await apiClient.post<UpstreamHistoryRecord[]>(`${base}/targets/${id}/run`, undefined, { timeout: 420000 })).data
+  },
+  async syncBalance(id: number): Promise<UpstreamBalanceSnapshot> {
+    return (await apiClient.post<UpstreamBalanceSnapshot>(`${base}/targets/${id}/sync-balance`, undefined, { timeout: 60000 })).data
+  },
+  async models(input: { target_id?: number; account_id?: number; provider: UpstreamProvider; endpoint: string; api_key?: string }): Promise<string[]> {
+    return (await apiClient.post<{ models: string[] }>(`${base}/models`, input, { timeout: 60000 })).data.models
+  },
+  async history(id: number, params: UpstreamPageQuery & { model?: string }, signal?: AbortSignal): Promise<UpstreamPage<UpstreamHistoryRecord>> {
+    return (await apiClient.get<UpstreamPage<UpstreamHistoryRecord>>(`${base}/targets/${id}/history`, { params, signal })).data
+  },
+  async finance(params: UpstreamPageQuery & { supplier_id?: number; target_id?: number }, signal?: AbortSignal): Promise<UpstreamFinancePage> {
+    return (await apiClient.get<UpstreamFinancePage>(`${base}/finance`, { params, signal })).data
+  },
+}

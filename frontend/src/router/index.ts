@@ -812,6 +812,25 @@ const routes: RouteRecordRaw[] = [
     }
   },
 
+  {
+    path: '/pelican-monitor',
+    name: 'PelicanMonitor',
+    component: () => import('@/views/user/PelicanMonitorView.vue'),
+    meta: { requiresAuth: true, requiresAdmin: false, title: 'Pelican monitor', titleKey: 'pelicanMonitor.title' }
+  },
+
+  {
+    path: '/admin/upstreams',
+    name: 'AdminUpstreamCenter',
+    component: () => import('@/views/admin/UpstreamCenterView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: true,
+      title: 'Upstream Center',
+      titleKey: 'upstreamCenter.title'
+    }
+  },
+
   // ==================== 404 Not Found ====================
   {
     path: '/:pathMatch(.*)*',
