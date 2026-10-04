@@ -41,7 +41,7 @@
             <EmptyState v-else-if="search" class="card py-12" :title="t('upstreamCenter.noMatches')" />
             <EmptyState v-else class="card py-12" :title="t(tab === 'suppliers' ? 'upstreamCenter.emptySuppliers' : 'upstreamCenter.emptyMonitors')" :description="t(tab === 'suppliers' ? 'upstreamCenter.emptySuppliersHint' : 'upstreamCenter.emptyMonitorsHint')" :action-text="t(tab === 'suppliers' ? 'upstreamCenter.addSupplier' : 'upstreamCenter.addMonitor')" @action="tab === 'suppliers' ? openSupplier() : openTarget()"><template #icon><Icon :name="tab === 'suppliers' ? 'server' : 'chart'" size="xl" class="text-primary-500" /></template></EmptyState>
           </div>
-          <p v-if="overview && tab === 'suppliers'" class="text-[10px] leading-5 text-gray-400 dark:text-dark-400">{{ t('upstreamCenter.finance.note') }}<span class="ml-1">{{ t('upstreamCenter.finance.accountingDate', { from: dateTime(overview.summary.from), to: dateTime(overview.summary.to) }) }}</span></p>
+          <p v-if="overview && tab === 'suppliers'" class="text-[10px] leading-5 text-gray-400 dark:text-dark-400">{{ t(actualProfit(overview.summary) == null ? 'upstreamCenter.financeUnavailable' : 'upstreamCenter.finance.note') }}<span class="ml-1">{{ t('upstreamCenter.finance.accountingDate', { from: dateTime(overview.summary.from), to: dateTime(overview.summary.to) }) }}</span><span v-if="actualProfit(overview.summary) != null && overview.summary.remote_synced_at" class="ml-1">{{ t('upstreamCenter.wallet.syncedAt', { time: dateTime(overview.summary.remote_synced_at) }) }}</span></p>
           <p v-else-if="overview" class="text-[10px] leading-5 text-gray-400 dark:text-dark-400">{{ t('upstreamCenter.latencyHint') }}</p>
         </template>
       </div>
@@ -72,7 +72,7 @@ import UpstreamTargetDialog from '@/components/admin/upstream/UpstreamTargetDial
 import UpstreamDetailDialog from '@/components/admin/upstream/UpstreamDetailDialog.vue'
 import UpstreamOrderDialog from '@/components/admin/upstream/UpstreamOrderDialog.vue'
 import { upstreamCenterAPI, type UpstreamHistoryRecord, type UpstreamOverview, type UpstreamSupplier, type UpstreamTarget, type UpstreamWindow } from '@/api/admin/upstreamCenter'
-import { dateTime, money, shortTime, overallTargetStatus } from '@/components/admin/upstream/format'
+import { actualProfit, actualUpstreamUsed, dateTime, financeSource, money, shortTime, overallTargetStatus } from '@/components/admin/upstream/format'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { useAppStore } from '@/stores/app'
 import { useMonitorRefresh } from '@/composables/useMonitorRefresh'
@@ -136,11 +136,12 @@ function openGroupOrder(supplier: UpstreamSupplier) { ordering.value = { scope: 
 function orderSaved() { ordering.value = null; void reload() }
 const supplierMetrics = computed(() => {
   const summary = overview.value?.summary
+  const profit = actualProfit(summary)
   return [
     { key: 'upstreamCenter.supplierCount', value: overview.value?.suppliers.length || 0, icon: 'server' as const, color: '', note: t('upstreamCenter.groupCount', { count: allGroups.value.length }) },
-    { key: 'upstreamCenter.finance.todayCost', value: money(summary?.business_cost, summary?.currency), icon: 'creditCard' as const, color: '', note: t(`upstreamCenter.finance.${summary?.cost_source || 'unknown'}`) },
+    { key: 'upstreamCenter.finance.todayCost', value: money(actualUpstreamUsed(summary), summary?.currency), icon: 'creditCard' as const, color: '', note: t(`upstreamCenter.finance.${financeSource(summary)}`) },
     { key: 'upstreamCenter.finance.todayRevenue', value: money(summary?.revenue, summary?.currency), icon: 'chart' as const, color: '', note: t('upstreamCenter.finance.requests', { count: summary?.request_count || 0 }) },
-    { key: 'upstreamCenter.finance.todayProfit', value: summary?.profit == null ? t('upstreamCenter.finance.pending') : money(summary.profit, summary.currency), icon: 'chart' as const, color: summary?.profit == null ? '!text-sm !text-amber-600 dark:!text-amber-400' : summary.profit < 0 ? '!text-rose-600 dark:!text-rose-400' : '!text-primary-700 dark:!text-primary-300', note: `${t('upstreamCenter.finance.monitorCost')} ${money(summary?.monitor_cost, summary?.currency)}` },
+    { key: 'upstreamCenter.finance.todayProfit', value: profit == null ? t('upstreamCenter.finance.pending') : money(profit, summary?.currency), icon: 'chart' as const, color: profit == null ? '!text-sm !text-amber-600 dark:!text-amber-400' : profit < 0 ? '!text-rose-600 dark:!text-rose-400' : '!text-primary-700 dark:!text-primary-300', note: financeSource(summary) === 'reported' && summary?.remote_synced_at ? t('upstreamCenter.wallet.syncedAt', { time: dateTime(summary.remote_synced_at) }) : t(`upstreamCenter.finance.${financeSource(summary)}`) },
   ]
 })
 const monitorMetrics = computed(() => {

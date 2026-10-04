@@ -49,7 +49,7 @@
       <dl class="metric-grid" :aria-label="t('upstreamCenter.finance.title')">
         <div class="min-w-0">
           <dt class="metric-label">{{ t('upstreamCenter.billing.upstreamTodayShort') }}</dt>
-          <dd class="metric-value" :title="`${t('upstreamCenter.wallet.usageHint')} ${money(target.balance?.today_used, target.balance?.currency)}`" data-testid="upstream-remote-spend">{{ amount(target.balance?.today_used) }}</dd>
+          <dd class="metric-value" :title="`${t('upstreamCenter.finance.note')} ${money(actualUpstreamUsed(target.finance), target.finance?.currency)}`" data-testid="upstream-remote-spend">{{ amount(actualUpstreamUsed(target.finance)) }}</dd>
         </div>
         <div class="min-w-0">
           <dt class="metric-label">{{ t('upstreamCenter.billing.revenueTodayShort') }}</dt>
@@ -57,7 +57,7 @@
         </div>
         <div class="min-w-0">
           <dt class="metric-label">{{ t('upstreamCenter.billing.profitTodayShort') }}</dt>
-          <dd class="metric-value" :class="target.finance?.profit == null ? '!text-amber-600 dark:!text-amber-400' : target.finance.profit < 0 ? '!text-rose-600 dark:!text-rose-400' : '!text-primary-700 dark:!text-primary-400'" :title="target.finance?.profit == null ? t('upstreamCenter.finance.pending') : `${t('upstreamCenter.finance.note')} ${money(target.finance.profit, target.finance.currency)}`" data-testid="upstream-profit">{{ amount(target.finance?.profit) }}</dd>
+          <dd class="metric-value" :class="profit == null ? '!text-amber-600 dark:!text-amber-400' : profit < 0 ? '!text-rose-600 dark:!text-rose-400' : '!text-primary-700 dark:!text-primary-400'" :title="profit == null ? t('upstreamCenter.finance.pending') : `${t('upstreamCenter.finance.note')} ${money(profit, target.finance.currency)}`" data-testid="upstream-profit">{{ amount(profit) }}</dd>
         </div>
         <div class="min-w-0">
           <dt class="metric-label">{{ t('upstreamCenter.finance.todayRequests') }}</dt>
@@ -87,7 +87,7 @@ import UpstreamHistoryBar from './UpstreamHistoryBar.vue'
 import UpstreamStatusBadge from './UpstreamStatusBadge.vue'
 import UpstreamRateBadge from './UpstreamRateBadge.vue'
 import { upstreamSyncError } from './newapi'
-import { amount, availability, availabilityColor, compactTokens, latency, latencyColor, money, targetStatus } from './format'
+import { actualProfit, actualUpstreamUsed, amount, availability, availabilityColor, compactTokens, latency, latencyColor, money, targetStatus } from './format'
 
 const props = defineProps<{ target: UpstreamTarget; busy: boolean; running: boolean }>()
 const emit = defineEmits<{ details: [target: UpstreamTarget, model: string, record?: UpstreamHistoryRecord]; intelligence: [target: UpstreamTarget]; run: [target: UpstreamTarget]; toggle: [target: UpstreamTarget]; edit: [target: UpstreamTarget]; delete: [target: UpstreamTarget] }>()
@@ -96,6 +96,7 @@ const selectedModel = ref(props.target.models[0] || '')
 watch(() => props.target.models, models => { if (!models.includes(selectedModel.value)) selectedModel.value = models[0] || '' })
 const modelOptions = computed(() => props.target.models.map(model => ({ value: model, label: `${model} · ${t(`upstreamCenter.status.${targetStatus(props.target, model)}`)}` })))
 const statistics = computed(() => props.target.statistics?.find(item => item.model === selectedModel.value))
+const profit = computed(() => actualProfit(props.target.finance))
 const modelIssues = computed(() => props.target.models.filter(model => ['degraded', 'failed', 'error', 'stale'].includes(targetStatus(props.target, model))).length)
 </script>
 

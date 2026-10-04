@@ -57,6 +57,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 	if account != nil && account.Platform == PlatformOpenAI {
 		firstOutputTimeout = s.openAIFirstOutputTimeout(reasoningEffort)
 	}
+	firstOutputTimeout = intelligenceMonitorFirstOutputTimeout(c, firstOutputTimeout)
 	guardFirstOutput := firstOutputTimeout > 0
 	stageFirstOutput := account != nil && account.Platform == PlatformOpenAI
 	var attemptResponseHeaders http.Header
@@ -184,6 +185,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 		}
 		streamInterval = resolveGrokStreamIdleTimeout(cfgSec)
 	}
+	streamInterval = intelligenceMonitorStreamInterval(c, streamInterval)
 	// 仅监控上游数据间隔超时，不被下游写入阻塞影响
 	var intervalTicker *time.Ticker
 	if streamInterval > 0 {

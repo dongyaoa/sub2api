@@ -7,7 +7,14 @@ import type { UpstreamOverview, UpstreamSupplier, UpstreamTarget } from '@/api/a
 const mocks = vi.hoisted(() => ({ overview: vi.fn(), showSuccess: vi.fn(), deleteSupplier: vi.fn(), deleteTarget: vi.fn(), purge: vi.fn() }))
 vi.mock('@/api/admin/upstreamCenter', () => ({ upstreamCenterAPI: { overview: mocks.overview, deleteSupplier: mocks.deleteSupplier, deleteTarget: mocks.deleteTarget, purge: mocks.purge } }))
 vi.mock('@/stores/app', () => ({ useAppStore: () => ({ showSuccess: mocks.showSuccess }) }))
-vi.mock('vue-i18n', async importOriginal => ({ ...await importOriginal<typeof import('vue-i18n')>(), useI18n: () => ({ t: (key: string) => key }) }))
+vi.mock('vue-i18n', async importOriginal => {
+  const original = await importOriginal<typeof import('vue-i18n')>()
+  const { default: messages } = await import('@/i18n/locales/zh/upstreamCenter')
+  return { ...original, useI18n: () => ({ t: (key: string) => {
+    const [, section, name] = key.split('.')
+    return section === 'finance' ? (messages.upstreamCenter.finance as Record<string, string>)[name!] || key : key
+  } }) }
+})
 const supplierCard = defineComponent({ props: ['supplier'], emits: ['order-groups', 'delete', 'intelligence'], template: '<article data-supplier><h2>{{ supplier.name }}</h2><button data-group-order @click="$emit(\'order-groups\',supplier)">groups</button></article>' })
 const targetCard = defineComponent({ props: ['target'], template: '<article data-monitor>{{ target.name }}</article>' })
 const orderDialog = defineComponent({ name: 'UpstreamOrderDialog', props: ['show','scope','supplierId','supplierName'], emits: ['close','saved'], template: '<div v-if="show" data-order-dialog><button data-cancel-order @click="$emit(\'close\')">cancel</button><button data-save-order @click="$emit(\'saved\')">save</button></div>' })
@@ -27,6 +34,22 @@ beforeEach(() => { vi.resetAllMocks(); vi.useFakeTimers({ toFake: ['setInterval'
 afterEach(() => { wrapper?.unmount(); wrapper=undefined; vi.useRealTimers(); vi.restoreAllMocks() })
 
 describe('upstream center manual ordering', () => {
+  it('shows unreconciled Chinese labels instead of a legacy estimated negative profit', async () => {
+    const data = overview()
+    data.summary = { revenue: 0, remote_used: null, profit: -0.007152, cost_source: 'estimated', currency: 'USD', request_count: 0 } as UpstreamOverview['summary']
+    mocks.overview.mockResolvedValue(data)
+    const view = render(); await flushPromises()
+    const cards = view.findAll('section[aria-label="收支明细"] > div')
+    expect(cards).toHaveLength(4)
+    expect(cards[1]!.text()).toContain('上游今日实际消费')
+    expect(cards[1]!.text()).toContain('旧版预估，待实报同步')
+    expect(cards[1]!.text()).toContain('—')
+    expect(cards[3]!.text()).toContain('待上游核对')
+    expect(cards[3]!.text()).not.toContain('0.007152')
+    expect(cards[3]!.text()).not.toContain('upstreamCenter.finance.')
+    expect(view.text()).toContain('upstreamCenter.financeUnavailable')
+    expect(view.text()).not.toContain('今日近实时利润 =')
+  })
   it('opens a dedicated local group tab and retains its panel while other intelligence tabs are shown', async () => {
     const view = render(); await flushPromises()
     await view.get('#upstream-tab-local').trigger('click')

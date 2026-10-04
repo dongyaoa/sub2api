@@ -5,11 +5,11 @@ import (
 	"time"
 )
 
-// UpstreamFinanceSummary reports ledger consumption, not cash revenue. A missing
-// monitor price makes the combined cost and profit incomplete, never zero.
+// UpstreamFinanceSummary keeps local customer debits separate from verified
+// upstream charges. Unknown upstream cost and profit are null, never estimates.
 type UpstreamFinanceSummary struct {
 	Revenue      float64  `json:"revenue"`
-	BusinessCost float64  `json:"business_cost"`
+	BusinessCost *float64 `json:"business_cost"`
 	MonitorCost  *float64 `json:"monitor_cost"`
 	Profit       *float64 `json:"profit"`
 	RequestCount int64    `json:"request_count"`
@@ -17,16 +17,16 @@ type UpstreamFinanceSummary struct {
 	// source usage log without a token snapshot makes the aggregate unknown.
 	TotalTokens          *int64 `json:"total_tokens"`
 	UnknownTokenRequests int64  `json:"unknown_token_requests"`
-	// Same snapshot as BusinessCost: account statistics cost times account rate,
-	// independent from the user debit in Revenue and from monitoring costs.
-	AccountBilled        float64   `json:"account_billed"`
-	CostSource           string    `json:"cost_source"`
-	Currency             string    `json:"currency"`
-	From                 time.Time `json:"from"`
-	To                   time.Time `json:"to"`
-	RemoteUsed           *float64  `json:"remote_used"`
-	ReconciliationDelta  *float64  `json:"reconciliation_delta"`
-	UnpricedMonitorCount int64     `json:"unpriced_monitor_count"`
+	// Account statistics cost times account rate; this is not an upstream debit.
+	AccountBilled        float64    `json:"account_billed"`
+	CostSource           string     `json:"cost_source"`
+	Currency             string     `json:"currency"`
+	From                 time.Time  `json:"from"`
+	To                   time.Time  `json:"to"`
+	RemoteUsed           *float64   `json:"remote_used"`
+	RemoteSyncedAt       *time.Time `json:"remote_synced_at"`
+	ReconciliationDelta  *float64   `json:"reconciliation_delta"`
+	UnpricedMonitorCount int64      `json:"unpriced_monitor_count"`
 }
 
 type UpstreamBalanceSnapshot struct {
@@ -37,6 +37,9 @@ type UpstreamBalanceSnapshot struct {
 	QuotaRemaining *float64   `json:"quota_remaining"`
 	UnlimitedQuota bool       `json:"unlimited_quota"`
 	TodayUsed      *float64   `json:"today_used"`
+	DayUsed        *float64   `json:"day_used"`
+	DayStart       *time.Time `json:"day_start"`
+	DayEnd         *time.Time `json:"day_end"`
 	TotalUsed      *float64   `json:"total_used"`
 	Currency       string     `json:"currency"`
 	Status         string     `json:"status"`
@@ -80,8 +83,8 @@ type UpstreamFinanceRow struct {
 	Model         string    `json:"model"`
 	RequestID     string    `json:"request_id"`
 	Revenue       float64   `json:"revenue"`
-	BusinessCost  float64   `json:"business_cost"`
-	Profit        float64   `json:"profit"`
+	BusinessCost  *float64  `json:"business_cost"`
+	Profit        *float64  `json:"profit"`
 	BillingType   int       `json:"billing_type"`
 	TotalTokens   *int64    `json:"total_tokens"`
 	AccountBilled float64   `json:"account_billed"`
@@ -107,14 +110,17 @@ type UpstreamFinancePage struct {
 // UpstreamFinanceTarget is internal and deliberately has no exported JSON form.
 // Credentials must never be serialized by handlers or persisted in snapshots.
 type UpstreamFinanceTarget struct {
-	ID                         int64  `json:"-"`
-	SupplierID                 *int64 `json:"-"`
-	Provider                   string `json:"-"`
-	Endpoint                   string `json:"-"`
-	APIKeyEncrypted            string `json:"-"`
-	NewAPIUserID               int64  `json:"-"`
-	NewAPIAccessTokenEncrypted string `json:"-"`
-	WalletRef                  string `json:"-"`
+	ID                         int64      `json:"-"`
+	SupplierID                 *int64     `json:"-"`
+	Provider                   string     `json:"-"`
+	Endpoint                   string     `json:"-"`
+	APIKeyEncrypted            string     `json:"-"`
+	APIKeyFingerprint          string     `json:"-"`
+	ProfitIdentitySince        time.Time  `json:"-"`
+	ArchivedAt                 *time.Time `json:"-"`
+	NewAPIUserID               int64      `json:"-"`
+	NewAPIAccessTokenEncrypted string     `json:"-"`
+	WalletRef                  string     `json:"-"`
 }
 
 type UpstreamFinanceRepository interface {

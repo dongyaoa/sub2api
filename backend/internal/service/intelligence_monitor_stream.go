@@ -17,7 +17,7 @@ func intelligenceLooksLikeSSE(raw []byte) bool {
 // Read while the remote generator works, and stop at its terminal event even
 // if the proxy keeps the connection open. A JSON-only compatible endpoint is
 // still accepted, including a gateway with a stale text/event-stream header.
-func readIntelligenceGenerationBody(body io.Reader, mode, contentType, key string) (string, string) {
+func readIntelligenceGenerationBody(body io.Reader, mode, contentType, key string, waitForChatDone bool) (string, string) {
 	limited := &io.LimitedReader{R: body, N: intelligenceResponseMaxBytes + 1}
 	reader := bufio.NewReader(limited)
 	for {
@@ -39,7 +39,7 @@ func readIntelligenceGenerationBody(body io.Reader, mode, contentType, key strin
 	first, _ := reader.Peek(1)
 	jsonBody := first[0] == '{' || first[0] == '['
 	if !jsonBody && (strings.Contains(strings.ToLower(contentType), "text/event-stream") || first[0] == ':' || first[0] == 'd' || first[0] == 'e') {
-		text, message := readIntelligenceEventStream(reader, mode, key)
+		text, message := readIntelligenceEventStream(reader, mode, key, waitForChatDone)
 		if limited.N <= 0 {
 			return "", "generation response exceeded the 4 MiB limit"
 		}
@@ -55,13 +55,14 @@ func readIntelligenceGenerationBody(body io.Reader, mode, contentType, key strin
 	return extractIntelligenceModelTextWithKey(raw, mode, false, key)
 }
 
-func readIntelligenceEventStream(body io.Reader, mode, key string) (string, string) {
+func readIntelligenceEventStream(body io.Reader, mode, key string, waitForChatDone bool) (string, string) {
 	limited := &io.LimitedReader{R: body, N: intelligenceResponseMaxBytes + 1}
 	scanner := bufio.NewScanner(limited)
 	scanner.Buffer(make([]byte, 4096), intelligenceResponseMaxBytes+1)
 	var deltas, data strings.Builder
 	final, message, eventName := "", "", ""
 	terminal := false
+	chatFinished := false
 	consume := func() {
 		value := strings.TrimSpace(data.String())
 		data.Reset()
@@ -72,9 +73,12 @@ func readIntelligenceEventStream(body io.Reader, mode, key string) (string, stri
 		}
 		if value == "[DONE]" {
 			terminal = true
+			if mode == MonitorAPIModeChatCompletions && chatFinished {
+				return
+			}
 			// Transport termination alone does not prove a complete generation.
-			// A successful Responses terminal or CC stop already returns above
-			// this point; truncated proxies sometimes emit only this sentinel.
+			// Require a Responses terminal or CC finish before this sentinel;
+			// truncated proxies sometimes emit only the transport marker.
 			message = "generation stream ended before completion"
 			return
 		}
@@ -113,7 +117,11 @@ func readIntelligenceEventStream(body io.Reader, mode, key string) (string, stri
 				_, _ = deltas.WriteString(parsed.Get("choices.0.delta.content").String())
 				finish := parsed.Get("choices.0.finish_reason").String()
 				if finish != "" {
-					terminal = true
+					// The local gateway still needs the usage chunk after finish
+					// for billing, even for truncated or filtered generations.
+					// Closing its bound request early cancels that upstream tail.
+					chatFinished = true
+					terminal = !waitForChatDone
 					if finish != "stop" {
 						message = "model output was truncated or filtered"
 					}

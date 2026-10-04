@@ -54,7 +54,7 @@ func normalizeUpstreamFinanceQuery(q UpstreamFinanceQuery, now time.Time) (Upstr
 		q.From = timezone.StartOfDay(now)
 	}
 	if q.To.IsZero() {
-		q.To = now
+		q.To = timezone.StartOfDay(now).AddDate(0, 0, 1)
 	}
 	if !q.To.After(q.From) || q.To.Sub(q.From) > 366*24*time.Hour {
 		return q, infraerrors.BadRequest("INVALID_UPSTREAM_FINANCE_RANGE", "Time range must be increasing and at most 366 days")
@@ -82,7 +82,16 @@ func (s *UpstreamFinanceService) Summary(ctx context.Context, supplierID, target
 	if err != nil {
 		return nil, err
 	}
-	return s.repo.Summary(ctx, q)
+	summary, err := s.repo.Summary(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+	sources, err := s.profitSources(ctx, timezone.StartOfDay(s.now()))
+	if err != nil {
+		return nil, err
+	}
+	applyUpstreamDailyProfit(summary, q, sources, s.now())
+	return summary, nil
 }
 
 func (s *UpstreamFinanceService) Details(ctx context.Context, query UpstreamFinanceQuery) (*UpstreamFinancePage, error) {
@@ -90,7 +99,7 @@ func (s *UpstreamFinanceService) Details(ctx context.Context, query UpstreamFina
 	if err != nil {
 		return nil, err
 	}
-	summary, err := s.repo.Summary(ctx, q)
+	summary, err := s.Summary(ctx, q.SupplierID, q.TargetID, q.From, q.To)
 	if err != nil {
 		return nil, err
 	}
@@ -221,6 +230,17 @@ func (s *UpstreamFinanceService) fetchSub2APIBalance(ctx context.Context, target
 	if err != nil {
 		return fail("invalid_endpoint")
 	}
+	dayStart := timezone.StartOfDay(now)
+	dayEnd := dayStart.AddDate(0, 0, 1)
+	request, err := url.Parse(requestURL)
+	if err != nil {
+		return fail("invalid_endpoint")
+	}
+	query := request.Query()
+	query.Set("days", "1")
+	query.Set("timezone", timezone.Name())
+	request.RawQuery = query.Encode()
+	requestURL = request.String()
 	// The dialer rechecks DNS at connection time. Validation also disallows URL
 	// userinfo/query fields and known metadata hostnames before decryption.
 	if err = validateEndpoint(target.Endpoint); err != nil {
@@ -269,11 +289,18 @@ func (s *UpstreamFinanceService) fetchSub2APIBalance(ctx context.Context, target
 	}
 	parsed.TargetID = target.ID
 	parsed.WalletRef = target.WalletRef
-	parsed.SyncedAt = &now
+	completedAt := s.now().UTC()
+	parsed.SyncedAt = &completedAt
+	if timezone.StartOfDay(completedAt).Equal(dayStart) {
+		parsed.DayUsed = parseUpstreamDailyUsed(body)
+		if parsed.DayUsed != nil {
+			parsed.DayStart, parsed.DayEnd = &dayStart, &dayEnd
+		}
+	}
 	parsed.Billing = parseUpstreamBillingFromUsage(body)
 	if parsed.Billing != nil {
-		parsed.Billing.SyncedAt = &now
-		parsed.Billing.LastAttemptAt = &now
+		parsed.Billing.SyncedAt = &completedAt
+		parsed.Billing.LastAttemptAt = &completedAt
 	}
 	return parsed
 }

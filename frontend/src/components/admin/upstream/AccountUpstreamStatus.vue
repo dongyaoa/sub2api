@@ -42,8 +42,8 @@
       </div>
       <dl class="account-status-metrics">
         <div>
-          <dt>{{ t('upstreamCenter.wallet.todayUsed') }}</dt>
-          <dd :title="`${t('upstreamCenter.wallet.usageHint')} ${money(target.balance?.today_used, target.balance?.currency)}`" data-testid="account-status-upstream-spend">{{ amount(target.balance?.today_used) }}</dd>
+          <dt>{{ t('upstreamCenter.finance.todayCost') }}</dt>
+          <dd :title="`${t('upstreamCenter.finance.note')} ${money(actualUpstreamUsed(target.finance), target.finance?.currency)}`" data-testid="account-status-upstream-spend">{{ amount(actualUpstreamUsed(target.finance)) }}</dd>
         </div>
         <div>
           <dt>{{ t('upstreamCenter.finance.todayRevenue') }}</dt>
@@ -51,7 +51,7 @@
         </div>
         <div>
           <dt>{{ t('upstreamCenter.finance.todayProfit') }}</dt>
-          <dd :class="target.finance?.profit == null ? 'text-amber-600 dark:text-amber-400' : target.finance.profit < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-primary-700 dark:text-primary-400'" :title="target.finance?.profit == null ? t('upstreamCenter.finance.pending') : `${t('upstreamCenter.finance.note')} ${money(target.finance.profit, target.finance.currency)}`" data-testid="account-status-profit">{{ amount(target.finance?.profit) }}</dd>
+          <dd :class="profit == null ? 'text-amber-600 dark:text-amber-400' : profit < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-primary-700 dark:text-primary-400'" :title="profit == null ? t('upstreamCenter.finance.pending') : `${t('upstreamCenter.finance.note')} ${money(profit, target.finance.currency)}`" data-testid="account-status-profit">{{ amount(profit) }}</dd>
         </div>
         <div>
           <dt>{{ t('upstreamCenter.availability7d') }}</dt>
@@ -77,7 +77,7 @@ import Icon from '@/components/icons/Icon.vue'
 import UpstreamHistoryBar from './UpstreamHistoryBar.vue'
 import UpstreamRateBadge from './UpstreamRateBadge.vue'
 import UpstreamStatusBadge from './UpstreamStatusBadge.vue'
-import { amount, money, availability, availabilityColor, dateTime, latency, latencyColor, targetStatus } from './format'
+import { actualProfit, actualUpstreamUsed, amount, money, availability, availabilityColor, dateTime, latency, latencyColor, targetStatus } from './format'
 import { upstreamSyncError } from './newapi'
 
 const props = withDefaults(defineProps<{ target: UpstreamTarget; supplierName?: string; busy?: boolean }>(), { supplierName: '', busy: false })
@@ -89,6 +89,7 @@ watch(() => [props.target.id, props.target.models] as const, ([id, models], [pre
 })
 const modelOptions = computed(() => props.target.models.map(model => ({ value: model, label: model })))
 const statistics = computed(() => props.target.statistics?.find(item => item.model === selectedModel.value))
+const profit = computed(() => actualProfit(props.target.finance))
 const walletLabel = computed(() => t(props.target.balance?.kind === 'key_quota' ? 'upstreamCenter.wallet.quota' : props.target.balance?.kind === 'subscription' ? 'upstreamCenter.wallet.subscription' : 'upstreamCenter.wallet.title'))
 const walletAmount = computed(() => props.target.balance?.kind === 'wallet' ? props.target.balance.balance : props.target.balance?.quota_remaining ?? props.target.balance?.balance)
 const unlimitedQuota = computed(() => props.target.balance?.kind === 'key_quota' && props.target.balance.unlimited_quota)

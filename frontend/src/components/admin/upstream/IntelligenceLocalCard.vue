@@ -134,9 +134,9 @@ function statusClass(run: IntelligenceRun) {
 .local-artwork-strip { @apply flex min-w-0 snap-x gap-2.5 overflow-x-auto pb-1; scrollbar-width: thin; scrollbar-color: #d1d5db transparent; }
 .local-artwork { @apply w-[184px] shrink-0 snap-start overflow-hidden rounded-lg border border-gray-100 dark:border-dark-700; }
 .local-artwork-latest { @apply border-emerald-200 dark:border-emerald-500/30; }
-.local-artwork-preview { height: 116px; }
+.local-artwork-preview { height: 148px; }
 .local-artwork-caption { @apply block w-full border-t border-gray-100 px-2.5 py-2 text-left transition-colors hover:bg-gray-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-500 dark:border-dark-700 dark:hover:bg-dark-700/50; }
-.local-artwork-empty { @apply flex h-[176px] items-center justify-center gap-2.5 rounded-lg border border-dashed border-gray-200 bg-gray-50/40 px-4 text-xs text-gray-400 dark:border-dark-700 dark:bg-dark-900/20; }
+.local-artwork-empty { @apply flex h-[208px] items-center justify-center gap-2.5 rounded-lg border border-dashed border-gray-200 bg-gray-50/40 px-4 text-xs text-gray-400 dark:border-dark-700 dark:bg-dark-900/20; }
 @media (min-width: 1024px) {
   .local-monitor-card { grid-template-columns: 232px minmax(0, 1fr); }
   .local-identity { @apply border-b-0 border-r; }
@@ -144,7 +144,7 @@ function statusClass(run: IntelligenceRun) {
 @media (min-width: 1280px) {
   .local-monitor-card { grid-template-columns: 260px minmax(0, 1fr); }
   .local-artwork { width: 200px; }
-  .local-artwork-preview { height: 124px; }
+  .local-artwork-preview { height: 164px; }
 }
 :global(.dark) .local-artwork-strip { scrollbar-color: #475569 transparent; }
 </style>

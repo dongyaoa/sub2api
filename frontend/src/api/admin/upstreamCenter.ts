@@ -73,18 +73,19 @@ export interface UpstreamBillingSnapshot {
 
 export interface UpstreamFinanceSummary {
   revenue: number
-  business_cost: number
+  business_cost: number | null
   monitor_cost: number | null
   profit: number | null
   request_count: number
   total_tokens: number | null
   unknown_token_requests: number
   account_billed: number
-  cost_source: 'estimated' | 'reported' | 'mixed' | 'unknown'
+  cost_source: 'reported' | 'unknown' | 'estimated' | 'mixed'
   currency: string
   from: string
   to: string
   remote_used: number | null
+  remote_synced_at: string | null
   reconciliation_delta: number | null
   unpriced_monitor_count: number
 }
@@ -156,8 +157,8 @@ export interface UpstreamFinanceRow {
   model: string
   request_id: string
   revenue: number
-  business_cost: number
-  profit: number
+  business_cost: number | null
+  profit: number | null
   billing_type: number
 }
 export interface UpstreamPage<T> { items: T[]; total: number; page: number; page_size: number }

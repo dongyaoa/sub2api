@@ -94,7 +94,7 @@ VALUES($1,$2,'ok','sub2api_billing',jsonb_build_object('status','ok','effective_
 		require.Equal(t, 0.3, *data.Balances[1].Billing.EffectiveRateMultiplier)
 		require.True(t, data.Balances[1].Billing.Stale)
 		require.Zero(t, data.Suppliers[4].Revenue)
-		require.NotNil(t, data.Suppliers[4].Profit)
+		require.Nil(t, data.Suppliers[4].Profit, "absence of measured upstream cost does not imply zero cost")
 	}
 	// Both read paths reject a range that only partially covers archived samples.
 	partialFrom := time.Date(2026, 9, 23, 0, 20, 0, 0, time.UTC)

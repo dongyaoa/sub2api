@@ -69,11 +69,12 @@ func (r *upstreamFinanceRepository) Summary(ctx context.Context, q service.Upstr
 // Batch overview and the individual detail endpoint share all money/unknown
 // semantics. Extra scan destinations let batch rows carry their scope first.
 func scanUpstreamFinanceSummary(row upstreamScanner, q service.UpstreamFinanceQuery, prefix ...any) (*service.UpstreamFinanceSummary, error) {
-	summary := &service.UpstreamFinanceSummary{Currency: "USD", From: q.From, To: q.To, CostSource: "estimated"}
+	summary := &service.UpstreamFinanceSummary{Currency: "USD", From: q.From, To: q.To, CostSource: "unknown"}
 	var monitorCost float64
 	var reported, estimated int64
+	var accountBilled float64
 	var partialArchivedHour bool
-	args := append(prefix, &summary.Revenue, &summary.BusinessCost, &summary.RequestCount, &monitorCost, &summary.UnpricedMonitorCount, &reported, &estimated, &summary.TotalTokens, &summary.UnknownTokenRequests, &partialArchivedHour)
+	args := append(prefix, &summary.Revenue, &accountBilled, &summary.RequestCount, &monitorCost, &summary.UnpricedMonitorCount, &reported, &estimated, &summary.TotalTokens, &summary.UnknownTokenRequests, &partialArchivedHour)
 	err := row.Scan(args...)
 	if err != nil {
 		return nil, fmt.Errorf("aggregate upstream finance: %w", err)
@@ -81,27 +82,15 @@ func scanUpstreamFinanceSummary(row upstreamScanner, q service.UpstreamFinanceQu
 	if partialArchivedHour {
 		return nil, service.ErrUpstreamFinanceArchivedRange
 	}
-	// The ledger captures the same historical account billing formula as the
-	// account statistics page, independently from the user's actual_cost.
-	summary.AccountBilled = summary.BusinessCost
-	if summary.UnpricedMonitorCount > 0 {
-		summary.CostSource = "unknown"
-	} else {
-		summary.MonitorCost = &monitorCost
-		profit := summary.Revenue - summary.BusinessCost - monitorCost
-		summary.Profit = &profit
-		if reported > 0 {
-			if summary.RequestCount > 0 || estimated > 0 {
-				summary.CostSource = "mixed"
-			} else {
-				summary.CostSource = "reported"
-			}
-		}
-	}
-	// /v1/usage reports the upstream's own "today", without a timezone or
-	// per-request billing identifiers. It cannot be reconciled to an arbitrary
-	// local half-open range reliably. The reported value remains on its balance
-	// card; these range-specific fields intentionally stay unknown.
+	// Ledger business_cost is a local account-pricing formula, not an actual
+	// upstream charge. Neither it nor estimated monitor cost can price profit.
+	// A local account price cannot be reconciled to the upstream key's daily
+	// charge or any individual request. Reported daily cost is applied by the
+	// service only after the exact day and accounting freshness are verified.
+	summary.AccountBilled = accountBilled
+	_ = monitorCost
+	_ = reported
+	_ = estimated
 	return summary, nil
 }
 
@@ -112,7 +101,7 @@ func (r *upstreamFinanceRepository) Details(ctx context.Context, q service.Upstr
 		return nil, 0, fmt.Errorf("count upstream financial records: %w", err)
 	}
 	query := `SELECT l.id,l.created_at,l.target_id,l.target_name,l.supplier_id,l.supplier_name,
- l.account_id,l.group_id,l.model,l.request_id,l.revenue,l.business_cost,l.revenue-l.business_cost,l.billing_type,l.total_tokens
+	 l.account_id,l.group_id,l.model,l.request_id,l.revenue,l.business_cost,l.billing_type,l.total_tokens
  ` + upstreamFinanceLedgerSQL + ` ORDER BY l.created_at DESC,l.id DESC LIMIT $5 OFFSET $6`
 	args = append(args, q.PageSize, (q.Page-1)*q.PageSize)
 	rows, err := r.db.QueryContext(ctx, query, args...)
@@ -123,10 +112,9 @@ func (r *upstreamFinanceRepository) Details(ctx context.Context, q service.Upstr
 	items := make([]service.UpstreamFinanceRow, 0)
 	for rows.Next() {
 		var item service.UpstreamFinanceRow
-		if err := rows.Scan(&item.ID, &item.CreatedAt, &item.TargetID, &item.TargetName, &item.SupplierID, &item.SupplierName, &item.AccountID, &item.GroupID, &item.Model, &item.RequestID, &item.Revenue, &item.BusinessCost, &item.Profit, &item.BillingType, &item.TotalTokens); err != nil {
+		if err := rows.Scan(&item.ID, &item.CreatedAt, &item.TargetID, &item.TargetName, &item.SupplierID, &item.SupplierName, &item.AccountID, &item.GroupID, &item.Model, &item.RequestID, &item.Revenue, &item.AccountBilled, &item.BillingType, &item.TotalTokens); err != nil {
 			return nil, 0, err
 		}
-		item.AccountBilled = item.BusinessCost
 		items = append(items, item)
 	}
 	return items, total, rows.Err()
@@ -134,9 +122,9 @@ func (r *upstreamFinanceRepository) Details(ctx context.Context, q service.Upstr
 
 func (r *upstreamFinanceRepository) GetTarget(ctx context.Context, id int64) (*service.UpstreamFinanceTarget, error) {
 	t := &service.UpstreamFinanceTarget{}
-	err := r.db.QueryRowContext(ctx, `SELECT t.id,t.supplier_id,t.provider,t.endpoint,t.api_key_encrypted,t.wallet_ref,t.newapi_user_id,t.newapi_access_token_encrypted
+	err := r.db.QueryRowContext(ctx, `SELECT t.id,t.supplier_id,t.provider,t.endpoint,t.api_key_encrypted,t.api_key_fingerprint,t.wallet_ref,t.newapi_user_id,t.newapi_access_token_encrypted,t.profit_identity_since
  FROM upstream_targets t LEFT JOIN upstream_suppliers s ON s.id=t.supplier_id
- WHERE t.id=$1 AND t.deleted_at IS NULL AND (t.supplier_id IS NULL OR s.deleted_at IS NULL)`, id).Scan(&t.ID, &t.SupplierID, &t.Provider, &t.Endpoint, &t.APIKeyEncrypted, &t.WalletRef, &t.NewAPIUserID, &t.NewAPIAccessTokenEncrypted)
+ WHERE t.id=$1 AND t.deleted_at IS NULL AND (t.supplier_id IS NULL OR s.deleted_at IS NULL)`, id).Scan(&t.ID, &t.SupplierID, &t.Provider, &t.Endpoint, &t.APIKeyEncrypted, &t.APIKeyFingerprint, &t.WalletRef, &t.NewAPIUserID, &t.NewAPIAccessTokenEncrypted, &t.ProfitIdentitySince)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, service.ErrUpstreamFinanceTargetNotFound
 	}
@@ -157,6 +145,9 @@ SELECT l.target_id,l.wallet_ref,
  CASE WHEN l.status='ok' THEN l.balance ELSE g.balance END,
  CASE WHEN l.status='ok' THEN l.quota_remaining ELSE g.quota_remaining END,
  CASE WHEN l.status='ok' THEN l.today_used ELSE g.today_used END,
+ CASE WHEN l.status='ok' THEN l.day_used ELSE g.day_used END,
+ CASE WHEN l.status='ok' THEN l.day_start ELSE g.day_start END,
+ CASE WHEN l.status='ok' THEN l.day_end ELSE g.day_end END,
  CASE WHEN l.status='ok' THEN l.total_used ELSE g.total_used END,
  CASE WHEN l.status='ok' OR g.id IS NULL THEN l.unlimited_quota ELSE g.unlimited_quota END,
  CASE WHEN l.status='ok' OR g.id IS NULL THEN l.currency ELSE g.currency END,
@@ -175,7 +166,7 @@ SELECT l.target_id,l.wallet_ref,
 
 func scanUpstreamBalanceSnapshot(row upstreamScanner) (*service.UpstreamBalanceSnapshot, error) {
 	s := &service.UpstreamBalanceSnapshot{}
-	err := row.Scan(&s.TargetID, &s.WalletRef, &s.Kind, &s.Balance, &s.QuotaRemaining, &s.TodayUsed, &s.TotalUsed, &s.UnlimitedQuota, &s.Currency, &s.CurrencySource, &s.Status, &s.SyncedAt, &s.Error, &s.LastAttemptAt)
+	err := row.Scan(&s.TargetID, &s.WalletRef, &s.Kind, &s.Balance, &s.QuotaRemaining, &s.TodayUsed, &s.DayUsed, &s.DayStart, &s.DayEnd, &s.TotalUsed, &s.UnlimitedQuota, &s.Currency, &s.CurrencySource, &s.Status, &s.SyncedAt, &s.Error, &s.LastAttemptAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -237,8 +228,8 @@ func (r *upstreamFinanceRepository) SaveBalance(ctx context.Context, t *service.
 		return err
 	}
 	_, err = tx.ExecContext(ctx, `INSERT INTO upstream_balance_snapshots
- (target_id,supplier_id,wallet_ref,identity_hash,kind,balance,quota_remaining,today_used,total_used,currency,currency_source,status,synced_at,error,unlimited_quota)
- VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)`, t.ID, t.SupplierID, t.WalletRef, identity, s.Kind, s.Balance, s.QuotaRemaining, s.TodayUsed, s.TotalUsed, s.Currency, s.CurrencySource, s.Status, s.SyncedAt, s.Error, s.UnlimitedQuota)
+	 (target_id,supplier_id,wallet_ref,identity_hash,kind,balance,quota_remaining,today_used,total_used,currency,currency_source,status,synced_at,error,unlimited_quota,day_used,day_start,day_end)
+	 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`, t.ID, t.SupplierID, t.WalletRef, identity, s.Kind, s.Balance, s.QuotaRemaining, s.TodayUsed, s.TotalUsed, s.Currency, s.CurrencySource, s.Status, s.SyncedAt, s.Error, s.UnlimitedQuota, s.DayUsed, s.DayStart, s.DayEnd)
 	if err != nil {
 		return fmt.Errorf("save upstream balance snapshot: %w", err)
 	}

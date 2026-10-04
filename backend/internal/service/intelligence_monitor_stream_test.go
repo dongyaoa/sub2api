@@ -15,24 +15,31 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
-func TestIntelligenceRemoteStreamingCompletesWithoutWaitingForConnectionClose(t *testing.T) {
+func TestIntelligenceStreamingCompletesWithoutWaitingForConnectionClose(t *testing.T) {
 	for _, mode := range []string{MonitorAPIModeResponses, MonitorAPIModeChatCompletions} {
-		for _, source := range []string{"external", "upstream"} {
+		for _, source := range []string{"external", "upstream", "local_group"} {
 			t.Run(source+"_"+mode, func(t *testing.T) {
 				reader, writer := io.Pipe()
 				defer writer.Close()
 				defer reader.Close()
 				svc := NewIntelligenceMonitorService(nil, nil, nil, nil, nil, nil, nil)
 				calls := 0
-				svc.externalClient = &http.Client{Transport: upstreamModelsTransport(func(req *http.Request) (*http.Response, error) {
+				client := &http.Client{Transport: upstreamModelsTransport(func(req *http.Request) (*http.Response, error) {
 					calls++
 					var body map[string]any
 					require.NoError(t, json.NewDecoder(req.Body).Decode(&body))
 					require.Equal(t, true, body["stream"])
 					require.Contains(t, req.Header.Get("Accept"), "text/event-stream")
-					require.Empty(t, req.Header.Get(intelligenceLocalRequestHeader))
+					if source == "local_group" {
+						require.True(t, req.URL.IsAbs())
+						require.Equal(t, "127.0.0.1", req.URL.Hostname())
+						require.True(t, intelligencePermitExists(req.Header.Get(intelligenceLocalRequestHeader)))
+					} else {
+						require.Empty(t, req.Header.Get(intelligenceLocalRequestHeader))
+					}
 					return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"text/event-stream"}}, Body: reader}, nil
 				})}
+				svc.externalClient, svc.localClient = client, client
 				writes := make(chan error, 1)
 				go func() {
 					_, err := io.WriteString(writer, ": keepalive\n\n")
@@ -46,6 +53,11 @@ func TestIntelligenceRemoteStreamingCompletesWithoutWaitingForConnectionClose(t 
 							terminal = "data: {\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\n"
 						}
 						_, err = io.WriteString(writer, chunk+terminal)
+						if err == nil && source == "local_group" && mode == MonitorAPIModeChatCompletions {
+							// A separate write proves the consumer did not close at stop
+							// and cancel the gateway before its billing tail arrived.
+							_, err = io.WriteString(writer, "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":20}}\n\ndata: [DONE]\n\n")
+						}
 					}
 					writes <- err
 				}()
@@ -53,7 +65,7 @@ func TestIntelligenceRemoteStreamingCompletesWithoutWaitingForConnectionClose(t 
 				defer cancel()
 				stopClose := context.AfterFunc(ctx, func() { _ = reader.CloseWithError(ctx.Err()) })
 				defer stopClose()
-				status, text, message := svc.generate(ctx, &IntelligenceMonitorRun{SourceType: source, SourceEndpoint: "https://8.8.8.8", APIMode: mode}, "private-fixture-key")
+				status, text, message := svc.generate(ctx, &IntelligenceMonitorRun{SourceType: source, SourceEndpoint: "https://8.8.8.8", APIMode: mode, SourceSnapshot: map[string]any{"local_api_key_id": int64(72)}}, "private-fixture-key")
 				require.NoError(t, ctx.Err(), "must finish on terminal event, before cancellation")
 				require.Empty(t, message)
 				require.Equal(t, 200, *status)
@@ -80,7 +92,7 @@ func TestIntelligenceStreamingRejectsFailureAndInterruptedResults(t *testing.T) 
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			prefix := "data: {\"type\":\"response.output_text.delta\",\"delta\":\"partial\"}\n\n"
-			_, message := readIntelligenceGenerationBody(strings.NewReader(prefix+tc.body), tc.mode, "text/event-stream", "private-fixture-key")
+			_, message := readIntelligenceGenerationBody(strings.NewReader(prefix+tc.body), tc.mode, "text/event-stream", "private-fixture-key", false)
 			require.Contains(t, message, tc.want)
 			require.NotContains(t, message, "private-fixture-key")
 		})
@@ -97,7 +109,7 @@ func TestIntelligenceStreamingSupportsJSONFallbackMultilineDataAndFinalText(t *t
 		{"authoritative_final", "text/event-stream", "responses", "data: {\"type\":\"response.output_text.delta\",\"delta\":\"partial\"}\n\ndata: {\"type\":\"response.completed\",\"response\":{\"output_text\":\"final HTML\"}}\n\n", "final HTML"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			text, message := readIntelligenceGenerationBody(strings.NewReader(tc.body), tc.mode, tc.contentType, "")
+			text, message := readIntelligenceGenerationBody(strings.NewReader(tc.body), tc.mode, tc.contentType, "", false)
 			require.Empty(t, message)
 			require.Equal(t, tc.want, text)
 		})
@@ -111,7 +123,7 @@ func TestIntelligenceStreamingBoundsWireBytesIncludingCommentsAndWhitespace(t *t
 		`{"output_text":"` + strings.Repeat("x", intelligenceResponseMaxBytes) + `"}`,
 		"data: {\"type\":\"response.output_text.delta\",\"delta\":\"" + strings.Repeat("x", intelligenceResponseMaxBytes) + "\"}\n\n",
 	} {
-		text, message := readIntelligenceGenerationBody(strings.NewReader(body), "responses", "text/event-stream", "")
+		text, message := readIntelligenceGenerationBody(strings.NewReader(body), "responses", "text/event-stream", "", false)
 		require.Empty(t, text)
 		require.Contains(t, message, "4 MiB")
 	}
@@ -136,18 +148,19 @@ func TestIntelligenceGenerationDoesNotRetryHTTPOrStreamFailure(t *testing.T) {
 	}
 }
 
-func TestIntelligenceLocalGenerationKeepsBufferedTrustedDeadline(t *testing.T) {
+func TestIntelligenceLocalStreamingKeepsTrustedDeadline(t *testing.T) {
 	svc := NewIntelligenceMonitorService(nil, nil, nil, nil, nil, nil, nil)
 	svc.localClient = &http.Client{Transport: upstreamModelsTransport(func(req *http.Request) (*http.Response, error) {
 		var body map[string]any
 		require.NoError(t, json.NewDecoder(req.Body).Decode(&body))
-		require.Equal(t, false, body["stream"])
-		require.Equal(t, "application/json", req.Header.Get("Accept"))
+		require.Equal(t, true, body["stream"])
+		require.Contains(t, req.Header.Get("Accept"), "text/event-stream")
 		require.NotEmpty(t, req.Header.Get(intelligenceLocalRequestHeader))
 		deadline, ok := req.Context().Deadline()
 		require.True(t, ok)
 		require.InDelta(t, 900, time.Until(deadline).Seconds(), 2)
-		return &http.Response{StatusCode: 200, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(`{"output_text":"<html></html>","status":"completed"}`))}, nil
+		bodySSE := "data: {\"type\":\"response.completed\",\"response\":{\"output_text\":\"<html></html>\",\"status\":\"completed\"}}\n\n"
+		return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"text/event-stream"}}, Body: io.NopCloser(strings.NewReader(bodySSE))}, nil
 	})}
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Minute)
 	defer cancel()
@@ -163,7 +176,56 @@ func TestIntelligenceStreamingReadFailurePreservesFailure(t *testing.T) {
 		_, _ = io.WriteString(writer, "data: {\"type\":\"response.output_text.delta\",\"delta\":\"<html></html>\"}\n\n")
 		_ = writer.CloseWithError(errors.New("interrupted private-fixture-key"))
 	}()
-	text, message := readIntelligenceGenerationBody(reader, "responses", "text/event-stream", "private-fixture-key")
+	text, message := readIntelligenceGenerationBody(reader, "responses", "text/event-stream", "private-fixture-key", false)
 	require.Equal(t, "<html></html>", text)
 	require.Equal(t, "generation response was interrupted", message)
+}
+
+func TestIntelligenceLocalChatStreamingRequiresCompleteBillingTail(t *testing.T) {
+	stop := "data: {\"choices\":[{\"delta\":{\"content\":\"21\"},\"finish_reason\":\"stop\"}]}\n\n"
+	for _, tc := range []struct{ name, body, want string }{
+		{"completed", stop + "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":20}}\n\ndata: [DONE]\n\n", ""},
+		{"missing_done", stop, "before completion"},
+		{"missing_stop", "data: [DONE]\n\n", "before completion"},
+		{"error_after_stop", stop + "data: {\"error\":{\"message\":\"upstream interrupted private-fixture-key\"}}\n\ndata: [DONE]\n\n", "upstream interrupted"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			text, message := readIntelligenceGenerationBody(strings.NewReader(tc.body), MonitorAPIModeChatCompletions, "text/event-stream", "private-fixture-key", true)
+			if tc.want == "" {
+				require.Empty(t, message)
+				require.Equal(t, "21", text)
+			} else {
+				require.Contains(t, message, tc.want)
+				require.NotContains(t, message, "private-fixture-key")
+			}
+		})
+	}
+}
+
+func TestIntelligenceLocalChatStreamingDrainsUsageOnTruncatedOutput(t *testing.T) {
+	for _, finish := range []string{"length", "content_filter"} {
+		t.Run(finish, func(t *testing.T) {
+			reader, writer := io.Pipe()
+			defer reader.Close()
+			defer writer.Close()
+			ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+			defer cancel()
+			stopClose := context.AfterFunc(ctx, func() { _ = reader.CloseWithError(ctx.Err()) })
+			defer stopClose()
+			writes := make(chan error, 1)
+			go func() {
+				_, err := io.WriteString(writer, "data: {\"choices\":[{\"delta\":{\"content\":\"partial\"},\"finish_reason\":\""+finish+"\"}]}\n\n")
+				if err == nil {
+					_, err = io.WriteString(writer, "data: {\"choices\":[],\"usage\":{\"prompt_tokens\":10,\"completion_tokens\":20}}\n\ndata: [DONE]\n\n")
+				}
+				writes <- err
+			}()
+			text, message := readIntelligenceGenerationBody(reader, MonitorAPIModeChatCompletions, "text/event-stream", "", true)
+			_ = reader.Close()
+			require.NoError(t, <-writes, "must consume the usage tail before closing the response")
+			require.NoError(t, ctx.Err())
+			require.Equal(t, "partial", text)
+			require.Contains(t, message, "truncated or filtered")
+		})
+	}
 }

@@ -16,7 +16,7 @@ function target(): UpstreamTarget {
       { model: 'model-a', status: 'operational', availability: 12, availability_7d: 98.25, avg_latency_ms: 8888, latest_latency_ms: 1234, last_checked_at: '2026-09-24T00:00:00Z', timeline: [] },
       { model: 'model-b', status: 'degraded', availability: 20, availability_7d: 70.5, avg_latency_ms: 1111, latest_latency_ms: 7000, last_checked_at: '2026-09-24T00:00:01Z', timeline: [] },
     ],
-    finance: { revenue: 40, business_cost: 10, profit: 30, currency: 'USD', request_count: 123, total_tokens: 1250000, unknown_token_requests: 0, account_billed: 10 },
+    finance: { revenue: 40, remote_used: 15, business_cost: null, profit: 25, cost_source: 'reported', currency: 'USD', request_count: 123, total_tokens: 1250000, unknown_token_requests: 0, account_billed: 10 },
     balance: { today_used: 15, currency: 'USD' },
   } as unknown as UpstreamTarget
 }
@@ -92,7 +92,7 @@ describe('upstream card headline measurements', () => {
     expect(wrapper.get('[data-testid="upstream-account-billed"]').text()).toBe('10.00')
     expect(wrapper.get('[data-testid="upstream-remote-spend"]').text()).toBe('15.00')
     expect(wrapper.get('[data-testid="upstream-user-spend"]').text()).toBe('40.00')
-    expect(wrapper.get('[data-testid="upstream-profit"]').text()).toBe('30.00')
+    expect(wrapper.get('[data-testid="upstream-profit"]').text()).toBe('25.00')
     await wrapper.setProps({ target: { ...item, finance: { ...item.finance, total_tokens: 1250000000 } } })
     expect(wrapper.get('[data-testid="upstream-token-count"]').text()).toBe('1.25B')
     await wrapper.setProps({ target: { ...item, finance: { ...item.finance, total_tokens: null, unknown_token_requests: 2 } } })

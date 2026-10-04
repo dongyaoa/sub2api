@@ -43,15 +43,13 @@ func (s *IntelligenceMonitorService) generate(ctx context.Context, run *Intellig
 		}
 	}
 	path := "/v1/responses"
-	// Remote proxies can time out while a long non-streaming generation stays
-	// silent. Receive remote generations incrementally, then store one artifact.
-	// Loopback requests retain their trusted buffered path and its IQ deadline;
-	// switching that path to streaming would re-enable ordinary gateway guards.
-	stream := run.SourceType != "local_group"
-	payload := map[string]any{"model": run.Model, "input": prompt, "reasoning": map[string]string{"effort": IntelligenceMonitorReasoning}, "stream": stream, "max_output_tokens": maxOutputTokens}
+	// Stream every generation, including loopback requests forwarded to remote
+	// accounts, so upstream proxies can receive data during long generations.
+	// The authenticated local permit preserves the monitoring deadline.
+	payload := map[string]any{"model": run.Model, "input": prompt, "reasoning": map[string]string{"effort": IntelligenceMonitorReasoning}, "stream": true, "max_output_tokens": maxOutputTokens}
 	if run.APIMode == MonitorAPIModeChatCompletions {
 		path = "/v1/chat/completions"
-		payload = map[string]any{"model": run.Model, "messages": []map[string]string{{"role": "user", "content": prompt}}, "reasoning_effort": IntelligenceMonitorReasoning, "stream": stream, "max_completion_tokens": maxOutputTokens}
+		payload = map[string]any{"model": run.Model, "messages": []map[string]string{{"role": "user", "content": prompt}}, "reasoning_effort": IntelligenceMonitorReasoning, "stream": true, "max_completion_tokens": maxOutputTokens}
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
@@ -63,10 +61,7 @@ func (s *IntelligenceMonitorService) generate(ctx context.Context, run *Intellig
 	}
 	req.Header.Set("Authorization", "Bearer "+key)
 	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("Accept", "application/json")
-	if stream {
-		req.Header.Set("Accept", "text/event-stream, application/json")
-	}
+	req.Header.Set("Accept", "text/event-stream, application/json")
 	req.Header.Set("User-Agent", "Sub2API-IntelligenceMonitor/1")
 	if run.SourceType == "local_group" {
 		cleanup, permitErr := AuthorizeIntelligenceLocalRequest(req, intelligenceSnapshotID(run.SourceSnapshot["local_api_key_id"]), key)
@@ -88,7 +83,8 @@ func (s *IntelligenceMonitorService) generate(ctx context.Context, run *Intellig
 		raw, _ := io.ReadAll(io.LimitReader(response.Body, 16*1024))
 		return &status, "", intelligenceGenerationHTTPError(status, response.Header, raw, key)
 	}
-	text, message := readIntelligenceGenerationBody(response.Body, run.APIMode, response.Header.Get("Content-Type"), key)
+	waitForChatDone := run.SourceType == "local_group" && run.APIMode == MonitorAPIModeChatCompletions
+	text, message := readIntelligenceGenerationBody(response.Body, run.APIMode, response.Header.Get("Content-Type"), key, waitForChatDone)
 	if message != "" && ctx.Err() != nil {
 		message = "generation cancelled or exceeded its configured time limit"
 	}
@@ -112,7 +108,7 @@ func extractIntelligenceModelTextWithKey(raw []byte, mode string, stream bool, k
 		stream = false
 	}
 	if stream || intelligenceLooksLikeSSE(raw) {
-		return readIntelligenceEventStream(bytes.NewReader(raw), mode, key)
+		return readIntelligenceEventStream(bytes.NewReader(raw), mode, key, false)
 	}
 	if !gjson.ValidBytes(raw) {
 		return "", "generation endpoint did not return valid JSON"

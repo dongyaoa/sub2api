@@ -36,7 +36,7 @@ func TestUpstreamFinancePostgresLedger(t *testing.T) {
 	_, err = db.ExecContext(ctx, `CREATE TABLE accounts (id BIGINT PRIMARY KEY, credentials JSONB NOT NULL DEFAULT '{}', platform TEXT NOT NULL DEFAULT 'openai', type TEXT NOT NULL DEFAULT 'apikey', deleted_at TIMESTAMPTZ);
 CREATE TABLE usage_logs (id BIGSERIAL PRIMARY KEY, created_at TIMESTAMPTZ NOT NULL, account_id BIGINT NOT NULL, group_id BIGINT, user_id BIGINT NOT NULL DEFAULT 1, api_key_id BIGINT NOT NULL DEFAULT 1, requested_model TEXT, model TEXT NOT NULL DEFAULT 'gpt-test', request_id TEXT, actual_cost NUMERIC NOT NULL DEFAULT 0, total_cost NUMERIC NOT NULL DEFAULT 0, account_stats_cost NUMERIC, account_rate_multiplier NUMERIC, billing_type SMALLINT NOT NULL DEFAULT 0, input_tokens INT NOT NULL DEFAULT 0, output_tokens INT NOT NULL DEFAULT 0, cache_creation_tokens INT NOT NULL DEFAULT 0, cache_read_tokens INT NOT NULL DEFAULT 0);`)
 	require.NoError(t, err)
-	for _, name := range []string{"242_upstream_center.sql", "243_upstream_finance.sql", "243_upstream_finance.sql", "244_upstream_remote_billing.sql", "244_upstream_remote_billing.sql", "247_upstream_finance_usage_totals.sql", "247_upstream_finance_usage_totals.sql", "253_upstream_newapi_credentials.sql", "253_upstream_newapi_credentials.sql", "254_upstream_storage_retention.sql", "254_upstream_storage_retention.sql"} {
+	for _, name := range []string{"242_upstream_center.sql", "243_upstream_finance.sql", "243_upstream_finance.sql", "244_upstream_remote_billing.sql", "244_upstream_remote_billing.sql", "247_upstream_finance_usage_totals.sql", "247_upstream_finance_usage_totals.sql", "253_upstream_newapi_credentials.sql", "253_upstream_newapi_credentials.sql", "254_upstream_storage_retention.sql", "254_upstream_storage_retention.sql", "265_upstream_finance_reported_day.sql", "265_upstream_finance_reported_day.sql"} {
 		migration, err := migrations.FS.ReadFile(name)
 		require.NoError(t, err)
 		_, err = db.ExecContext(ctx, string(migration))
@@ -79,18 +79,18 @@ INSERT INTO upstream_monitor_history(target_id,supplier_id,target_name,supplier_
 	require.NoError(t, err)
 	require.Equal(t, int64(2), summary.RequestCount)
 	require.InDelta(t, 19, summary.Revenue, 1e-9)
-	require.InDelta(t, 8, summary.BusinessCost, 1e-9)
+	require.Nil(t, summary.BusinessCost, "local account pricing is not a verified upstream debit")
 	require.InDelta(t, 8, summary.AccountBilled, 1e-9)
 	require.NotNil(t, summary.TotalTokens)
 	require.Zero(t, *summary.TotalTokens)
-	require.NotNil(t, summary.Profit)
-	require.InDelta(t, 10.8, *summary.Profit, 1e-9, "independent monitor must not pollute supplier profit")
+	require.Nil(t, summary.Profit, "upstream usage cannot be attributed to this historical range")
+	require.Equal(t, "unknown", summary.CostSource)
 	one := int64(1)
 	q.SupplierID = &one
 	summary, err = repo.Summary(ctx, q)
 	require.NoError(t, err)
 	require.InDelta(t, 9, summary.Revenue, 1e-9)
-	require.InDelta(t, 2.8, *summary.Profit, 1e-9)
+	require.Nil(t, summary.Profit)
 	// Usage retention and hard account deletion leave the financial ledger intact.
 	_, err = db.ExecContext(ctx, `UPDATE accounts SET credentials='{"api_key":"changed","base_url":"https://example.com"}' WHERE id=1;
 DELETE FROM usage_logs; DELETE FROM accounts WHERE id=1;`)
@@ -103,7 +103,10 @@ DELETE FROM usage_logs; DELETE FROM accounts WHERE id=1;`)
 	require.Len(t, rows, 1)
 	require.Equal(t, "Old key", rows[0].TargetName)
 	require.Equal(t, "First supplier", rows[0].SupplierName)
-	require.InDelta(t, 6, rows[0].BusinessCost, 1e-9)
+	require.Equal(t, int64(1), *rows[0].AccountID)
+	require.Nil(t, rows[0].BusinessCost)
+	require.Nil(t, rows[0].Profit)
+	require.InDelta(t, 6, rows[0].AccountBilled, 1e-9)
 	// Missing monitor cost must make combined profit unknown, not silently zero.
 	_, err = db.ExecContext(ctx, `INSERT INTO upstream_monitor_history(target_id,supplier_id,target_name,supplier_name,model,status,checked_at) VALUES(1,1,'Old key','First supplier','unknown','error','2026-09-23T01:31:00Z')`)
 	require.NoError(t, err)

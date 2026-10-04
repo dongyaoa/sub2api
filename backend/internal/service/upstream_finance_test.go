@@ -38,6 +38,26 @@ func TestUpstreamFinanceParseBalances(t *testing.T) {
 	}
 }
 
+func TestUpstreamFinanceParseReportedDailyUsage(t *testing.T) {
+	for _, tt := range []struct {
+		name, body string
+		want       *float64
+	}{
+		{"multiple upstream dates", `{"code":0,"daily_usage":[{"date":"2026-10-03","actual_cost":"0.4","cost":100},{"date":"2026-10-04","actual_cost":0.6}]}`, financeFloat(1)},
+		{"enveloped zero", `{"success":true,"data":{"daily_usage":[{"actual_cost":0}]}}`, financeFloat(0)},
+		{"empty successful day", `{"daily_usage":[]}`, financeFloat(0)},
+		{"missing actual charge", `{"daily_usage":[{"cost":2}]}`, nil},
+		{"negative actual charge", `{"daily_usage":[{"actual_cost":-1}]}`, nil},
+		{"partial malformed rows", `{"daily_usage":[{"actual_cost":1},{}]}`, nil},
+		{"failed response", `{"code":500,"daily_usage":[{"actual_cost":0}]}`, nil},
+		{"trailing response", `{"daily_usage":[]} {}`, nil},
+	} {
+		t.Run(tt.name, func(t *testing.T) {
+			require.Equal(t, tt.want, parseUpstreamDailyUsed([]byte(tt.body)))
+		})
+	}
+}
+
 func TestUpstreamFinanceRejectsFalseZeroAndErrors(t *testing.T) {
 	for _, body := range []string{`{}`, `{"message":"unauthorized"}`, `{"error":{"message":"secret"}}`, `{"balance":"NaN"}`, `{"balance":1e50}`, `{"balance":1} {}`, `{"code":401,"data":{"balance":10}}`, `{"code":401,"balance":10}`, `{"mode":"unrestricted","remaining":5}`, `{"isValid":false,"balance":10}`, `{"success":false,"data":{"balance":10}}`, `{"isValid":false,"data":{"balance":10}}`, `{"error":{"message":"unauthorized"},"data":{"balance":10}}`, `{"data":{"success":false,"balance":10}}`} {
 		_, err := parseUpstreamUsage([]byte(body))

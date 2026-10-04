@@ -1039,6 +1039,7 @@ func (s *OpenAIGatewayService) Forward(ctx context.Context, c *gin.Context, acco
 	if reqStream && account.Platform == PlatformOpenAI {
 		firstOutputTimeout = s.openAIFirstOutputTimeout(reasoningEffortValue)
 	}
+	firstOutputTimeout = intelligenceMonitorFirstOutputTimeout(c, firstOutputTimeout)
 
 	httpInvalidEncryptedContentRetryTried := false
 	compactModelFallbackRetried := false

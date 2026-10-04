@@ -121,7 +121,7 @@ func TestIntelligenceExecutionBaseOriginDoesNotExposeURLSecrets(t *testing.T) {
 func TestIntelligenceExecutionTraceFollowsLastForwardAttemptForBothTestsAndAPIs(t *testing.T) {
 	for _, kind := range []string{IntelligenceMonitorTestPelican, IntelligenceMonitorTestCandy} {
 		for _, mode := range []string{MonitorAPIModeResponses, MonitorAPIModeChatCompletions} {
-			for _, outcome := range []string{"completed", "model_error", "http_error", "transport_error", "before_forward"} {
+			for _, outcome := range []string{"completed", "stream_completed", "stream_error", "stream_incomplete", "model_error", "http_error", "transport_error", "before_forward"} {
 				t.Run(kind+"/"+mode+"/"+outcome, func(t *testing.T) {
 					var retainedCtx context.Context
 					var finalAttemptStartedAt string
@@ -155,7 +155,21 @@ func TestIntelligenceExecutionTraceFollowsLastForwardAttemptForBothTestsAndAPIs(
 						if outcome == "http_error" || outcome == "before_forward" {
 							status, body = 503, `{"error":{"message":"no available account"}}`
 						}
-						return &http.Response{StatusCode: status, Header: make(http.Header), Body: io.NopCloser(strings.NewReader(body))}, nil
+						header := make(http.Header)
+						if strings.HasPrefix(outcome, "stream_") {
+							header.Set("Content-Type", "text/event-stream")
+							body = "data: {\"type\":\"response.completed\",\"response\":{\"status\":\"completed\",\"output_text\":\"21\"}}\n\n"
+							if mode == MonitorAPIModeChatCompletions {
+								body = "data: {\"choices\":[{\"delta\":{\"content\":\"21\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n"
+							}
+							if outcome == "stream_error" {
+								body = "data: {\"error\":{\"message\":\"upstream failed after starting SSE\"}}\n\n"
+							}
+							if outcome == "stream_incomplete" {
+								body = "data: {\"type\":\"response.output_text.delta\",\"delta\":\"partial\"}\n\n"
+							}
+						}
+						return &http.Response{StatusCode: status, Header: header, Body: io.NopCloser(strings.NewReader(body))}, nil
 					})}
 					svc := &IntelligenceMonitorService{localClient: client, localEndpoint: "http://127.0.0.1:8081"}
 					ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
@@ -171,7 +185,7 @@ func TestIntelligenceExecutionTraceFollowsLastForwardAttemptForBothTestsAndAPIs(
 					require.Equal(t, "Final route", run.SourceSnapshot["execution_account_name"])
 					require.Equal(t, 2, run.SourceSnapshot["execution_attempt_count"])
 					require.Equal(t, finalAttemptStartedAt, run.SourceSnapshot["execution_started_at"], "binding resolution uses the final forwarding attempt's captured time")
-					if outcome == "completed" {
+					if outcome == "completed" || outcome == "stream_completed" {
 						require.Empty(t, message)
 						require.Equal(t, "completed", run.SourceSnapshot["execution_source_status"])
 					} else {

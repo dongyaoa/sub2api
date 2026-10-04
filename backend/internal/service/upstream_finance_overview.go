@@ -3,6 +3,8 @@ package service
 import (
 	"context"
 	"time"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 )
 
 type UpstreamFinanceOverviewTarget struct {
@@ -44,6 +46,19 @@ func (s *UpstreamFinanceService) OverviewFinance(ctx context.Context, suppliers 
 		now := s.now()
 		for id, target := range data.BalanceTargets {
 			data.Balances[id] = completeUpstreamBalanceSnapshot(data.Balances[id], target, now)
+		}
+		sources, err := s.profitSources(ctx, timezone.StartOfDay(now))
+		if err != nil {
+			return nil, err
+		}
+		applyUpstreamDailyProfit(data.Summary, q, sources, now)
+		for id, summary := range data.Suppliers {
+			supplierID := id
+			applyUpstreamDailyProfit(summary, UpstreamFinanceQuery{SupplierID: &supplierID, From: q.From, To: q.To}, sources, now)
+		}
+		for id, summary := range data.Targets {
+			targetID := id
+			applyUpstreamDailyProfit(summary, UpstreamFinanceQuery{TargetID: &targetID, From: q.From, To: q.To}, sources, now)
 		}
 		return data, nil
 	}

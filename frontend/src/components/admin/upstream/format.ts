@@ -1,5 +1,18 @@
-import type { UpstreamHistoryRecord, UpstreamTarget } from '@/api/admin/upstreamCenter'
+import type { UpstreamFinanceSummary, UpstreamHistoryRecord, UpstreamTarget } from '@/api/admin/upstreamCenter'
 export { hslForPct as availabilityColor } from '@/composables/useChannelMonitorFormat'
+
+export function actualProfit(summary: UpstreamFinanceSummary | null | undefined): number | null {
+  return summary?.cost_source === 'reported' && summary.remote_used != null ? summary.profit : null
+}
+
+export function actualUpstreamUsed(summary: UpstreamFinanceSummary | null | undefined): number | null {
+  return summary?.cost_source === 'reported' ? summary.remote_used : null
+}
+
+export function financeSource(summary: UpstreamFinanceSummary | null | undefined): 'reported' | 'estimated' | 'mixed' | 'unknown' {
+  if (summary?.cost_source === 'reported' && summary.remote_used != null) return 'reported'
+  return summary?.cost_source === 'estimated' || summary?.cost_source === 'mixed' ? summary.cost_source : 'unknown'
+}
 
 export function money(value: number | null | undefined, currency = 'USD'): string {
   if (value == null || !Number.isFinite(value)) return '—'

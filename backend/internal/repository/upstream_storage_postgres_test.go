@@ -37,7 +37,7 @@ func upstreamStorageTestDB(t *testing.T) (*sql.DB, context.Context, func() *sql.
 	_, err = db.ExecContext(ctx, `CREATE TABLE accounts(id BIGINT PRIMARY KEY,credentials JSONB NOT NULL DEFAULT '{}',platform TEXT NOT NULL DEFAULT 'openai',type TEXT NOT NULL DEFAULT 'apikey',deleted_at TIMESTAMPTZ);
 CREATE TABLE usage_logs(id BIGSERIAL PRIMARY KEY,created_at TIMESTAMPTZ NOT NULL,account_id BIGINT,group_id BIGINT,user_id BIGINT,api_key_id BIGINT,requested_model TEXT,model TEXT,request_id TEXT,actual_cost NUMERIC,total_cost NUMERIC,account_stats_cost NUMERIC,account_rate_multiplier NUMERIC,billing_type SMALLINT,input_tokens INT NOT NULL DEFAULT 0,output_tokens INT NOT NULL DEFAULT 0,cache_creation_tokens INT NOT NULL DEFAULT 0,cache_read_tokens INT NOT NULL DEFAULT 0)`)
 	require.NoError(t, err)
-	for _, name := range []string{"242_upstream_center.sql", "243_upstream_finance.sql", "244_upstream_remote_billing.sql", "247_upstream_finance_usage_totals.sql", "253_upstream_newapi_credentials.sql", "254_upstream_storage_retention.sql", "254_upstream_storage_retention.sql"} {
+	for _, name := range []string{"242_upstream_center.sql", "243_upstream_finance.sql", "244_upstream_remote_billing.sql", "247_upstream_finance_usage_totals.sql", "253_upstream_newapi_credentials.sql", "254_upstream_storage_retention.sql", "254_upstream_storage_retention.sql", "265_upstream_finance_reported_day.sql", "265_upstream_finance_reported_day.sql"} {
 		migration, err := migrations.FS.ReadFile(name)
 		require.NoError(t, err)
 		_, err = db.ExecContext(ctx, string(migration))
@@ -162,8 +162,8 @@ func TestUpstreamStorageRollupSampleBoundsAllowCurrentHourQueries(t *testing.T) 
 	} {
 		value, err := finance.Summary(ctx, q)
 		require.NoError(t, err)
-		require.Equal(t, float64(6), *value.MonitorCost)
-		require.Equal(t, float64(-6), *value.Profit)
+		require.Nil(t, value.MonitorCost)
+		require.Nil(t, value.Profit)
 	}
 	for _, q := range []service.UpstreamFinanceQuery{
 		{From: hour, To: first},
@@ -171,7 +171,7 @@ func TestUpstreamStorageRollupSampleBoundsAllowCurrentHourQueries(t *testing.T) 
 	} {
 		value, err := finance.Summary(ctx, q)
 		require.NoError(t, err)
-		require.Zero(t, *value.MonitorCost, "same-hour windows wholly outside stored samples must remain exactly queryable")
+		require.Nil(t, value.MonitorCost, "no actual upstream monitoring charge was reported")
 	}
 	for _, q := range []service.UpstreamFinanceQuery{
 		{From: first.Add(time.Microsecond), To: now},

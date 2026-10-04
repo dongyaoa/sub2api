@@ -111,10 +111,7 @@ func BindIntelligenceLocalRequest(request *http.Request, key *APIKey) (context.C
 // Only an authenticated local IQ request replaces the ordinary stream-idle
 // guard. Its original worker deadline still bounds the entire HTTP lifecycle.
 func intelligenceMonitorStreamInterval(c *gin.Context, ordinary time.Duration) time.Duration {
-	if c == nil || c.Request == nil || c.Request.Context().Value(intelligenceGenerationContextKey{}) != true {
-		return ordinary
-	}
-	deadline, ok := c.Request.Context().Deadline()
+	deadline, ok := intelligenceMonitorDeadline(c)
 	if !ok {
 		return ordinary
 	}
@@ -122,4 +119,21 @@ func intelligenceMonitorStreamInterval(c *gin.Context, ordinary time.Duration) t
 		return remaining
 	}
 	return time.Nanosecond
+}
+
+// Trusted local generations already have an end-to-end worker deadline. A
+// shorter interactive first-output guard must not turn long reasoning into a
+// new account attempt before that generation budget has elapsed.
+func intelligenceMonitorFirstOutputTimeout(c *gin.Context, ordinary time.Duration) time.Duration {
+	if _, ok := intelligenceMonitorDeadline(c); ok {
+		return 0
+	}
+	return ordinary
+}
+
+func intelligenceMonitorDeadline(c *gin.Context) (time.Time, bool) {
+	if c == nil || c.Request == nil || c.Request.Context().Value(intelligenceGenerationContextKey{}) != true {
+		return time.Time{}, false
+	}
+	return c.Request.Context().Deadline()
 }

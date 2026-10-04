@@ -84,17 +84,17 @@ describe('API key account shared upstream status', () => {
     wrapper.unmount()
   })
 
-  it('uses the shared group finance values without deriving profit from remote usage or filtering by the health model', async () => {
-    const item = target({ balance: { today_used: 9.3, currency: 'USD' } as UpstreamTarget['balance'], finance: { revenue: 12.5, business_cost: 5, monitor_cost: 1, profit: 6.5, currency: 'USD' } as UpstreamTarget['finance'] })
+  it('uses the reconciled group finance values without filtering by the health model', async () => {
+    const item = target({ balance: { today_used: 99, currency: 'USD' } as UpstreamTarget['balance'], finance: { revenue: 12.5, remote_used: 9.3, business_cost: null, monitor_cost: 1, profit: 3.2, cost_source: 'reported', currency: 'USD' } as UpstreamTarget['finance'] })
     const wrapper = mount(AccountUpstreamStatus, { props: { target: item }, global: { stubs } })
     expect(wrapper.get('[data-testid="account-status-upstream-spend"]').text()).toBe('9.30')
     expect(wrapper.get('[data-testid="account-status-user-spend"]').text()).toBe('12.50')
-    expect(wrapper.get('[data-testid="account-status-profit"]').text()).toBe('6.50')
+    expect(wrapper.get('[data-testid="account-status-profit"]').text()).toBe('3.20')
     await selectSecondModel(wrapper)
     expect(wrapper.get('[data-testid="account-status-user-spend"]').text()).toBe('12.50')
-    expect(wrapper.get('[data-testid="account-status-profit"]').text()).toBe('6.50')
-    await wrapper.setProps({ target: { ...item, balance: { ...item.balance!, today_used: 0 }, finance: { ...item.finance, revenue: 0, profit: -5 } } })
-    expect(wrapper.get('[data-testid="account-status-upstream-spend"]').text()).toBe('0.00')
+    expect(wrapper.get('[data-testid="account-status-profit"]').text()).toBe('3.20')
+    await wrapper.setProps({ target: { ...item, balance: { ...item.balance!, today_used: 99 }, finance: { ...item.finance, revenue: 0, remote_used: 5, profit: -5 } } })
+    expect(wrapper.get('[data-testid="account-status-upstream-spend"]').text()).toBe('5.00')
     expect(wrapper.get('[data-testid="account-status-user-spend"]').text()).toBe('0.00')
     expect(wrapper.get('[data-testid="account-status-profit"]').text()).toBe('-5.00')
     expect(wrapper.get('[data-testid="account-status-profit"]').classes()).toContain('text-rose-600')
@@ -104,12 +104,21 @@ describe('API key account shared upstream status', () => {
   it('keeps unavailable amounts distinct from zero and explains incomplete profit', async () => {
     const wrapper = mount(AccountUpstreamStatus, { props: { target: target() }, global: { stubs } })
     for (const metric of ['upstream-spend', 'user-spend', 'profit']) expect(wrapper.get(`[data-testid="account-status-${metric}"]`).text()).toBe('—')
-    await wrapper.setProps({ target: target({ balance: { today_used: 0 } as UpstreamTarget['balance'], finance: { revenue: 0, profit: null } as UpstreamTarget['finance'] }) })
+    await wrapper.setProps({ target: target({ balance: { today_used: 0 } as UpstreamTarget['balance'], finance: { revenue: 0, remote_used: 0, profit: null, cost_source: 'reported' } as UpstreamTarget['finance'] }) })
     expect(wrapper.get('[data-testid="account-status-upstream-spend"]').text()).toBe('0.00')
     expect(wrapper.get('[data-testid="account-status-user-spend"]').text()).toBe('0.00')
     expect(wrapper.get('[data-testid="account-status-profit"]').text()).toBe('—')
     expect(wrapper.get('[data-testid="account-status-profit"]').attributes('title')).toBe('upstreamCenter.finance.pending')
     expect(wrapper.get('[data-testid="account-status-profit"]').classes()).toContain('text-amber-600')
+    wrapper.unmount()
+  })
+
+  it('does not present legacy estimated group costs or profit as actual values', () => {
+    const finance = { revenue: 0, remote_used: 0.5, profit: -0.5, cost_source: 'estimated', currency: 'USD' } as UpstreamTarget['finance']
+    const wrapper = mount(AccountUpstreamStatus, { props: { target: target({ finance }) }, global: { stubs } })
+    expect(wrapper.get('[data-testid="account-status-upstream-spend"]').text()).toBe('—')
+    expect(wrapper.get('[data-testid="account-status-profit"]').text()).toBe('—')
+    expect(wrapper.get('[data-testid="account-status-profit"]').attributes('title')).toBe('upstreamCenter.finance.pending')
     wrapper.unmount()
   })
 

@@ -94,6 +94,43 @@ func parseUpstreamUsage(body []byte) (*UpstreamBalanceSnapshot, error) {
 	return snapshot, nil
 }
 
+// daily_usage is filtered by the requested timezone/window on the upstream.
+// Its date labels may use a different DB timezone, so sum every returned row.
+func parseUpstreamDailyUsed(body []byte) *float64 {
+	var payload map[string]any
+	decoder := json.NewDecoder(bytes.NewReader(body))
+	decoder.UseNumber()
+	if decoder.Decode(&payload) != nil || decoder.Decode(new(any)) != io.EOF || upstreamUsagePayloadFailed(payload) {
+		return nil
+	}
+	if data, ok := payload["data"].(map[string]any); ok {
+		payload = data
+	}
+	if upstreamUsagePayloadFailed(payload) {
+		return nil
+	}
+	rows, ok := payload["daily_usage"].([]any)
+	if !ok {
+		return nil
+	}
+	used := 0.0
+	for _, value := range rows {
+		row, ok := value.(map[string]any)
+		if !ok {
+			return nil
+		}
+		amount := upstreamAmount(row["actual_cost"])
+		if amount == nil || *amount < 0 {
+			return nil
+		}
+		used += *amount
+		if math.IsInf(used, 0) || used >= 1e14 {
+			return nil
+		}
+	}
+	return &used
+}
+
 func upstreamUsagePayloadFailed(payload map[string]any) bool {
 	if code, exists := payload["code"]; exists {
 		number := upstreamAmount(code)

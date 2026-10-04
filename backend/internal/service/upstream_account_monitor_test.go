@@ -116,7 +116,7 @@ func TestUpstreamAccountMonitorFinanceUsesCurrentGroupAndSiteDay(t *testing.T) {
 			repo.target = validUpstreamTestTarget()
 			repo.target.SupplierID = scope.supplierID
 			profit, monitorCost := 6.5, 0.5
-			financeRepo := &accountMonitorFinanceRepo{summary: &UpstreamFinanceSummary{Revenue: 12, BusinessCost: 5, MonitorCost: &monitorCost, Profit: &profit}}
+			financeRepo := &accountMonitorFinanceRepo{summary: &UpstreamFinanceSummary{Revenue: 12, BusinessCost: financeFloat(5), MonitorCost: &monitorCost, Profit: &profit}}
 			finance := NewUpstreamFinanceService(financeRepo, upstreamTestEncryptor{}, nil, nil, nil)
 			svc := NewUpstreamCenterService(repo, upstreamTestEncryptor{}, upstreamTestAccounts{account: monitorTestAccount()}, finance)
 			dayBefore := timezone.Today()
@@ -145,7 +145,7 @@ func TestUpstreamAccountMonitorFinanceUsesCurrentGroupAndSiteDay(t *testing.T) {
 func TestUpstreamAccountMonitorFinancePreservesUnknownProfit(t *testing.T) {
 	repo := &accountMonitorTestRepo{}
 	repo.target = validUpstreamTestTarget()
-	financeRepo := &accountMonitorFinanceRepo{summary: &UpstreamFinanceSummary{Revenue: 12, BusinessCost: 5, UnpricedMonitorCount: 1}}
+	financeRepo := &accountMonitorFinanceRepo{summary: &UpstreamFinanceSummary{Revenue: 12, BusinessCost: financeFloat(5), UnpricedMonitorCount: 1}}
 	finance := NewUpstreamFinanceService(financeRepo, upstreamTestEncryptor{}, nil, nil, nil)
 	svc := NewUpstreamCenterService(repo, upstreamTestEncryptor{}, upstreamTestAccounts{account: monitorTestAccount()}, finance)
 	view, err := svc.AccountMonitor(context.Background(), 6, false)
