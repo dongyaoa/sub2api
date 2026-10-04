@@ -21,6 +21,54 @@ func promotionForTest() *RechargePromotion {
 	return &RechargePromotion{Enabled: true, Title: "Holiday", Currency: "CNY", StartsAt: "2026-10-01T00:00:00+08:00", EndsAt: "2026-10-08T00:00:00+08:00", Tiers: []RechargePromotionTier{{MinAmount: 100, BonusPercent: 10}, {MinAmount: 200, BonusPercent: 20}}}
 }
 
+func TestQuoteBalanceRechargePromotionAndUpstreamTiersDoNotStack(t *testing.T) {
+	p := promotionForTest()
+	now, err := time.Parse(time.RFC3339, p.StartsAt)
+	require.NoError(t, err)
+	for _, mode := range []string{RechargeBonusModeBonus, RechargeBonusModeDiscount} {
+		t.Run(mode, func(t *testing.T) {
+			cfg := &PaymentConfig{RechargePromotionEnabled: true, RechargePromotion: p, BalanceRechargeMultiplier: .15, RechargeBonusMode: mode, RechargeBonusTiers: []RechargeBonusTier{{MinAmount: 50, BonusPercent: 30}}}
+			quote, snapshot := quoteBalanceRecharge(cfg, 200, "CNY", now)
+			require.NotNil(t, snapshot)
+			require.Equal(t, 200.0, quote.PayBase)
+			require.Equal(t, 36.0, quote.Credited)
+			require.Equal(t, 6.0, quote.Bonus)
+			for _, tc := range []struct {
+				name     string
+				amount   float64
+				currency string
+				now      time.Time
+			}{
+				{"below promotion tier", 50, "CNY", now},
+				{"different currency", 200, "USD", now},
+				{"expired promotion", 200, "CNY", now.Add(8 * 24 * time.Hour)},
+			} {
+				t.Run(tc.name, func(t *testing.T) {
+					quote, snapshot := quoteBalanceRecharge(cfg, tc.amount, tc.currency, tc.now)
+					require.Nil(t, snapshot)
+					require.Equal(t, quoteRechargeBonus(cfg, tc.amount, tc.currency), quote)
+				})
+			}
+			cfg.RechargePromotionEnabled = false
+			quote, snapshot = quoteBalanceRecharge(cfg, 200, "CNY", now)
+			require.Nil(t, snapshot)
+			require.Equal(t, quoteRechargeBonus(cfg, 200, "CNY"), quote)
+		})
+	}
+}
+
+func TestPaymentOrderBonusAmountSupportsNewAndHistoricalOrders(t *testing.T) {
+	for _, order := range []*dbent.PaymentOrder{
+		{OrderType: payment.OrderTypeBalance, Amount: 110, BonusAmount: 10},
+		{OrderType: payment.OrderTypeBalance, Amount: 110, PromotionSnapshot: map[string]any{"bonus_amount": 10.0}},
+		{OrderType: payment.OrderTypeBalance, Amount: 110, BonusAmount: 10, PromotionSnapshot: map[string]any{"bonus_amount": 10.0}},
+	} {
+		require.Equal(t, 10.0, PaymentOrderBonusAmount(order))
+		require.Equal(t, 100.0, PaymentOrderBaseAmount(order))
+		require.Equal(t, 100.0, affiliateRebateBaseAmount(order))
+	}
+}
+
 func TestRechargePromotionTierTimeCurrencyAndCap(t *testing.T) {
 	p, err := normalizeRechargePromotion(promotionForTest())
 	require.NoError(t, err)
@@ -118,7 +166,9 @@ func TestPaymentPromotionOrderSnapshotAndBaseRebate(t *testing.T) {
 	p := promotionForTest()
 	p.StartsAt, p.EndsAt = time.Now().Add(-time.Hour).Format(time.RFC3339), time.Now().Add(time.Hour).Format(time.RFC3339)
 	svc := &PaymentService{entClient: client}
-	o, err := svc.createOrderInTx(ctx, CreateOrderRequest{UserID: u.ID, Amount: 200, OrderType: "balance", PaymentType: "alipay"}, &User{ID: u.ID, Email: u.Email}, nil, &PaymentConfig{RechargePromotionEnabled: true, RechargePromotion: p, BalanceRechargeMultiplier: .15}, calculateCreditedBalance(200, .15), 200, 2, 204, &payment.InstanceSelection{ProviderKey: "alipay", Config: map[string]string{}})
+	cfg := &PaymentConfig{RechargePromotionEnabled: true, RechargePromotion: p, BalanceRechargeMultiplier: .15}
+	quote, snapshot := quoteBalanceRecharge(cfg, 200, "CNY", time.Now())
+	o, err := svc.createOrderInTx(ctx, CreateOrderRequest{UserID: u.ID, Amount: 200, OrderType: "balance", PaymentType: "alipay"}, &User{ID: u.ID, Email: u.Email}, nil, cfg, quote.Credited, quote.PayBase, 2, 204, quote.Bonus, snapshot, &payment.InstanceSelection{ProviderKey: "alipay", Config: map[string]string{}})
 	require.NoError(t, err)
 	require.Equal(t, 36.0, o.Amount)
 	require.Equal(t, 204.0, o.PayAmount, "bonus must not alter gateway charge or fee")

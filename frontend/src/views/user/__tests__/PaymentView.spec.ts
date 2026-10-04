@@ -471,6 +471,22 @@ describe('PaymentView recharge promotion', () => {
     wrapper.unmount()
   })
 
+  it.each(['bonus', 'discount'] as const)('does not stack a scheduled promotion with upstream %s tiers', async (mode) => {
+    const wrapper = await mountPromotion({ recharge_bonus_tiers: [{ min_amount: 50, bonus_percent: 30 }], recharge_bonus_mode: mode })
+    wrapper.getComponent(RechargePromotionBanner).vm.$emit('select', 100)
+    await wrapper.vm.$nextTick()
+    expect(wrapper.get('[data-testid="credited-amount"]').text()).toBe('55.00')
+    expect(wrapper.find('[data-testid="recharge-discount-row"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="recharge-bonus-row"]').exists()).toBe(false)
+    expect(wrapper.text()).toContain(formatPaymentAmount(102, 'CNY'))
+    appStoreState.setPublicSettings({ recharge_promotion_enabled: false })
+    await wrapper.vm.$nextTick()
+    expect(wrapper.get('[data-testid="credited-amount"]').text()).toBe(mode === 'bonus' ? '65.00' : '50.00')
+    expect(wrapper.find('[data-testid="recharge-discount-row"]').exists()).toBe(mode === 'discount')
+    expect(wrapper.find('[data-testid="recharge-bonus-row"]').exists()).toBe(mode === 'bonus')
+    wrapper.unmount()
+  })
+
   it('removes an existing promotion when the master switch is turned off', async () => {
     const wrapper = await mountPromotion()
     wrapper.getComponent(RechargePromotionBanner).vm.$emit('select', 100)

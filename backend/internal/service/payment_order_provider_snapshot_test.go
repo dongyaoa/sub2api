@@ -88,6 +88,8 @@ func TestCreateOrderInTx_WritesProviderSnapshot(t *testing.T) {
 		88,
 		0,
 		88,
+		0,
+		nil,
 		&payment.InstanceSelection{
 			InstanceID:     strconv.FormatInt(instance.ID, 10),
 			ProviderKey:    payment.TypeAlipay,

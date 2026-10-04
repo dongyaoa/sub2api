@@ -745,7 +745,9 @@ func affiliateRebateBaseAmount(o *dbent.PaymentOrder) float64 {
 	}
 	switch o.OrderType {
 	case payment.OrderTypeBalance, payment.OrderTypeSubscription:
-		return PaymentOrderBaseAmount(o)
+		// Keep the affiliate base non-negative for malformed historical orders
+		// where the recorded bonus exceeds the order amount.
+		return paymentOrderAmountWithoutBonus(o)
 	default:
 		return 0
 	}

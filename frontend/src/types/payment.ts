@@ -52,6 +52,10 @@ export interface RechargePromotionSnapshot {
   currency: string
 }
 
+export interface RechargeBonusTier {
+  min_amount: number
+  bonus_percent: number
+}
 export interface PaymentConfig {
   enabled: boolean
   min_amount: number
@@ -100,6 +104,12 @@ export interface CheckoutInfoResponse {
   /** Subscription CNY conversion rate (1 USD = X CNY); 0 = disabled, plan price is charged as-is */
   subscription_usd_to_cny_rate: number
   recharge_fee_rate: number
+  /** 充值赠送阶梯（按 min_amount 升序）；缺失/空数组 = 不赠送 */
+  recharge_bonus_tiers?: RechargeBonusTier[]
+  /** 阶梯模式：bonus 赠金 / discount 折扣；缺失按 bonus */
+  recharge_bonus_mode?: string
+  /** 充值页金额区顶部的 Markdown 活动文案；空 = 不展示 */
+  recharge_bonus_notice?: string
   help_text: string
   help_image_url: string
   stripe_publishable_key: string
@@ -121,6 +131,7 @@ export interface PaymentOrder {
   pay_amount: number
   currency?: string
   fee_rate: number
+  /** 充值赠送额度（USD），已计入 amount */
   payment_type: string
   out_trade_no: string
   status: OrderStatus

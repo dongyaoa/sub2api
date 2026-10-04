@@ -25,7 +25,7 @@ func TestRechargePromotionMasterSwitchDisablesNewOrdersAndConfigurationWrites(t 
 	configSvc := NewPaymentConfigService(client, &paymentConfigSettingRepoStub{}, nil)
 	require.Equal(t, "RECHARGE_PROMOTION_DISABLED", infraerrors.Reason(configSvc.UpdatePaymentConfig(ctx, UpdatePaymentConfigRequest{RechargePromotion: p})))
 	svc := &PaymentService{entClient: client, configService: configSvc}
-	o, err := svc.createOrderInTx(ctx, CreateOrderRequest{UserID: u.ID, Amount: 200, OrderType: "balance", PaymentType: "alipay"}, &User{ID: u.ID, Email: u.Email}, nil, &PaymentConfig{RechargePromotion: p, BalanceRechargeMultiplier: 1}, 200, 200, 0, 200, &payment.InstanceSelection{ProviderKey: "alipay"})
+	o, err := svc.createOrderInTx(ctx, CreateOrderRequest{UserID: u.ID, Amount: 200, OrderType: "balance", PaymentType: "alipay"}, &User{ID: u.ID, Email: u.Email}, nil, &PaymentConfig{RechargePromotion: p, BalanceRechargeMultiplier: 1}, 200, 200, 0, 200, 0, nil, &payment.InstanceSelection{ProviderKey: "alipay"})
 	require.NoError(t, err)
 	require.Equal(t, 200.0, o.Amount)
 	require.Empty(t, o.PromotionSnapshot)

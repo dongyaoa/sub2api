@@ -30114,6 +30114,8 @@ type PaymentOrderMutation struct {
 	fee_rate                 *float64
 	addfee_rate              *float64
 	promotion_snapshot       *map[string]interface{}
+	bonus_amount             *float64
+	addbonus_amount          *float64
 	recharge_code            *string
 	out_trade_no             *string
 	payment_type             *string
@@ -30628,6 +30630,62 @@ func (m *PaymentOrderMutation) PromotionSnapshotCleared() bool {
 func (m *PaymentOrderMutation) ResetPromotionSnapshot() {
 	m.promotion_snapshot = nil
 	delete(m.clearedFields, paymentorder.FieldPromotionSnapshot)
+}
+
+// SetBonusAmount sets the "bonus_amount" field.
+func (m *PaymentOrderMutation) SetBonusAmount(f float64) {
+	m.bonus_amount = &f
+	m.addbonus_amount = nil
+}
+
+// BonusAmount returns the value of the "bonus_amount" field in the mutation.
+func (m *PaymentOrderMutation) BonusAmount() (r float64, exists bool) {
+	v := m.bonus_amount
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// OldBonusAmount returns the old "bonus_amount" field's value of the PaymentOrder entity.
+// If the PaymentOrder object wasn't provided to the builder, the object is fetched from the database.
+// An error is returned if the mutation operation is not UpdateOne, or the database query fails.
+func (m *PaymentOrderMutation) OldBonusAmount(ctx context.Context) (v float64, err error) {
+	if !m.op.Is(OpUpdateOne) {
+		return v, errors.New("OldBonusAmount is only allowed on UpdateOne operations")
+	}
+	if m.id == nil || m.oldValue == nil {
+		return v, errors.New("OldBonusAmount requires an ID field in the mutation")
+	}
+	oldValue, err := m.oldValue(ctx)
+	if err != nil {
+		return v, fmt.Errorf("querying old value for OldBonusAmount: %w", err)
+	}
+	return oldValue.BonusAmount, nil
+}
+
+// AddBonusAmount adds f to the "bonus_amount" field.
+func (m *PaymentOrderMutation) AddBonusAmount(f float64) {
+	if m.addbonus_amount != nil {
+		*m.addbonus_amount += f
+	} else {
+		m.addbonus_amount = &f
+	}
+}
+
+// AddedBonusAmount returns the value that was added to the "bonus_amount" field in this mutation.
+func (m *PaymentOrderMutation) AddedBonusAmount() (r float64, exists bool) {
+	v := m.addbonus_amount
+	if v == nil {
+		return
+	}
+	return *v, true
+}
+
+// ResetBonusAmount resets all changes to the "bonus_amount" field.
+func (m *PaymentOrderMutation) ResetBonusAmount() {
+	m.bonus_amount = nil
+	m.addbonus_amount = nil
 }
 
 // SetRechargeCode sets the "recharge_code" field.
@@ -32173,7 +32231,7 @@ func (m *PaymentOrderMutation) Type() string {
 // order to get all numeric fields that were incremented/decremented, call
 // AddedFields().
 func (m *PaymentOrderMutation) Fields() []string {
-	fields := make([]string, 0, 40)
+	fields := make([]string, 0, 41)
 	if m.user != nil {
 		fields = append(fields, paymentorder.FieldUserID)
 	}
@@ -32197,6 +32255,9 @@ func (m *PaymentOrderMutation) Fields() []string {
 	}
 	if m.promotion_snapshot != nil {
 		fields = append(fields, paymentorder.FieldPromotionSnapshot)
+	}
+	if m.bonus_amount != nil {
+		fields = append(fields, paymentorder.FieldBonusAmount)
 	}
 	if m.recharge_code != nil {
 		fields = append(fields, paymentorder.FieldRechargeCode)
@@ -32318,6 +32379,8 @@ func (m *PaymentOrderMutation) Field(name string) (ent.Value, bool) {
 		return m.FeeRate()
 	case paymentorder.FieldPromotionSnapshot:
 		return m.PromotionSnapshot()
+	case paymentorder.FieldBonusAmount:
+		return m.BonusAmount()
 	case paymentorder.FieldRechargeCode:
 		return m.RechargeCode()
 	case paymentorder.FieldOutTradeNo:
@@ -32407,6 +32470,8 @@ func (m *PaymentOrderMutation) OldField(ctx context.Context, name string) (ent.V
 		return m.OldFeeRate(ctx)
 	case paymentorder.FieldPromotionSnapshot:
 		return m.OldPromotionSnapshot(ctx)
+	case paymentorder.FieldBonusAmount:
+		return m.OldBonusAmount(ctx)
 	case paymentorder.FieldRechargeCode:
 		return m.OldRechargeCode(ctx)
 	case paymentorder.FieldOutTradeNo:
@@ -32535,6 +32600,13 @@ func (m *PaymentOrderMutation) SetField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.SetPromotionSnapshot(v)
+		return nil
+	case paymentorder.FieldBonusAmount:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.SetBonusAmount(v)
 		return nil
 	case paymentorder.FieldRechargeCode:
 		v, ok := value.(string)
@@ -32777,6 +32849,9 @@ func (m *PaymentOrderMutation) AddedFields() []string {
 	if m.addfee_rate != nil {
 		fields = append(fields, paymentorder.FieldFeeRate)
 	}
+	if m.addbonus_amount != nil {
+		fields = append(fields, paymentorder.FieldBonusAmount)
+	}
 	if m.addplan_id != nil {
 		fields = append(fields, paymentorder.FieldPlanID)
 	}
@@ -32803,6 +32878,8 @@ func (m *PaymentOrderMutation) AddedField(name string) (ent.Value, bool) {
 		return m.AddedPayAmount()
 	case paymentorder.FieldFeeRate:
 		return m.AddedFeeRate()
+	case paymentorder.FieldBonusAmount:
+		return m.AddedBonusAmount()
 	case paymentorder.FieldPlanID:
 		return m.AddedPlanID()
 	case paymentorder.FieldSubscriptionGroupID:
@@ -32840,6 +32917,13 @@ func (m *PaymentOrderMutation) AddField(name string, value ent.Value) error {
 			return fmt.Errorf("unexpected type %T for field %s", value, name)
 		}
 		m.AddFeeRate(v)
+		return nil
+	case paymentorder.FieldBonusAmount:
+		v, ok := value.(float64)
+		if !ok {
+			return fmt.Errorf("unexpected type %T for field %s", value, name)
+		}
+		m.AddBonusAmount(v)
 		return nil
 	case paymentorder.FieldPlanID:
 		v, ok := value.(int64)
@@ -33048,6 +33132,9 @@ func (m *PaymentOrderMutation) ResetField(name string) error {
 		return nil
 	case paymentorder.FieldPromotionSnapshot:
 		m.ResetPromotionSnapshot()
+		return nil
+	case paymentorder.FieldBonusAmount:
+		m.ResetBonusAmount()
 		return nil
 	case paymentorder.FieldRechargeCode:
 		m.ResetRechargeCode()

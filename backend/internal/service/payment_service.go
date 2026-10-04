@@ -91,10 +91,10 @@ type CreateOrderResponse struct {
 	OrderID                       int64                           `json:"order_id"`
 	Amount                        float64                         `json:"amount"`
 	BaseAmount                    float64                         `json:"base_amount,omitempty"`
-	BonusAmount                   float64                         `json:"bonus_amount,omitempty"`
 	PromotionSnapshot             map[string]any                  `json:"promotion_snapshot,omitempty"`
 	PayAmount                     float64                         `json:"pay_amount"`
 	FeeRate                       float64                         `json:"fee_rate"`
+	BonusAmount                   float64                         `json:"bonus_amount"`
 	Status                        string                          `json:"status"`
 	ResultType                    payment.CreatePaymentResultType `json:"result_type,omitempty"`
 	PaymentType                   string                          `json:"payment_type"`

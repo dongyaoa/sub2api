@@ -158,11 +158,27 @@ func PaymentOrderBonusAmount(order *dbent.PaymentOrder) float64 {
 	if order == nil || order.OrderType != payment.OrderTypeBalance {
 		return 0
 	}
+	if finitePromotionNumber(order.BonusAmount, 0.01, order.Amount) {
+		return order.BonusAmount
+	}
 	bonus, _ := order.PromotionSnapshot["bonus_amount"].(float64)
 	if !finitePromotionNumber(bonus, 0, order.Amount) {
 		return 0
 	}
 	return bonus
+}
+
+// A qualifying scheduled promotion takes precedence over the upstream tiers.
+func quoteBalanceRecharge(cfg *PaymentConfig, amount float64, currency string, now time.Time) (rechargeBonusQuote, map[string]any) {
+	if cfg != nil && cfg.RechargePromotionEnabled {
+		base := calculateCreditedBalance(amount, cfg.BalanceRechargeMultiplier)
+		snapshot := buildRechargePromotionSnapshot(cfg.RechargePromotion, payment.OrderTypeBalance, amount, base, cfg.BalanceRechargeMultiplier, currency, now)
+		if snapshot != nil {
+			bonus := snapshot["bonus_amount"].(float64)
+			return rechargeBonusQuote{PayBase: amount, Credited: addRechargeBonus(base, bonus), Bonus: bonus, Percent: snapshot["bonus_percent"].(float64)}, snapshot
+		}
+	}
+	return quoteRechargeBonus(cfg, amount, currency), nil
 }
 
 func PaymentOrderBaseAmount(order *dbent.PaymentOrder) float64 {
