@@ -174,8 +174,11 @@ func quoteBalanceRecharge(cfg *PaymentConfig, amount float64, currency string, n
 		base := calculateCreditedBalance(amount, cfg.BalanceRechargeMultiplier)
 		snapshot := buildRechargePromotionSnapshot(cfg.RechargePromotion, payment.OrderTypeBalance, amount, base, cfg.BalanceRechargeMultiplier, currency, now)
 		if snapshot != nil {
-			bonus := snapshot["bonus_amount"].(float64)
-			return rechargeBonusQuote{PayBase: amount, Credited: addRechargeBonus(base, bonus), Bonus: bonus, Percent: snapshot["bonus_percent"].(float64)}, snapshot
+			bonus, bonusOK := snapshot["bonus_amount"].(float64)
+			percent, percentOK := snapshot["bonus_percent"].(float64)
+			if bonusOK && percentOK {
+				return rechargeBonusQuote{PayBase: amount, Credited: addRechargeBonus(base, bonus), Bonus: bonus, Percent: percent}, snapshot
+			}
 		}
 	}
 	return quoteRechargeBonus(cfg, amount, currency), nil
