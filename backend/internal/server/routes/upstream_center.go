@@ -34,4 +34,5 @@ func registerUpstreamCenterRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	center.GET("/targets/:id/history", api.History)
 	center.POST("/models", api.Models)
 	center.GET("/finance", api.Finance)
+	center.GET("/finance/summary", api.FinanceSummary)
 }

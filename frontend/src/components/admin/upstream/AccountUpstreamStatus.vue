@@ -64,6 +64,7 @@
       </dl>
     </div>
 
+    <p v-if="target.finance?.remote_stale && target.finance.remote_synced_at" class="mt-2 text-[10px] text-amber-600 dark:text-amber-400">{{ t('upstreamCenter.finance.stale') }} · {{ t('upstreamCenter.wallet.syncedAt', { time: dateTime(target.finance.remote_synced_at) }) }}</p>
     <UpstreamHistoryBar class="mt-3" :records="statistics?.timeline || []" :last-checked-at="statistics?.last_checked_at" />
   </section>
 </template>

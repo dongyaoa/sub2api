@@ -73,6 +73,7 @@
         </div>
       </dl>
     </div>
+    <p v-if="target.finance?.remote_stale && target.finance.remote_synced_at" class="mt-2 text-[10px] text-amber-600 dark:text-amber-400">{{ t('upstreamCenter.finance.stale') }} · {{ t('upstreamCenter.wallet.syncedAt', { time: dateTime(target.finance.remote_synced_at) }) }}</p>
     <p v-if="target.balance?.status === 'error'" class="mt-2 truncate text-[10px] text-amber-600 dark:text-amber-400" :title="upstreamSyncError(target.balance.error, t)">{{ t('upstreamCenter.balanceFailed') }}<span v-if="target.balance.error"> · {{ upstreamSyncError(target.balance.error, t) }}</span></p>
   </section>
 </template>
@@ -87,7 +88,7 @@ import UpstreamHistoryBar from './UpstreamHistoryBar.vue'
 import UpstreamStatusBadge from './UpstreamStatusBadge.vue'
 import UpstreamRateBadge from './UpstreamRateBadge.vue'
 import { upstreamSyncError } from './newapi'
-import { actualProfit, actualUpstreamUsed, amount, availability, availabilityColor, compactTokens, latency, latencyColor, money, targetStatus } from './format'
+import { actualProfit, actualUpstreamUsed, amount, availability, availabilityColor, compactTokens, dateTime, latency, latencyColor, money, targetStatus } from './format'
 
 const props = defineProps<{ target: UpstreamTarget; busy: boolean; running: boolean }>()
 const emit = defineEmits<{ details: [target: UpstreamTarget, model: string, record?: UpstreamHistoryRecord]; intelligence: [target: UpstreamTarget]; run: [target: UpstreamTarget]; toggle: [target: UpstreamTarget]; edit: [target: UpstreamTarget]; delete: [target: UpstreamTarget] }>()

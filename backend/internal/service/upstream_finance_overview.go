@@ -94,6 +94,14 @@ func completeUpstreamBalanceSnapshot(snapshot *UpstreamBalanceSnapshot, target *
 	if snapshot.Billing == nil {
 		snapshot.Billing = pendingUpstreamRemoteBilling()
 	}
+	// Usage fallback can outlive midnight even though the wallet remains valid.
+	// Never label a prior day's retained amount as today's key spending.
+	today := timezone.StartOfDay(now)
+	if snapshot.DayStart != nil && !snapshot.DayStart.Equal(today) ||
+		snapshot.DaySyncedAt != nil && snapshot.DaySyncedAt.Before(today) ||
+		snapshot.DayStart == nil && (snapshot.SyncedAt == nil || snapshot.SyncedAt.Before(today)) {
+		snapshot.TodayUsed = nil
+	}
 	markUpstreamRemoteBillingStale(snapshot.Billing, now)
 	return snapshot
 }

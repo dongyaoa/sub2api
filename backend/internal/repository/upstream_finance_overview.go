@@ -60,10 +60,9 @@ SELECT l.target_id,l.wallet_ref,
  CASE WHEN l.status='ok' OR g.id IS NULL THEN l.kind ELSE g.kind END,
  CASE WHEN l.status='ok' THEN l.balance ELSE g.balance END,
  CASE WHEN l.status='ok' THEN l.quota_remaining ELSE g.quota_remaining END,
- CASE WHEN l.status='ok' THEN l.today_used ELSE g.today_used END,
- CASE WHEN l.status='ok' THEN l.day_used ELSE g.day_used END,
- CASE WHEN l.status='ok' THEN l.day_start ELSE g.day_start END,
- CASE WHEN l.status='ok' THEN l.day_end ELSE g.day_end END,
+ COALESCE(d.day_used,CASE WHEN l.status='ok' THEN l.today_used ELSE g.today_used END),
+ d.day_used,d.day_start,d.day_end,d.synced_at,
+ p.last_30_days_used,p.period_start,p.period_end,p.synced_at,
  CASE WHEN l.status='ok' THEN l.total_used ELSE g.total_used END,
  CASE WHEN l.status='ok' OR g.id IS NULL THEN l.unlimited_quota ELSE g.unlimited_quota END,
  CASE WHEN l.status='ok' OR g.id IS NULL THEN l.currency ELSE g.currency END,
@@ -71,7 +70,9 @@ SELECT l.target_id,l.wallet_ref,
  l.status,CASE WHEN l.status='ok' THEN l.synced_at ELSE g.synced_at END,l.error,l.synced_at
 FROM identities i
 CROSS JOIN LATERAL (SELECT * FROM upstream_balance_snapshots WHERE target_id=i.target_id AND identity_hash=i.identity_hash ORDER BY synced_at DESC,id DESC LIMIT 1) l
-LEFT JOIN LATERAL (SELECT * FROM upstream_balance_snapshots WHERE target_id=i.target_id AND identity_hash=i.identity_hash AND status='ok' ORDER BY synced_at DESC,id DESC LIMIT 1) g ON TRUE`
+LEFT JOIN LATERAL (SELECT * FROM upstream_balance_snapshots WHERE target_id=i.target_id AND identity_hash=i.identity_hash AND status='ok' ORDER BY synced_at DESC,id DESC LIMIT 1) g ON TRUE
+LEFT JOIN LATERAL (SELECT * FROM upstream_balance_snapshots WHERE target_id=i.target_id AND identity_hash=i.identity_hash AND status='ok' AND currency='USD' AND day_used IS NOT NULL ORDER BY synced_at DESC,id DESC LIMIT 1) d ON TRUE
+LEFT JOIN LATERAL (SELECT * FROM upstream_balance_snapshots WHERE target_id=i.target_id AND identity_hash=i.identity_hash AND status='ok' AND currency='USD' AND last_30_days_used IS NOT NULL ORDER BY synced_at DESC,id DESC LIMIT 1) p ON TRUE`
 
 const upstreamOverviewBillingSQL = `WITH identities AS (
  SELECT * FROM unnest($1::bigint[],$2::text[]) AS value(target_id,identity_hash)
@@ -188,14 +189,16 @@ func (r *upstreamFinanceRepository) LoadOverviewFinance(ctx context.Context, q s
 	return out, rows.Err()
 }
 
-// LoadProfitSources includes independent and same-day archived targets so a
+// LoadProfitSources includes independent and in-period archived targets so a
 // reused key cannot silently count one upstream charge twice.
-func (r *upstreamFinanceRepository) LoadProfitSources(ctx context.Context, dayStart time.Time) (*service.UpstreamProfitSources, error) {
+func (r *upstreamFinanceRepository) LoadProfitSources(ctx context.Context, start time.Time) (*service.UpstreamProfitSources, error) {
+	now := time.Now().In(start.Location())
+	todayEnd := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, start.Location()).AddDate(0, 0, 1)
 	out := &service.UpstreamProfitSources{Targets: map[int64]*service.UpstreamFinanceTarget{}, Balances: map[int64]*service.UpstreamBalanceSnapshot{}}
 	rows, err := r.db.QueryContext(ctx, `SELECT t.id,t.supplier_id,t.provider,t.endpoint,t.api_key_encrypted,t.api_key_fingerprint,t.wallet_ref,t.newapi_user_id,t.newapi_access_token_encrypted,t.profit_identity_since,COALESCE(t.deleted_at,s.deleted_at)
  FROM upstream_targets t LEFT JOIN upstream_suppliers s ON s.id=t.supplier_id
  WHERE (t.deleted_at IS NULL OR t.deleted_at >= $1)
- AND (t.supplier_id IS NULL OR s.deleted_at IS NULL OR s.deleted_at >= $1) ORDER BY t.id`, dayStart)
+ AND (t.supplier_id IS NULL OR s.deleted_at IS NULL OR s.deleted_at >= $1) ORDER BY t.id`, start)
 	if err != nil {
 		return nil, err
 	}
@@ -217,14 +220,14 @@ func (r *upstreamFinanceRepository) LoadProfitSources(ctx context.Context, daySt
 	if err != nil {
 		return nil, err
 	}
-	rows, err = r.db.QueryContext(ctx, `SELECT target_id,supplier_id,MAX(GREATEST(recorded_at,updated_at)) FROM upstream_finance_ledger
-	 WHERE created_at >= $1 AND created_at < $2 GROUP BY target_id,supplier_id`, dayStart, dayStart.AddDate(0, 0, 1))
+	rows, err = r.db.QueryContext(ctx, `SELECT target_id,supplier_id,MAX(GREATEST(recorded_at,updated_at)),MAX(created_at) FROM upstream_finance_ledger
+	 WHERE created_at >= $1 AND created_at < $2 GROUP BY target_id,supplier_id`, start, todayEnd)
 	if err != nil {
 		return nil, err
 	}
 	for rows.Next() {
 		var owner service.UpstreamProfitLedgerOwner
-		if err = rows.Scan(&owner.TargetID, &owner.SupplierID, &owner.LastRecordedAt); err != nil {
+		if err = rows.Scan(&owner.TargetID, &owner.SupplierID, &owner.LastRecordedAt, &owner.LastUsedAt); err != nil {
 			_ = rows.Close()
 			return nil, err
 		}

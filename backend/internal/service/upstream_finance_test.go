@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/stretchr/testify/require"
 )
 
@@ -122,6 +123,25 @@ func TestUpstreamFinanceNetworkRedactionAndRedirect(t *testing.T) {
 	})
 	got = svc.fetchBalance(context.Background(), &UpstreamFinanceTarget{ID: 1, Endpoint: "https://8.8.8.8", APIKeyEncrypted: "test-secret"})
 	require.Equal(t, "upstream_request_failed", got.Error)
+}
+
+func TestUpstreamFinanceFetchSeparatesTodayFrom30DayHistory(t *testing.T) {
+	now := time.Date(2026, 10, 5, 12, 0, 0, 0, timezone.Location())
+	svc := NewUpstreamFinanceService(nil, financeTestCipher{}, nil, nil, nil)
+	svc.now = func() time.Time { return now }
+	svc.client.Transport = financeRoundTrip(func(req *http.Request) (*http.Response, error) {
+		require.Equal(t, "30", req.URL.Query().Get("days"))
+		require.Equal(t, timezone.Name(), req.URL.Query().Get("timezone"))
+		body := `{"balance":99,"usage":{"today":{"actual_cost":1},"total":{"actual_cost":999}},"daily_usage":[{"date":"2026-10-04","actual_cost":2},{"date":"2026-10-05","actual_cost":1}]}`
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(body)), Request: req}, nil
+	})
+	snapshot := svc.fetchSub2APIBalance(context.Background(), &UpstreamFinanceTarget{ID: 1, Endpoint: "https://8.8.8.8", APIKeyEncrypted: "test-only"})
+	require.Equal(t, "ok", snapshot.Status)
+	require.Equal(t, 1.0, *snapshot.DayUsed)
+	require.Equal(t, 3.0, *snapshot.Last30DaysUsed)
+	require.True(t, snapshot.DayStart.Equal(timezone.StartOfDay(now)))
+	require.True(t, snapshot.PeriodStart.Equal(timezone.StartOfDay(now).AddDate(0, 0, -29)))
+	require.True(t, snapshot.PeriodEnd.Equal(timezone.StartOfDay(now).AddDate(0, 0, 1)))
 }
 
 type financeTestRepo struct {

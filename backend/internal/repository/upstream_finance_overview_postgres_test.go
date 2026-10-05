@@ -8,6 +8,53 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func TestUpstreamBalancePostgresPreservesUsageAcrossPartialSuccess(t *testing.T) {
+	db, ctx, _ := upstreamStorageTestDB(t)
+	repo := &upstreamFinanceRepository{db: db}
+	target, err := repo.GetTarget(ctx, 1)
+	require.NoError(t, err)
+	identity := service.UpstreamBalanceIdentity(target)
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	dayStart := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	dayEnd := dayStart.AddDate(0, 0, 1)
+	periodStart := dayStart.AddDate(0, 0, -29)
+	daySynced := now.Add(-3 * time.Minute)
+	periodSynced := now.Add(-2 * time.Minute)
+	// The successful balance endpoint can omit either best-effort usage field.
+	// Resolve each field independently, excluding errors and other currencies
+	// or credentials, without pretending its observation was refreshed today.
+	_, err = db.ExecContext(ctx, `INSERT INTO upstream_balance_snapshots
+ (target_id,identity_hash,wallet_ref,kind,balance,day_used,day_start,day_end,last_30_days_used,period_start,period_end,currency,status,synced_at) VALUES
+ (1,$1,'default','wallet',10,1,$2,$3,30,$4,$3,'USD','ok',$5),
+ (1,$1,'default','wallet',11,2,$2,$3,NULL,NULL,NULL,'USD','ok',$6),
+ (1,$1,'default','wallet',12,NULL,NULL,NULL,31,$4,$3,'USD','ok',$7),
+ (1,$1,'default','wallet',13,999,$2,$3,999,$4,$3,'USD','error',$8),
+ (1,$1,'default','wallet',14,999,$2,$3,999,$4,$3,'CNY','ok',$9),
+ (1,'other-identity','default','wallet',15,999,$2,$3,999,$4,$3,'USD','ok',$9),
+ (1,$1,'default','wallet',16,NULL,NULL,NULL,NULL,NULL,NULL,'USD','ok',$10)`,
+		identity, dayStart, dayEnd, periodStart, now.Add(-4*time.Minute), daySynced, periodSynced, now.Add(-90*time.Second), now.Add(-time.Minute), now)
+	require.NoError(t, err)
+	balance, err := repo.LatestBalance(ctx, target.ID, identity)
+	require.NoError(t, err)
+	require.NotNil(t, balance)
+	require.Equal(t, "ok", balance.Status)
+	require.Equal(t, 16.0, *balance.Balance)
+	require.Equal(t, 2.0, *balance.TodayUsed)
+	require.Equal(t, 2.0, *balance.DayUsed)
+	require.True(t, dayStart.Equal(*balance.DayStart))
+	require.True(t, dayEnd.Equal(*balance.DayEnd))
+	require.True(t, daySynced.Equal(*balance.DaySyncedAt))
+	require.Equal(t, 31.0, *balance.Last30DaysUsed)
+	require.True(t, periodStart.Equal(*balance.PeriodStart))
+	require.True(t, dayEnd.Equal(*balance.PeriodEnd))
+	require.True(t, periodSynced.Equal(*balance.PeriodSyncedAt))
+	require.True(t, now.Equal(*balance.SyncedAt))
+	require.True(t, now.Equal(*balance.LastAttemptAt))
+	data, err := repo.LoadOverviewFinance(ctx, service.UpstreamFinanceQuery{From: dayStart, To: dayEnd}, []int64{*target.SupplierID}, []service.UpstreamFinanceOverviewTarget{{ID: target.ID, SupplierID: target.SupplierID}})
+	require.NoError(t, err)
+	require.Equal(t, balance, data.Balances[target.ID], "batch and single reads preserve the same usage observations")
+}
+
 func TestUpstreamOverviewFinancePostgresMatchesIndividualReads(t *testing.T) {
 	db, ctx, _ := upstreamStorageTestDB(t)
 	_, err := db.ExecContext(ctx, `UPDATE upstream_targets SET supplier_id=2 WHERE id=1;

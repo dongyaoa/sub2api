@@ -25,6 +25,7 @@ type UpstreamFinanceSummary struct {
 	To                   time.Time  `json:"to"`
 	RemoteUsed           *float64   `json:"remote_used"`
 	RemoteSyncedAt       *time.Time `json:"remote_synced_at"`
+	RemoteStale          bool       `json:"remote_stale"`
 	ReconciliationDelta  *float64   `json:"reconciliation_delta"`
 	UnpricedMonitorCount int64      `json:"unpriced_monitor_count"`
 }
@@ -40,6 +41,11 @@ type UpstreamBalanceSnapshot struct {
 	DayUsed        *float64   `json:"day_used"`
 	DayStart       *time.Time `json:"day_start"`
 	DayEnd         *time.Time `json:"day_end"`
+	DaySyncedAt    *time.Time `json:"day_synced_at"`
+	Last30DaysUsed *float64   `json:"last_30_days_used"`
+	PeriodStart    *time.Time `json:"period_start"`
+	PeriodEnd      *time.Time `json:"period_end"`
+	PeriodSyncedAt *time.Time `json:"period_synced_at"`
 	TotalUsed      *float64   `json:"total_used"`
 	Currency       string     `json:"currency"`
 	Status         string     `json:"status"`
@@ -105,6 +111,12 @@ type UpstreamFinancePage struct {
 	Total    int64                   `json:"total"`
 	Page     int                     `json:"page"`
 	PageSize int                     `json:"page_size"`
+}
+
+// The two calendar windows include today and share the same upstream snapshots.
+type UpstreamFinancePeriods struct {
+	Today      *UpstreamFinanceSummary `json:"today"`
+	Last30Days *UpstreamFinanceSummary `json:"last_30_days"`
 }
 
 // UpstreamFinanceTarget is internal and deliberately has no exported JSON form.

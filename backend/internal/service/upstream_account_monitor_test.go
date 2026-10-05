@@ -74,7 +74,8 @@ func (r *accountMonitorFinanceRepo) GetTarget(_ context.Context, id int64) (*Ups
 func (r *accountMonitorFinanceRepo) LatestBalance(_ context.Context, id int64, _ string) (*UpstreamBalanceSnapshot, error) {
 	r.readIDs = append(r.readIDs, id)
 	balance, todayUsed, rate := 8.5, 2.75, 0.23
-	return &UpstreamBalanceSnapshot{TargetID: id, Balance: &balance, TodayUsed: &todayUsed, Billing: &UpstreamRemoteBillingSnapshot{GroupRateMultiplier: &rate, Status: "ok"}}, nil
+	syncedAt := time.Now()
+	return &UpstreamBalanceSnapshot{TargetID: id, Balance: &balance, TodayUsed: &todayUsed, SyncedAt: &syncedAt, Billing: &UpstreamRemoteBillingSnapshot{GroupRateMultiplier: &rate, Status: "ok"}}, nil
 }
 
 func TestUpstreamAccountMonitorReadsCachedFinanceWithoutRemoteRequests(t *testing.T) {

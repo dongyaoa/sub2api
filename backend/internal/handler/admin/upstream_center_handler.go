@@ -184,6 +184,21 @@ func (h *UpstreamCenterHandler) Finance(c *gin.Context) {
 	}
 	response.Success(c, result)
 }
+func (h *UpstreamCenterHandler) FinanceSummary(c *gin.Context) {
+	supplierID, ok := parseUpstreamQueryID(c, "supplier_id")
+	if !ok {
+		return
+	}
+	targetID, ok := parseUpstreamQueryID(c, "target_id")
+	if !ok {
+		return
+	}
+	result, err := h.finance.PeriodSummaries(c.Request.Context(), supplierID, targetID)
+	if response.ErrorFrom(c, err) {
+		return
+	}
+	response.Success(c, result)
+}
 func parseUpstreamID(c *gin.Context) (int64, bool) {
 	id, err := strconv.ParseInt(c.Param("id"), 10, 64)
 	if err != nil || id <= 0 {

@@ -18,6 +18,7 @@
       <UpstreamWallet class="supplier-wallet !rounded-lg !p-3" :wallets="supplier.wallets || []" :target-id="supplier.targets[0]?.id" :syncable="!!supplier.targets.length" :busy="supplier.targets.some(target => busyIds.has(target.id))" @sync="id => emit('sync', id)" />
       <div class="supplier-finance min-w-0">
       <dl class="space-y-3 text-xs"><div class="flex items-center justify-between gap-2"><dt class="text-gray-500 dark:text-dark-400">{{ t('upstreamCenter.finance.todayCost') }}</dt><dd class="font-semibold tabular-nums text-gray-800 dark:text-gray-100">{{ money(actualUpstreamUsed(supplier.finance), supplier.finance?.currency) }}</dd></div><div class="flex items-center justify-between gap-2"><dt class="text-gray-500 dark:text-dark-400">{{ t('upstreamCenter.finance.todayRevenue') }}</dt><dd class="font-semibold tabular-nums text-gray-800 dark:text-gray-100">{{ money(supplier.finance?.revenue, supplier.finance?.currency) }}</dd></div><div class="flex items-center justify-between gap-2"><dt class="text-gray-500 dark:text-dark-400">{{ t('upstreamCenter.finance.todayProfit') }}</dt><dd class="font-semibold tabular-nums" :class="profit == null ? 'text-[11px] text-amber-600 dark:text-amber-400' : profit < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-primary-700 dark:text-primary-300'">{{ profit == null ? t('upstreamCenter.finance.pending') : money(profit, supplier.finance.currency) }}</dd></div></dl>
+      <p v-if="supplier.finance?.remote_stale && supplier.finance.remote_synced_at" class="mt-2 text-[10px] text-amber-600 dark:text-amber-400">{{ t('upstreamCenter.finance.stale') }} · {{ t('upstreamCenter.wallet.syncedAt', { time: dateTime(supplier.finance.remote_synced_at) }) }}</p>
       <div class="mt-3 flex items-center justify-between border-t border-gray-100 pt-2.5 dark:border-dark-700"><button type="button" class="inline-flex items-center gap-1 text-[11px] text-primary-600 dark:text-primary-400" @click="emit('finance', supplier)">{{ t('upstreamCenter.financeDetails') }}<Icon name="chevronRight" size="xs" /></button><button type="button" class="action hover:!text-rose-500" :title="t('upstreamCenter.remove')" :aria-label="t('upstreamCenter.remove')" @click="emit('delete', supplier)"><Icon name="trash" size="xs" /></button></div>
       </div>
     </aside>
@@ -41,7 +42,7 @@ import Icon from '@/components/icons/Icon.vue'
 import type { UpstreamHistoryRecord, UpstreamSupplier, UpstreamTarget } from '@/api/admin/upstreamCenter'
 import UpstreamWallet from './UpstreamWallet.vue'
 import UpstreamGroupRow from './UpstreamGroupRow.vue'
-import { actualProfit, actualUpstreamUsed, domain, money } from './format'
+import { actualProfit, actualUpstreamUsed, dateTime, domain, money } from './format'
 import { safeWebsite } from './safeWebsite'
 const props = defineProps<{ supplier: UpstreamSupplier; busyIds: Set<number>; runningIds: Set<number> }>()
 const website = computed(() => safeWebsite(props.supplier.website))

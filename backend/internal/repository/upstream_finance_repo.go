@@ -139,21 +139,25 @@ func (r *upstreamFinanceRepository) LatestBalance(ctx context.Context, id int64,
  SELECT * FROM upstream_balance_snapshots WHERE target_id=$1 AND identity_hash=$2 ORDER BY synced_at DESC,id DESC LIMIT 1
 ), good AS (
  SELECT * FROM upstream_balance_snapshots WHERE target_id=$1 AND identity_hash=$2 AND status='ok' ORDER BY synced_at DESC,id DESC LIMIT 1
+), good_day AS (
+ SELECT * FROM upstream_balance_snapshots WHERE target_id=$1 AND identity_hash=$2 AND status='ok' AND currency='USD' AND day_used IS NOT NULL ORDER BY synced_at DESC,id DESC LIMIT 1
+), good_period AS (
+ SELECT * FROM upstream_balance_snapshots WHERE target_id=$1 AND identity_hash=$2 AND status='ok' AND currency='USD' AND last_30_days_used IS NOT NULL ORDER BY synced_at DESC,id DESC LIMIT 1
 )
 SELECT l.target_id,l.wallet_ref,
  CASE WHEN l.status='ok' OR g.id IS NULL THEN l.kind ELSE g.kind END,
  CASE WHEN l.status='ok' THEN l.balance ELSE g.balance END,
  CASE WHEN l.status='ok' THEN l.quota_remaining ELSE g.quota_remaining END,
- CASE WHEN l.status='ok' THEN l.today_used ELSE g.today_used END,
- CASE WHEN l.status='ok' THEN l.day_used ELSE g.day_used END,
- CASE WHEN l.status='ok' THEN l.day_start ELSE g.day_start END,
- CASE WHEN l.status='ok' THEN l.day_end ELSE g.day_end END,
+ COALESCE(d.day_used,CASE WHEN l.status='ok' THEN l.today_used ELSE g.today_used END),
+ d.day_used,d.day_start,d.day_end,d.synced_at,
+ p.last_30_days_used,p.period_start,p.period_end,p.synced_at,
  CASE WHEN l.status='ok' THEN l.total_used ELSE g.total_used END,
  CASE WHEN l.status='ok' OR g.id IS NULL THEN l.unlimited_quota ELSE g.unlimited_quota END,
  CASE WHEN l.status='ok' OR g.id IS NULL THEN l.currency ELSE g.currency END,
  CASE WHEN l.status='ok' OR g.id IS NULL THEN l.currency_source ELSE g.currency_source END,
  l.status,CASE WHEN l.status='ok' THEN l.synced_at ELSE g.synced_at END,l.error,l.synced_at
- FROM latest l LEFT JOIN good g ON TRUE`, id, identity))
+ FROM latest l LEFT JOIN good g ON TRUE
+ LEFT JOIN good_day d ON TRUE LEFT JOIN good_period p ON TRUE`, id, identity))
 	if err != nil || s == nil {
 		return s, err
 	}
@@ -166,7 +170,7 @@ SELECT l.target_id,l.wallet_ref,
 
 func scanUpstreamBalanceSnapshot(row upstreamScanner) (*service.UpstreamBalanceSnapshot, error) {
 	s := &service.UpstreamBalanceSnapshot{}
-	err := row.Scan(&s.TargetID, &s.WalletRef, &s.Kind, &s.Balance, &s.QuotaRemaining, &s.TodayUsed, &s.DayUsed, &s.DayStart, &s.DayEnd, &s.TotalUsed, &s.UnlimitedQuota, &s.Currency, &s.CurrencySource, &s.Status, &s.SyncedAt, &s.Error, &s.LastAttemptAt)
+	err := row.Scan(&s.TargetID, &s.WalletRef, &s.Kind, &s.Balance, &s.QuotaRemaining, &s.TodayUsed, &s.DayUsed, &s.DayStart, &s.DayEnd, &s.DaySyncedAt, &s.Last30DaysUsed, &s.PeriodStart, &s.PeriodEnd, &s.PeriodSyncedAt, &s.TotalUsed, &s.UnlimitedQuota, &s.Currency, &s.CurrencySource, &s.Status, &s.SyncedAt, &s.Error, &s.LastAttemptAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -228,8 +232,8 @@ func (r *upstreamFinanceRepository) SaveBalance(ctx context.Context, t *service.
 		return err
 	}
 	_, err = tx.ExecContext(ctx, `INSERT INTO upstream_balance_snapshots
-	 (target_id,supplier_id,wallet_ref,identity_hash,kind,balance,quota_remaining,today_used,total_used,currency,currency_source,status,synced_at,error,unlimited_quota,day_used,day_start,day_end)
-	 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)`, t.ID, t.SupplierID, t.WalletRef, identity, s.Kind, s.Balance, s.QuotaRemaining, s.TodayUsed, s.TotalUsed, s.Currency, s.CurrencySource, s.Status, s.SyncedAt, s.Error, s.UnlimitedQuota, s.DayUsed, s.DayStart, s.DayEnd)
+	 (target_id,supplier_id,wallet_ref,identity_hash,kind,balance,quota_remaining,today_used,total_used,currency,currency_source,status,synced_at,error,unlimited_quota,day_used,day_start,day_end,last_30_days_used,period_start,period_end)
+	 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)`, t.ID, t.SupplierID, t.WalletRef, identity, s.Kind, s.Balance, s.QuotaRemaining, s.TodayUsed, s.TotalUsed, s.Currency, s.CurrencySource, s.Status, s.SyncedAt, s.Error, s.UnlimitedQuota, s.DayUsed, s.DayStart, s.DayEnd, s.Last30DaysUsed, s.PeriodStart, s.PeriodEnd)
 	if err != nil {
 		return fmt.Errorf("save upstream balance snapshot: %w", err)
 	}

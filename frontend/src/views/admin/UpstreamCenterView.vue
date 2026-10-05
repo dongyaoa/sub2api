@@ -139,7 +139,7 @@ const supplierMetrics = computed(() => {
   const profit = actualProfit(summary)
   return [
     { key: 'upstreamCenter.supplierCount', value: overview.value?.suppliers.length || 0, icon: 'server' as const, color: '', note: t('upstreamCenter.groupCount', { count: allGroups.value.length }) },
-    { key: 'upstreamCenter.finance.todayCost', value: money(actualUpstreamUsed(summary), summary?.currency), icon: 'creditCard' as const, color: '', note: t(`upstreamCenter.finance.${financeSource(summary)}`) },
+    { key: 'upstreamCenter.finance.todayCost', value: money(actualUpstreamUsed(summary), summary?.currency), icon: 'creditCard' as const, color: '', note: t(summary?.remote_stale ? 'upstreamCenter.finance.stale' : `upstreamCenter.finance.${financeSource(summary)}`) },
     { key: 'upstreamCenter.finance.todayRevenue', value: money(summary?.revenue, summary?.currency), icon: 'chart' as const, color: '', note: t('upstreamCenter.finance.requests', { count: summary?.request_count || 0 }) },
     { key: 'upstreamCenter.finance.todayProfit', value: profit == null ? t('upstreamCenter.finance.pending') : money(profit, summary?.currency), icon: 'chart' as const, color: profit == null ? '!text-sm !text-amber-600 dark:!text-amber-400' : profit < 0 ? '!text-rose-600 dark:!text-rose-400' : '!text-primary-700 dark:!text-primary-300', note: financeSource(summary) === 'reported' && summary?.remote_synced_at ? t('upstreamCenter.wallet.syncedAt', { time: dateTime(summary.remote_synced_at) }) : t(`upstreamCenter.finance.${financeSource(summary)}`) },
   ]

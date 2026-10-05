@@ -86,8 +86,14 @@ export interface UpstreamFinanceSummary {
   to: string
   remote_used: number | null
   remote_synced_at: string | null
+  remote_stale?: boolean
   reconciliation_delta: number | null
   unpriced_monitor_count: number
+}
+
+export interface UpstreamFinancePeriods {
+  today: UpstreamFinanceSummary
+  last_30_days: UpstreamFinanceSummary
 }
 
 export interface UpstreamTargetInput {
@@ -247,5 +253,8 @@ export const upstreamCenterAPI = {
   },
   async finance(params: UpstreamPageQuery & { supplier_id?: number; target_id?: number }, signal?: AbortSignal): Promise<UpstreamFinancePage> {
     return (await apiClient.get<UpstreamFinancePage>(`${base}/finance`, { params, signal })).data
+  },
+  async financeSummary(params: { supplier_id?: number; target_id?: number }, signal?: AbortSignal): Promise<UpstreamFinancePeriods> {
+    return (await apiClient.get<UpstreamFinancePeriods>(`${base}/finance/summary`, { params, signal })).data
   },
 }

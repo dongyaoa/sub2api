@@ -94,6 +94,35 @@ func (s *UpstreamFinanceService) Summary(ctx context.Context, supplierID, target
 	return summary, nil
 }
 
+// PeriodSummaries reads aggregates only. It does not load the request ledger
+// detail page or infer upstream charges from local account prices.
+func (s *UpstreamFinanceService) PeriodSummaries(ctx context.Context, supplierID, targetID *int64) (*UpstreamFinancePeriods, error) {
+	now := s.now()
+	dayStart := timezone.StartOfDay(now)
+	dayEnd := dayStart.AddDate(0, 0, 1)
+	q, err := normalizeUpstreamFinanceQuery(UpstreamFinanceQuery{SupplierID: supplierID, TargetID: targetID, From: dayStart, To: dayEnd}, now)
+	if err != nil {
+		return nil, err
+	}
+	today, err := s.repo.Summary(ctx, q)
+	if err != nil {
+		return nil, err
+	}
+	monthQuery := q
+	monthQuery.From = dayStart.AddDate(0, 0, -29)
+	month, err := s.repo.Summary(ctx, monthQuery)
+	if err != nil {
+		return nil, err
+	}
+	sources, err := s.profitSources(ctx, monthQuery.From)
+	if err != nil {
+		return nil, err
+	}
+	applyUpstreamDailyProfit(today, q, sources, now)
+	applyUpstreamPeriodProfit(month, monthQuery, sources, now, true)
+	return &UpstreamFinancePeriods{Today: today, Last30Days: month}, nil
+}
+
 func (s *UpstreamFinanceService) Details(ctx context.Context, query UpstreamFinanceQuery) (*UpstreamFinancePage, error) {
 	q, err := normalizeUpstreamFinanceQuery(query, s.now())
 	if err != nil {
@@ -237,7 +266,7 @@ func (s *UpstreamFinanceService) fetchSub2APIBalance(ctx context.Context, target
 		return fail("invalid_endpoint")
 	}
 	query := request.Query()
-	query.Set("days", "1")
+	query.Set("days", "30")
 	query.Set("timezone", timezone.Name())
 	request.RawQuery = query.Encode()
 	requestURL = request.String()
@@ -292,9 +321,18 @@ func (s *UpstreamFinanceService) fetchSub2APIBalance(ctx context.Context, target
 	completedAt := s.now().UTC()
 	parsed.SyncedAt = &completedAt
 	if timezone.StartOfDay(completedAt).Equal(dayStart) {
-		parsed.DayUsed = parseUpstreamDailyUsed(body)
+		// Today's cost comes directly from the upstream key's today summary.
+		// daily_usage now covers all 30 days and must not price today's profit.
+		parsed.DayUsed = parsed.TodayUsed
 		if parsed.DayUsed != nil {
 			parsed.DayStart, parsed.DayEnd = &dayStart, &dayEnd
+			parsed.DaySyncedAt = &completedAt
+		}
+		parsed.Last30DaysUsed = parseUpstreamDailyUsed(body)
+		if parsed.Last30DaysUsed != nil {
+			periodStart := dayStart.AddDate(0, 0, -29)
+			parsed.PeriodStart, parsed.PeriodEnd = &periodStart, &dayEnd
+			parsed.PeriodSyncedAt = &completedAt
 		}
 	}
 	parsed.Billing = parseUpstreamBillingFromUsage(body)
