@@ -34,7 +34,7 @@ func upstreamPersistenceError(err error) error {
 }
 
 func (r *upstreamCenterRepository) ListSuppliers(ctx context.Context) ([]*service.UpstreamSupplier, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT id,name,website,notes,created_at,updated_at FROM upstream_suppliers WHERE deleted_at IS NULL ORDER BY sort_order ASC NULLS LAST,id`)
+	rows, err := r.db.QueryContext(ctx, `SELECT id,name,website,notes,created_at,updated_at,recharge_ratio FROM upstream_suppliers WHERE deleted_at IS NULL ORDER BY sort_order ASC NULLS LAST,id`)
 	if err != nil {
 		return nil, err
 	}
@@ -42,7 +42,7 @@ func (r *upstreamCenterRepository) ListSuppliers(ctx context.Context) ([]*servic
 	out := make([]*service.UpstreamSupplier, 0)
 	for rows.Next() {
 		s := new(service.UpstreamSupplier)
-		if err = rows.Scan(&s.ID, &s.Name, &s.Website, &s.Notes, &s.CreatedAt, &s.UpdatedAt); err != nil {
+		if err = rows.Scan(&s.ID, &s.Name, &s.Website, &s.Notes, &s.CreatedAt, &s.UpdatedAt, &s.RechargeRatio); err != nil {
 			return nil, err
 		}
 		out = append(out, s)
@@ -51,7 +51,7 @@ func (r *upstreamCenterRepository) ListSuppliers(ctx context.Context) ([]*servic
 }
 func (r *upstreamCenterRepository) GetSupplier(ctx context.Context, id int64) (*service.UpstreamSupplier, error) {
 	s := new(service.UpstreamSupplier)
-	err := r.db.QueryRowContext(ctx, `SELECT id,name,website,notes,created_at,updated_at FROM upstream_suppliers WHERE id=$1 AND deleted_at IS NULL`, id).Scan(&s.ID, &s.Name, &s.Website, &s.Notes, &s.CreatedAt, &s.UpdatedAt)
+	err := r.db.QueryRowContext(ctx, `SELECT id,name,website,notes,created_at,updated_at,recharge_ratio FROM upstream_suppliers WHERE id=$1 AND deleted_at IS NULL`, id).Scan(&s.ID, &s.Name, &s.Website, &s.Notes, &s.CreatedAt, &s.UpdatedAt, &s.RechargeRatio)
 	return s, upstreamPersistenceError(err)
 }
 func (r *upstreamCenterRepository) SaveSupplier(ctx context.Context, s *service.UpstreamSupplier) error {
@@ -66,14 +66,14 @@ func (r *upstreamCenterRepository) SaveSupplier(ctx context.Context, s *service.
 		}
 		// The membership lock serializes creation with other inserts and manual
 		// reordering. Prepend without changing existing suppliers' relative order.
-		if err = tx.QueryRowContext(ctx, `INSERT INTO upstream_suppliers(name,website,notes,sort_order)
- SELECT $1,$2,$3,COALESCE(MIN(sort_order),0)-1 FROM upstream_suppliers WHERE deleted_at IS NULL
- RETURNING id,created_at,updated_at`, s.Name, s.Website, s.Notes).Scan(&s.ID, &s.CreatedAt, &s.UpdatedAt); err != nil {
+		if err = tx.QueryRowContext(ctx, `INSERT INTO upstream_suppliers(name,website,notes,recharge_ratio,sort_order)
+ SELECT $1,$2,$3,$4,COALESCE(MIN(sort_order),0)-1 FROM upstream_suppliers WHERE deleted_at IS NULL
+ RETURNING id,created_at,updated_at`, s.Name, s.Website, s.Notes, s.RechargeRatio).Scan(&s.ID, &s.CreatedAt, &s.UpdatedAt); err != nil {
 			return err
 		}
 		return tx.Commit()
 	}
-	return upstreamPersistenceError(r.db.QueryRowContext(ctx, `UPDATE upstream_suppliers SET name=$2,website=$3,notes=$4,updated_at=NOW() WHERE id=$1 AND deleted_at IS NULL RETURNING updated_at`, s.ID, s.Name, s.Website, s.Notes).Scan(&s.UpdatedAt))
+	return upstreamPersistenceError(r.db.QueryRowContext(ctx, `UPDATE upstream_suppliers SET name=$2,website=$3,notes=$4,recharge_ratio=$5,updated_at=NOW() WHERE id=$1 AND deleted_at IS NULL RETURNING updated_at`, s.ID, s.Name, s.Website, s.Notes, s.RechargeRatio).Scan(&s.UpdatedAt))
 }
 func (r *upstreamCenterRepository) ArchiveSupplier(ctx context.Context, id int64) error {
 	tx, err := r.db.BeginTx(ctx, nil)

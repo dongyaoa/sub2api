@@ -11,8 +11,8 @@ import (
 var _ service.UpstreamFinanceOverviewRepository = (*upstreamFinanceRepository)(nil)
 
 // Each fact source is scanned once for the time range, then its grouped facts
-// contribute to at most three display scopes. Supplier identity is historical;
-// moving a target never moves its ledger or monitoring costs between suppliers.
+// contribute to at most three display scopes. Only active keys whose historical
+// supplier matches their current supplier enter the current financial summary.
 const upstreamOverviewSummarySQL = `WITH requested_targets AS (
  SELECT id,NULLIF(supplier_id,0) AS supplier_id FROM unnest($4::bigint[],$5::bigint[]) AS t(id,supplier_id)
 ), facts AS MATERIALIZED (
@@ -32,12 +32,17 @@ const upstreamOverviewSummarySQL = `WITH requested_targets AS (
  FROM upstream_monitor_cost_rollups
  WHERE hour_start < $2 AND hour_start+INTERVAL '1 hour' > $1 AND first_sample_at < $2 AND last_sample_at >= $1
  GROUP BY target_id,supplier_id
+), active_facts AS (
+ SELECT f.* FROM facts f JOIN upstream_targets t ON t.id=f.target_id
+ LEFT JOIN upstream_suppliers s ON s.id=t.supplier_id
+ WHERE t.deleted_at IS NULL AND (t.supplier_id IS NULL OR s.deleted_at IS NULL)
+ AND t.supplier_id IS NOT DISTINCT FROM f.supplier_id
 ), scoped AS (
- SELECT 'total'::text AS kind,0::bigint AS id,f.* FROM facts f WHERE supplier_id IS NOT NULL
+ SELECT 'total'::text AS kind,0::bigint AS id,f.* FROM active_facts f WHERE supplier_id IS NOT NULL
  UNION ALL
- SELECT 'supplier',supplier_id,f.* FROM facts f WHERE supplier_id=ANY($3::bigint[])
+ SELECT 'supplier',supplier_id,f.* FROM active_facts f WHERE supplier_id=ANY($3::bigint[])
  UNION ALL
- SELECT 'target',t.id,f.* FROM requested_targets t JOIN facts f ON f.target_id=t.id AND (t.supplier_id IS NULL OR f.supplier_id=t.supplier_id)
+ SELECT 'target',t.id,f.* FROM requested_targets t JOIN active_facts f ON f.target_id=t.id AND (t.supplier_id IS NULL OR f.supplier_id=t.supplier_id)
 ), totals AS (
  SELECT kind,id,SUM(revenue) AS revenue,SUM(business_cost) AS business_cost,SUM(requests) AS requests,
  SUM(tokens) AS tokens,SUM(unknown_tokens) AS unknown_tokens,SUM(monitor_cost) AS monitor_cost,
@@ -121,7 +126,7 @@ func (r *upstreamFinanceRepository) LoadOverviewFinance(ctx context.Context, q s
 	}
 	// Resolve credentials in one current read, using the same Go identity as
 	// single-item balance reads; no copied SQL hashing rules or secret logging.
-	rows, err = r.db.QueryContext(ctx, `SELECT t.id,t.supplier_id,t.provider,t.endpoint,t.api_key_encrypted,t.api_key_fingerprint,t.wallet_ref,t.newapi_user_id,t.newapi_access_token_encrypted,t.profit_identity_since
+	rows, err = r.db.QueryContext(ctx, `SELECT t.id,t.supplier_id,t.provider,t.endpoint,t.api_key_encrypted,t.api_key_fingerprint,t.wallet_ref,t.newapi_user_id,t.newapi_access_token_encrypted,t.profit_identity_since,s.recharge_ratio
  FROM upstream_targets t LEFT JOIN upstream_suppliers s ON s.id=t.supplier_id
  WHERE t.id=ANY($1) AND t.deleted_at IS NULL AND (t.supplier_id IS NULL OR s.deleted_at IS NULL) ORDER BY t.id`, pq.Array(ids))
 	if err != nil {
@@ -130,7 +135,7 @@ func (r *upstreamFinanceRepository) LoadOverviewFinance(ctx context.Context, q s
 	currentIDs, identities := []int64{}, []string{}
 	for rows.Next() {
 		t := &service.UpstreamFinanceTarget{}
-		if err = rows.Scan(&t.ID, &t.SupplierID, &t.Provider, &t.Endpoint, &t.APIKeyEncrypted, &t.APIKeyFingerprint, &t.WalletRef, &t.NewAPIUserID, &t.NewAPIAccessTokenEncrypted, &t.ProfitIdentitySince); err != nil {
+		if err = rows.Scan(&t.ID, &t.SupplierID, &t.Provider, &t.Endpoint, &t.APIKeyEncrypted, &t.APIKeyFingerprint, &t.WalletRef, &t.NewAPIUserID, &t.NewAPIAccessTokenEncrypted, &t.ProfitIdentitySince, &t.RechargeRatio); err != nil {
 			_ = rows.Close()
 			return nil, err
 		}
@@ -189,13 +194,11 @@ func (r *upstreamFinanceRepository) LoadOverviewFinance(ctx context.Context, q s
 	return out, rows.Err()
 }
 
-// LoadProfitSources includes independent and in-period archived targets so a
-// reused key cannot silently count one upstream charge twice.
+// LoadProfitSources resolves active credentials and reports in-period archives
+// for the excluded count. Archived keys never block remaining active totals.
 func (r *upstreamFinanceRepository) LoadProfitSources(ctx context.Context, start time.Time) (*service.UpstreamProfitSources, error) {
-	now := time.Now().In(start.Location())
-	todayEnd := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, start.Location()).AddDate(0, 0, 1)
 	out := &service.UpstreamProfitSources{Targets: map[int64]*service.UpstreamFinanceTarget{}, Balances: map[int64]*service.UpstreamBalanceSnapshot{}}
-	rows, err := r.db.QueryContext(ctx, `SELECT t.id,t.supplier_id,t.provider,t.endpoint,t.api_key_encrypted,t.api_key_fingerprint,t.wallet_ref,t.newapi_user_id,t.newapi_access_token_encrypted,t.profit_identity_since,COALESCE(t.deleted_at,s.deleted_at)
+	rows, err := r.db.QueryContext(ctx, `SELECT t.id,t.supplier_id,t.provider,t.endpoint,t.api_key_encrypted,t.api_key_fingerprint,t.wallet_ref,t.newapi_user_id,t.newapi_access_token_encrypted,t.profit_identity_since,COALESCE(t.deleted_at,s.deleted_at),s.recharge_ratio
  FROM upstream_targets t LEFT JOIN upstream_suppliers s ON s.id=t.supplier_id
  WHERE (t.deleted_at IS NULL OR t.deleted_at >= $1)
  AND (t.supplier_id IS NULL OR s.deleted_at IS NULL OR s.deleted_at >= $1) ORDER BY t.id`, start)
@@ -205,7 +208,7 @@ func (r *upstreamFinanceRepository) LoadProfitSources(ctx context.Context, start
 	ids, identities := []int64{}, []string{}
 	for rows.Next() {
 		t := &service.UpstreamFinanceTarget{}
-		if err = rows.Scan(&t.ID, &t.SupplierID, &t.Provider, &t.Endpoint, &t.APIKeyEncrypted, &t.APIKeyFingerprint, &t.WalletRef, &t.NewAPIUserID, &t.NewAPIAccessTokenEncrypted, &t.ProfitIdentitySince, &t.ArchivedAt); err != nil {
+		if err = rows.Scan(&t.ID, &t.SupplierID, &t.Provider, &t.Endpoint, &t.APIKeyEncrypted, &t.APIKeyFingerprint, &t.WalletRef, &t.NewAPIUserID, &t.NewAPIAccessTokenEncrypted, &t.ProfitIdentitySince, &t.ArchivedAt, &t.RechargeRatio); err != nil {
 			_ = rows.Close()
 			return nil, err
 		}
@@ -214,24 +217,6 @@ func (r *upstreamFinanceRepository) LoadProfitSources(ctx context.Context, start
 			ids = append(ids, t.ID)
 			identities = append(identities, service.UpstreamBalanceIdentity(t))
 		}
-	}
-	err = rows.Err()
-	_ = rows.Close()
-	if err != nil {
-		return nil, err
-	}
-	rows, err = r.db.QueryContext(ctx, `SELECT target_id,supplier_id,MAX(GREATEST(recorded_at,updated_at)),MAX(created_at) FROM upstream_finance_ledger
-	 WHERE created_at >= $1 AND created_at < $2 GROUP BY target_id,supplier_id`, start, todayEnd)
-	if err != nil {
-		return nil, err
-	}
-	for rows.Next() {
-		var owner service.UpstreamProfitLedgerOwner
-		if err = rows.Scan(&owner.TargetID, &owner.SupplierID, &owner.LastRecordedAt, &owner.LastUsedAt); err != nil {
-			_ = rows.Close()
-			return nil, err
-		}
-		out.LedgerOwners = append(out.LedgerOwners, owner)
 	}
 	err = rows.Err()
 	_ = rows.Close()

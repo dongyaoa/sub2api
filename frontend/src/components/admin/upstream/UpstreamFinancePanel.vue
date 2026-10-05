@@ -7,6 +7,7 @@
       </div>
       <button type="submit" class="btn btn-primary" :disabled="loading">{{ t('upstreamCenter.finance.refresh') }}</button>
     </form>
+    <p v-if="supplier?.recharge_ratio != null" class="text-xs text-gray-500 dark:text-dark-400" data-testid="supplier-recharge-ratio">{{ t('upstreamCenter.recharge.applied', { ratio: supplier.recharge_ratio }) }}</p>
     <p v-if="error" role="alert" class="rounded-xl bg-rose-50 p-3 text-sm text-rose-600 dark:bg-rose-500/10 dark:text-rose-400">{{ error }}</p>
     <template v-if="data">
       <section v-for="period in periods" :key="period.key" :data-period="period.key" class="space-y-3" :aria-busy="loading">
@@ -22,6 +23,7 @@
           <span><template v-if="period.summary.remote_synced_at">{{ t('upstreamCenter.wallet.syncedAt', { time: dateTime(period.summary.remote_synced_at) }) }} · </template>{{ t('upstreamCenter.finance.currency', { currency: period.summary.currency }) }}</span>
         </div>
         <p v-if="period.summary.remote_stale" class="text-xs text-amber-600 dark:text-amber-400">{{ t('upstreamCenter.finance.stale') }}</p>
+        <UpstreamFinanceNotice :summary="period.summary" />
         <p v-if="actualUpstreamUsed(period.summary) == null" class="text-xs text-gray-500 dark:text-dark-400">{{ t('upstreamCenter.financeUnavailable') }}</p>
       </section>
       <div class="rounded-xl bg-primary-50/60 p-3.5 text-xs leading-5 text-primary-800 dark:bg-primary-500/10 dark:text-primary-200">
@@ -38,6 +40,7 @@ import { useI18n } from 'vue-i18n'
 import { upstreamCenterAPI, type UpstreamFinancePeriods, type UpstreamFinanceSummary, type UpstreamSupplier, type UpstreamTarget } from '@/api/admin/upstreamCenter'
 import Icon from '@/components/icons/Icon.vue'
 import Select from '@/components/common/Select.vue'
+import UpstreamFinanceNotice from './UpstreamFinanceNotice.vue'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { actualProfit, actualUpstreamUsed, dateTime, money } from './format'
 

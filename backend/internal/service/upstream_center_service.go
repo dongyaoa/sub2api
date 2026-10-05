@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"net/http"
 	"net/url"
 	"sort"
@@ -116,7 +117,7 @@ func (s *UpstreamCenterService) Overview(ctx context.Context, window string) (*U
 	return out, nil
 }
 
-func (s *UpstreamCenterService) SaveSupplier(ctx context.Context, id int64, name, website, notes *string) (*UpstreamSupplier, error) {
+func (s *UpstreamCenterService) SaveSupplier(ctx context.Context, id int64, name, website, notes *string, rechargeRatio json.RawMessage) (*UpstreamSupplier, error) {
 	v := &UpstreamSupplier{Targets: []*UpstreamTarget{}, Wallets: []*UpstreamBalanceSnapshot{}}
 	if id > 0 {
 		var err error
@@ -133,6 +134,17 @@ func (s *UpstreamCenterService) SaveSupplier(ctx context.Context, id int64, name
 	}
 	if notes != nil {
 		v.Notes = strings.TrimSpace(*notes)
+	}
+	// Omission preserves an existing setting; JSON null explicitly disables it.
+	if len(rechargeRatio) > 0 {
+		var ratio *float64
+		if err := json.Unmarshal(rechargeRatio, &ratio); err != nil {
+			return nil, ErrUpstreamInvalid
+		}
+		if ratio != nil && (math.IsNaN(*ratio) || math.IsInf(*ratio, 0) || *ratio < 0.000001 || *ratio > 1000000) {
+			return nil, ErrUpstreamInvalid
+		}
+		v.RechargeRatio = ratio
 	}
 	if v.Name == "" || utf8.RuneCountInString(v.Name) > 100 || len(v.Notes) > 4000 || len(v.Website) > 500 {
 		return nil, ErrUpstreamInvalid

@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import UpstreamStorageDialog from './UpstreamStorageDialog.vue'
 import Select from '@/components/common/Select.vue'
 import type { UpstreamStoragePolicy } from '@/api/admin/upstreamCenter'
-const api = vi.hoisted(() => ({ storage: vi.fn(), updateStorage: vi.fn(), cleanupStorage: vi.fn(), archives: vi.fn(), purge: vi.fn() }))
+const api = vi.hoisted(() => ({ storage: vi.fn(), updateStorage: vi.fn(), cleanupStorage: vi.fn(), archives: vi.fn(), purge: vi.fn(), restore: vi.fn() }))
 vi.mock('@/api/admin/upstreamCenter', () => ({ upstreamCenterAPI: api }))
 vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
 const dialog = defineComponent({ props: ['show'], template: '<div v-if="show"><slot /><slot name="footer" /></div>' })
@@ -14,6 +14,65 @@ function render(realDialog = false) { view = mount(UpstreamStorageDialog, { atta
 beforeEach(() => { vi.clearAllMocks(); api.storage.mockResolvedValue(policy()); api.archives.mockResolvedValue({ items: [], total: 0 }); api.updateStorage.mockImplementation(async input => ({ ...policy(), ...input })); api.purge.mockResolvedValue(undefined) })
 afterEach(() => { view?.unmount(); view = undefined; document.body.innerHTML = ''; document.body.classList.remove('modal-open') })
 describe('upstream storage controls', () => {
+  it('restores a monitoring plan and retained works with an explicit credential setup message', async () => {
+    const item = { kind: 'intelligence', id: 7, name: 'Archived external plan', source_type: 'external', supplier_name: '', deleted_at: '2026-09-26T00:00:00Z' }
+    api.archives.mockResolvedValueOnce({ items: [item], total: 1 }).mockResolvedValueOnce({ items: [], total: 0 })
+    api.restore.mockResolvedValueOnce({ plans_restored: 1, requires_configuration: true })
+    const wrapper = render(); await flushPromises()
+    await wrapper.get('[data-archive="intelligence-7"] [data-testid="restore-archive"]').trigger('click'); await flushPromises()
+    expect(api.restore).toHaveBeenCalledWith({ kind: 'intelligence', id: 7 })
+    expect(wrapper.text()).toContain('upstreamCenter.storage.restoredNeedsConfiguration')
+    expect(wrapper.emitted('changed')).toHaveLength(1)
+  })
+  it('restores an archived upstream and refreshes archives and the overview', async () => {
+    const item = { kind: 'supplier', id: 8, name: 'Archived supplier', source_type: '', supplier_name: '', deleted_at: '2026-09-26T00:00:00Z' }
+    api.archives.mockResolvedValueOnce({ items: [item], total: 1 }).mockResolvedValueOnce({ items: [], total: 0 })
+    api.restore.mockResolvedValueOnce({ suppliers_restored: 1, targets_restored: 2, bindings_restored: 2 })
+    const wrapper = render(); await flushPromises()
+    await wrapper.get('[data-archive="supplier-8"] [data-testid="restore-archive"]').trigger('click'); await flushPromises()
+    expect(api.restore).toHaveBeenCalledWith({ kind: 'supplier', id: 8 })
+    expect(api.purge).not.toHaveBeenCalled()
+    expect(api.archives).toHaveBeenCalledTimes(2)
+    expect(wrapper.find('[data-archive="supplier-8"]').exists()).toBe(false)
+    expect(wrapper.emitted('changed')).toHaveLength(1)
+    expect(wrapper.text()).toContain('upstreamCenter.storage.restored')
+  })
+  it('retains an archived key group and shows actionable conflict errors', async () => {
+    const item = { kind: 'target', id: 7, name: 'Archived key', source_type: '', supplier_name: 'Parent', deleted_at: '2026-09-26T00:00:00Z' }
+    api.archives.mockResolvedValue({ items: [item], total: 1 })
+    api.restore.mockRejectedValueOnce({ code: 'UPSTREAM_STORAGE_PARENT_ARCHIVED', message: 'technical message' })
+    const wrapper = render(); await flushPromises()
+    await wrapper.get('[data-testid="restore-archive"]').trigger('click'); await flushPromises()
+    expect(wrapper.text()).toContain('upstreamCenter.storage.restoreParent')
+    expect(wrapper.find('[data-archive="target-7"]').exists()).toBe(true)
+    expect(wrapper.emitted('changed')).toBeUndefined()
+  })
+  it('keeps an archived monitoring plan when another plan already uses its source and model', async () => {
+    const item = { kind: 'intelligence', id: 7, name: 'Archived plan', source_type: 'local_group', supplier_name: '', deleted_at: '2026-09-26T00:00:00Z' }
+    api.archives.mockResolvedValueOnce({ items: [item], total: 1 })
+    api.restore.mockRejectedValueOnce({ code: 'INTELLIGENCE_LOCAL_PLAN_EXISTS', message: 'technical message' })
+    const wrapper = render(); await flushPromises()
+    await wrapper.get('[data-testid="restore-archive"]').trigger('click'); await flushPromises()
+    expect(wrapper.text()).toContain('upstreamCenter.storage.restorePlanConflict')
+    expect(wrapper.find('[data-archive="intelligence-7"]').exists()).toBe(true)
+    expect(wrapper.emitted('changed')).toBeUndefined()
+  })
+  it('prevents duplicate restore requests and closing while a restore is running', async () => {
+    const item = { kind: 'target', id: 7, name: 'Archived key', source_type: '', supplier_name: '', deleted_at: '2026-09-26T00:00:00Z' }
+    api.archives.mockResolvedValue({ items: [item], total: 1 })
+    let finish: () => void = () => undefined
+    api.restore.mockReturnValueOnce(new Promise<void>(resolve => { finish = resolve }))
+    const wrapper = render(); await flushPromises()
+    await wrapper.get('[data-testid="restore-archive"]').trigger('click')
+    await wrapper.get('[data-testid="restore-archive"]').trigger('click')
+    wrapper.getComponent(dialog).vm.$emit('close'); await flushPromises()
+    expect(api.restore).toHaveBeenCalledTimes(1)
+    expect(wrapper.emitted('close')).toBeUndefined()
+    expect(wrapper.get('[data-testid="purge-archive"]').attributes('disabled')).toBeDefined()
+    api.archives.mockResolvedValueOnce({ items: [], total: 0 })
+    finish(); await flushPromises()
+    expect(wrapper.text()).toContain('upstreamCenter.storage.restored')
+  })
   it('loads the saved policy, uses native pickers without search, and requires saving before cleanup', async () => {
     const wrapper = render(); await flushPromises()
     const selects = wrapper.findAllComponents(Select)
@@ -50,7 +109,8 @@ describe('upstream storage controls', () => {
     const wrapper = render(); await flushPromises()
     expect(wrapper.text()).toContain('upstreamCenter.storage.kinds.oauth')
     expect(wrapper.text()).toContain('upstreamCenter.storage.archiveLimit')
-    await wrapper.get('[data-archive="intelligence-7"] button').trigger('click')
+    expect(wrapper.find('[data-testid="restore-archive"]').exists()).toBe(true)
+    await wrapper.get('[data-archive="intelligence-7"] [data-testid="purge-archive"]').trigger('click')
     expect(wrapper.get('[data-testid="confirm-removal"]').attributes('disabled')).toBeDefined()
     await wrapper.get('[data-testid="purge-confirm-name"]').setValue('OAuth account')
     await wrapper.get('[data-testid="confirm-removal"]').trigger('click'); await flushPromises()
@@ -75,7 +135,7 @@ describe('upstream storage controls', () => {
     const item = { kind: 'target', id: 7, name: 'Archived monitor', source_type: '', supplier_name: '', deleted_at: '2026-09-26T00:00:00Z' }
     api.archives.mockResolvedValue({ items: [item], total: 1 })
     const wrapper = render(true); await flushPromises()
-    await wrapper.get('[data-archive="target-7"] button').trigger('click'); await flushPromises()
+    await wrapper.get('[data-archive="target-7"] [data-testid="purge-archive"]').trigger('click'); await flushPromises()
     expect(wrapper.findAll('[role="dialog"]')).toHaveLength(2)
     document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
     await flushPromises()
@@ -103,7 +163,7 @@ describe('upstream storage controls', () => {
     const item = { kind: 'target', id: 7, name: 'Gone monitor', source_type: '', supplier_name: '', deleted_at: '2026-09-26T00:00:00Z' }
     api.archives.mockResolvedValueOnce({ items: [item], total: 1 }).mockRejectedValueOnce({ message: 'Archive refresh failed' })
     const wrapper = render(); await flushPromises()
-    await wrapper.get('[data-archive="target-7"] button').trigger('click')
+    await wrapper.get('[data-archive="target-7"] [data-testid="purge-archive"]').trigger('click')
     await wrapper.get('[data-testid="purge-confirm-name"]').setValue(item.name)
     await wrapper.get('[data-testid="confirm-removal"]').trigger('click'); await flushPromises()
     expect(wrapper.find('[data-archive="target-7"]').exists()).toBe(false)

@@ -26,7 +26,8 @@
           <article v-for="item in archives" :key="`${item.kind}-${item.id}`" class="flex items-center gap-3 px-3 py-3" :data-archive="`${item.kind}-${item.id}`">
             <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-100 text-gray-500 dark:bg-dark-700 dark:text-dark-300"><Icon :name="item.kind === 'supplier' ? 'server' : item.kind === 'target' ? 'chart' : item.source_type === 'openai_oauth' ? 'shield' : 'lightbulb'" size="sm" /></div>
             <div class="min-w-0 flex-1"><div class="flex flex-wrap items-center gap-1.5"><strong class="max-w-full truncate text-xs font-medium text-gray-800 dark:text-gray-100" :title="item.name">{{ item.name }}</strong><span class="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] text-gray-500 dark:bg-dark-700 dark:text-dark-300">{{ t(item.kind === 'intelligence' && item.source_type === 'openai_oauth' ? 'upstreamCenter.storage.kinds.oauth' : `upstreamCenter.storage.kinds.${item.kind}`) }}</span><span v-if="item.kind === 'intelligence' && ['external', 'upstream', 'local_group'].includes(item.source_type)" class="text-[10px] text-gray-400 dark:text-dark-400">{{ t(`intelligenceMonitor.source.${item.source_type}`) }}</span></div><p class="mt-1 truncate text-[10px] text-gray-400 dark:text-dark-400">{{ [item.supplier_name, dateTime(item.deleted_at)].filter(Boolean).join(' · ') }}</p></div>
-            <button type="button" class="shrink-0 rounded-lg px-2 py-1.5 text-xs text-rose-600 hover:bg-rose-50 disabled:opacity-50 dark:text-rose-400 dark:hover:bg-rose-500/10" :disabled="busy || archivesLoading" @click="purging = item; purgeError = ''">{{ t('upstreamCenter.storage.purge') }}</button>
+            <button type="button" class="shrink-0 rounded-lg px-2 py-1.5 text-xs text-primary-600 hover:bg-primary-50 disabled:opacity-50 dark:text-primary-400 dark:hover:bg-primary-500/10" :disabled="busy || archivesLoading" data-testid="restore-archive" @click="restore(item)"><Icon v-if="restoring === `${item.kind}-${item.id}`" name="refresh" size="xs" class="mr-1 inline animate-spin" />{{ t(restoring === `${item.kind}-${item.id}` ? 'upstreamCenter.storage.restoring' : 'upstreamCenter.storage.restore') }}</button>
+            <button type="button" class="shrink-0 rounded-lg px-2 py-1.5 text-xs text-rose-600 hover:bg-rose-50 disabled:opacity-50 dark:text-rose-400 dark:hover:bg-rose-500/10" :disabled="busy || archivesLoading" data-testid="purge-archive" @click="purging = item; purgeError = ''">{{ t('upstreamCenter.storage.purge') }}</button>
           </article>
           <p v-if="!archives.length && archivesLoading" class="flex items-center justify-center gap-2 px-4 py-8 text-xs text-gray-400 dark:text-dark-400" role="status"><Icon name="refresh" size="sm" class="animate-spin" />{{ t('common.loading') }}</p>
           <p v-if="!archives.length && !archivesLoading && !archivesError" class="px-4 py-8 text-center text-xs text-gray-400 dark:text-dark-400">{{ t('upstreamCenter.storage.emptyArchives') }}</p>
@@ -57,9 +58,10 @@ const { t } = useI18n()
 const policy = ref<UpstreamStoragePolicy | null>(null)
 const form = reactive({ enabled: true, history_retention_days: 30, snapshot_retention_days: 7 })
 const loading = ref(false), saving = ref(false), cleaning = ref(false), deleting = ref(false)
+const restoring = ref('')
 const loadError = ref(''), actionError = ref(''), archivesError = ref(''), success = ref(''), purgeError = ref('')
 const archives = ref<UpstreamArchiveItem[]>([]), archiveTotal = ref(0), archivesLoading = ref(false), purging = ref<UpstreamArchiveItem | null>(null)
-const busy = computed(() => saving.value || cleaning.value || deleting.value)
+const busy = computed(() => saving.value || cleaning.value || deleting.value || !!restoring.value)
 const dirty = computed(() => !!policy.value && (form.enabled !== policy.value.enabled || Number(form.history_retention_days) !== policy.value.history_retention_days || Number(form.snapshot_retention_days) !== policy.value.snapshot_retention_days))
 const historyOptions = computed(() => [30, 60, 90, 180, 365].map(value => ({ value, label: t('upstreamCenter.storage.days', { days: value }) })))
 const snapshotOptions = computed(() => [1, 3, 7, 30, 90].map(value => ({ value, label: t('upstreamCenter.storage.days', { days: value }) })))
@@ -119,9 +121,35 @@ async function purge() {
   catch (error) { if (generation === session) purgeError.value = extractApiErrorMessage(error, t('upstreamCenter.storage.actionFailed')) }
   finally { if (generation === session) deleting.value = false }
 }
+async function restore(item: UpstreamArchiveItem) {
+  if (busy.value || archivesLoading.value) return
+  const generation = session
+  restoring.value = `${item.kind}-${item.id}`
+  actionError.value = ''; success.value = ''
+  try {
+    const result = await upstreamCenterAPI.restore({ kind: item.kind, id: item.id })
+    if (generation !== session) return
+    archives.value = archives.value.filter(archived => archived.kind !== item.kind || archived.id !== item.id)
+    archiveTotal.value = Math.max(0, archiveTotal.value - 1)
+    success.value = t(result?.requires_configuration ? 'upstreamCenter.storage.restoredNeedsConfiguration' : 'upstreamCenter.storage.restored')
+    emit('changed')
+    await loadArchives()
+  } catch (error) {
+    if (generation === session) actionError.value = extractApiErrorMessage(error, t('upstreamCenter.storage.restoreFailed'), {
+      UPSTREAM_STORAGE_PARENT_ARCHIVED: t('upstreamCenter.storage.restoreParent'),
+      UPSTREAM_ACCOUNT_BOUND: t('upstreamCenter.storage.restoreAccountConflict'),
+      UPSTREAM_DUPLICATE_KEY: t('upstreamCenter.storage.restoreKeyConflict'),
+      UPSTREAM_STORAGE_NOT_FOUND: t('upstreamCenter.storage.restoreNotFound'),
+      UPSTREAM_STORAGE_BUSY: t('upstreamCenter.storage.restoreBusy'),
+      INTELLIGENCE_UPSTREAM_PLAN_EXISTS: t('upstreamCenter.storage.restorePlanConflict'),
+      INTELLIGENCE_LOCAL_PLAN_EXISTS: t('upstreamCenter.storage.restorePlanConflict'),
+      INTELLIGENCE_OAUTH_PLAN_EXISTS: t('upstreamCenter.storage.restorePlanConflict'),
+    })
+  } finally { if (generation === session) restoring.value = '' }
+}
 watch(() => props.show, show => {
   if (show) { void load(); return }
-  session++; archiveRequest++; controller?.abort(); loading.value = false; archivesLoading.value = false; saving.value = false; cleaning.value = false; deleting.value = false; purging.value = null
+  session++; archiveRequest++; controller?.abort(); loading.value = false; archivesLoading.value = false; saving.value = false; cleaning.value = false; deleting.value = false; purging.value = null; restoring.value = ''
 }, { immediate: true })
 watch(purging, async (item, previous) => {
   if (!previous || item) return

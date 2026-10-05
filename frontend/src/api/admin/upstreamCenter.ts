@@ -87,6 +87,12 @@ export interface UpstreamFinanceSummary {
   remote_used: number | null
   remote_synced_at: string | null
   remote_stale?: boolean
+  remote_raw_used?: number | null
+  conversion_applied?: boolean
+  cost_partial?: boolean
+  known_key_count?: number
+  missing_key_count?: number
+  archived_key_count?: number
   reconciliation_delta: number | null
   unpriced_monitor_count: number
 }
@@ -129,7 +135,7 @@ export interface UpstreamTarget extends Omit<UpstreamTargetInput, 'api_key' | 's
   finance: UpstreamFinanceSummary
 }
 
-export interface UpstreamSupplierInput { name: string; website: string; notes: string }
+export interface UpstreamSupplierInput { name: string; website: string; notes: string; recharge_ratio?: number | null }
 export interface UpstreamSupplier extends UpstreamSupplierInput {
   id: number
   created_at: string
@@ -195,6 +201,8 @@ export interface UpstreamArchiveItem {
   supplier_name: string
 }
 export interface UpstreamPurgeInput { kind: UpstreamArchiveKind; id: number; confirm_name: string }
+export interface UpstreamRestoreInput { kind: UpstreamArchiveKind; id: number }
+export interface UpstreamRestoreResult { suppliers_restored: number; targets_restored: number; bindings_restored: number; plans_restored?: number; requires_configuration?: boolean }
 const base = '/admin/upstream-center'
 
 export const upstreamCenterAPI = {
@@ -218,6 +226,9 @@ export const upstreamCenterAPI = {
   },
   async purge(input: UpstreamPurgeInput): Promise<void> {
     await apiClient.post(`${base}/storage/purge`, input, { timeout: 60000 })
+  },
+  async restore(input: UpstreamRestoreInput): Promise<UpstreamRestoreResult> {
+    return (await apiClient.post<UpstreamRestoreResult>(`${base}/storage/restore`, input, { timeout: 60000 })).data
   },
   async reorder(input: UpstreamOrderInput): Promise<void> {
     await apiClient.put(`${base}/order`, input)

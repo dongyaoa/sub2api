@@ -1,6 +1,7 @@
 package admin
 
 import (
+	"encoding/json"
 	"strconv"
 	"strings"
 	"time"
@@ -44,9 +45,10 @@ func (h *UpstreamCenterHandler) SaveOrder(c *gin.Context) {
 }
 
 type upstreamSupplierRequest struct {
-	Name    *string `json:"name"`
-	Website *string `json:"website"`
-	Notes   *string `json:"notes"`
+	Name          *string         `json:"name"`
+	Website       *string         `json:"website"`
+	Notes         *string         `json:"notes"`
+	RechargeRatio json.RawMessage `json:"recharge_ratio"`
 }
 
 func (h *UpstreamCenterHandler) CreateSupplier(c *gin.Context) { h.saveSupplier(c, 0) }
@@ -61,7 +63,7 @@ func (h *UpstreamCenterHandler) saveSupplier(c *gin.Context, id int64) {
 		response.BadRequest(c, "invalid supplier configuration")
 		return
 	}
-	result, err := h.svc.SaveSupplier(c.Request.Context(), id, in.Name, in.Website, in.Notes)
+	result, err := h.svc.SaveSupplier(c.Request.Context(), id, in.Name, in.Website, in.Notes, in.RechargeRatio)
 	if response.ErrorFrom(c, err) {
 		return
 	}

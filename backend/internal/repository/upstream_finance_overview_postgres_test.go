@@ -132,7 +132,7 @@ VALUES($1,$2,'ok','sub2api_billing',jsonb_build_object('status','ok','effective_
 			require.Equal(t, balance, data.Balances[target.ID])
 		}
 		require.Nil(t, data.Summary.Profit, "unpriced historical monitoring remains unknown")
-		require.Nil(t, data.Summary.TotalTokens, "unknown historical token usage remains unknown")
+		require.NotNil(t, data.Summary.TotalTokens, "moved and archived keys are excluded from current scope")
 		require.Equal(t, "pending", data.Balances[4].Status)
 		require.Nil(t, data.Balances[4].Balance)
 		require.Equal(t, "pending", data.Balances[4].Billing.Status)
@@ -143,11 +143,18 @@ VALUES($1,$2,'ok','sub2api_billing',jsonb_build_object('status','ok','effective_
 		require.Zero(t, data.Suppliers[4].Revenue)
 		require.Nil(t, data.Suppliers[4].Profit, "absence of measured upstream cost does not imply zero cost")
 	}
-	// Both read paths reject a range that only partially covers archived samples.
+	// Both reads exclude old supplier ownership even for a partial rollup hour.
 	partialFrom := time.Date(2026, 9, 23, 0, 20, 0, 0, time.UTC)
+	supplierTargets := []*service.UpstreamTarget{targets[0], targets[2]}
+	_, err = finance.OverviewFinance(ctx, suppliers, supplierTargets, partialFrom, partialFrom.Add(time.Hour))
+	require.NoError(t, err)
+	_, err = finance.Summary(ctx, nil, nil, partialFrom, partialFrom.Add(time.Hour))
+	require.NoError(t, err)
+	// The independent target still owns its partial hourly rollup. Including
+	// it must retain the range guard in both batch and individual reads.
 	_, err = finance.OverviewFinance(ctx, suppliers, targets, partialFrom, partialFrom.Add(time.Hour))
 	require.ErrorIs(t, err, service.ErrUpstreamFinanceArchivedRange)
-	_, err = finance.Summary(ctx, nil, nil, partialFrom, partialFrom.Add(time.Hour))
+	_, err = finance.Summary(ctx, nil, &targets[1].ID, partialFrom, partialFrom.Add(time.Hour))
 	require.ErrorIs(t, err, service.ErrUpstreamFinanceArchivedRange)
 	_, err = db.ExecContext(ctx, `UPDATE upstream_targets SET deleted_at=NOW() WHERE id=1`)
 	require.NoError(t, err)

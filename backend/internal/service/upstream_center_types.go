@@ -17,15 +17,17 @@ var (
 )
 
 type UpstreamSupplier struct {
-	ID        int64                      `json:"id"`
-	Name      string                     `json:"name"`
-	Website   string                     `json:"website"`
-	Notes     string                     `json:"notes"`
-	CreatedAt time.Time                  `json:"created_at"`
-	UpdatedAt time.Time                  `json:"updated_at"`
-	Targets   []*UpstreamTarget          `json:"targets"`
-	Finance   *UpstreamFinanceSummary    `json:"finance"`
-	Wallets   []*UpstreamBalanceSnapshot `json:"wallets"`
+	ID      int64  `json:"id"`
+	Name    string `json:"name"`
+	Website string `json:"website"`
+	Notes   string `json:"notes"`
+	// Credits received for one unit paid; nil leaves the upstream amount unchanged.
+	RechargeRatio *float64                   `json:"recharge_ratio"`
+	CreatedAt     time.Time                  `json:"created_at"`
+	UpdatedAt     time.Time                  `json:"updated_at"`
+	Targets       []*UpstreamTarget          `json:"targets"`
+	Finance       *UpstreamFinanceSummary    `json:"finance"`
+	Wallets       []*UpstreamBalanceSnapshot `json:"wallets"`
 }
 
 type UpstreamBindingCredential struct {

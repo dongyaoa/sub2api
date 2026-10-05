@@ -22,7 +22,7 @@ func TestUpstreamOverviewFinanceQueryCountIndependentOfCardCount(t *testing.T) {
 			supplierIDs := make([]int64, 0, count)
 			scopes := make([]service.UpstreamFinanceOverviewTarget, 0, count)
 			summaries := sqlmock.NewRows([]string{"kind", "id", "revenue", "business", "requests", "monitor", "unpriced", "reported", "estimated", "tokens", "unknown_tokens", "partial"}).AddRow("total", 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, false)
-			metadata := sqlmock.NewRows([]string{"id", "supplier_id", "provider", "endpoint", "key", "key_fingerprint", "wallet", "user_id", "pat", "profit_identity_since"})
+			metadata := sqlmock.NewRows([]string{"id", "supplier_id", "provider", "endpoint", "key", "key_fingerprint", "wallet", "user_id", "pat", "profit_identity_since", "recharge_ratio"})
 			balances := sqlmock.NewRows([]string{"id", "wallet", "kind", "balance", "quota", "today", "day_used", "day_start", "day_end", "day_synced", "last_30_days_used", "period_start", "period_end", "period_synced", "total", "unlimited", "currency", "currency_source", "status", "synced", "error", "attempted"})
 			billings := sqlmock.NewRows([]string{"id", "data", "status", "attempted", "error"})
 			for n := 1; n <= count; n++ {
@@ -31,7 +31,7 @@ func TestUpstreamOverviewFinanceQueryCountIndependentOfCardCount(t *testing.T) {
 				scopes = append(scopes, service.UpstreamFinanceOverviewTarget{ID: id, SupplierID: &id})
 				summaries.AddRow("supplier", id, 0, 0, 0, 0, 0, 0, 0, 0, 0, false)
 				summaries.AddRow("target", id, 0, 0, 0, 0, 0, 0, 0, 0, 0, false)
-				metadata.AddRow(id, id, "openai", "https://example.test", "encrypted", "fingerprint", "default", 0, "", now)
+				metadata.AddRow(id, id, "openai", "https://example.test", "encrypted", "fingerprint", "default", 0, "", now, nil)
 				balances.AddRow(id, "default", "wallet", 10, nil, 1, 1, q.From, q.To, now.Add(-time.Minute), 30, now.AddDate(0, 0, -30), q.To, now.Add(-2*time.Minute), nil, false, "USD", "reported", "ok", now, "", now)
 				billings.AddRow(id, []byte(`{"effective_rate_multiplier":0.5}`), "ok", now, "")
 			}

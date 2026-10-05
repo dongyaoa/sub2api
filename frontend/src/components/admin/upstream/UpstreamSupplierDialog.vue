@@ -13,6 +13,11 @@
         <p v-if="accountError" role="alert" class="mt-2 text-xs text-rose-600 dark:text-rose-400">{{ accountError }}</p>
       </div>
       <div class="grid gap-4 sm:grid-cols-2"><div><label for="supplier-name" class="input-label">{{ t('upstreamCenter.form.name') }}</label><input id="supplier-name" v-model="form.name" required maxlength="100" class="input" :disabled="saving || identityLocked" :placeholder="t('upstreamCenter.form.supplierNamePlaceholder')" /></div><div><label for="supplier-website" class="input-label">{{ t('upstreamCenter.form.website') }}</label><input id="supplier-website" v-model="form.website" type="url" required class="input" :disabled="saving || identityLocked" :placeholder="t('upstreamCenter.form.websitePlaceholder')" /></div></div>
+      <div>
+        <label for="supplier-recharge-ratio" class="input-label">{{ t('upstreamCenter.recharge.label') }}</label>
+        <input id="supplier-recharge-ratio" v-model="form.rechargeRatio" type="number" min="0.000001" max="1000000" step="any" class="input" :disabled="saving || identityLocked" :placeholder="t('upstreamCenter.recharge.placeholder')" aria-describedby="supplier-recharge-hint" />
+        <p id="supplier-recharge-hint" class="mt-1.5 text-xs leading-5 text-gray-500 dark:text-dark-400">{{ t('upstreamCenter.recharge.hint') }}</p>
+      </div>
       <div v-if="selected.length" class="space-y-3">
         <div class="flex items-center justify-between gap-2"><h3 class="text-xs font-medium text-gray-700 dark:text-gray-200">{{ t('upstreamCenter.import.groups') }}</h3><label class="flex items-center gap-2 text-xs text-gray-500 dark:text-dark-400"><input v-model="enabled" type="checkbox" class="accent-teal-600" :disabled="saving" />{{ t('upstreamCenter.form.enabled') }}</label></div>
         <p class="text-[11px] text-gray-400 dark:text-dark-400">{{ t('upstreamCenter.import.modelHint') }}</p>
@@ -43,7 +48,8 @@ import { extractApiErrorMessage } from '@/utils/apiError'
 const props = defineProps<{ show: boolean; supplier: UpstreamSupplier | null }>()
 const emit = defineEmits<{ close: []; saved: []; changed: [] }>()
 const { t } = useI18n()
-const form = reactive({ name: '', website: '', notes: '' })
+const form = reactive({ name: '', website: '', notes: '', rechargeRatio: '' as string | number })
+const rechargeRatio = computed(() => String(form.rechargeRatio).trim() === '' ? null : Number(form.rechargeRatio))
 interface ImportAccount { id: number; name: string; targetName: string; provider: UpstreamProvider; endpoint: string; modelsText: string; intervalSeconds: number; status: 'pending' | 'saving' | 'done' | 'error'; error: string }
 const selected = ref<ImportAccount[]>([]), enabled = ref(true), saving = ref(false), error = ref(''), createdSupplierId = ref<number | null>(null)
 const identityLocked = ref(false)
@@ -60,7 +66,7 @@ watch(() => props.show, show => {
   accountRequest++; clearTimeout(searchTimer); accountsLoading.value = false; preparingIds.value = new Set(); accountError.value = ''
   if (!show) return
   if (!props.supplier && draftPending) { void loadAccounts(1); return }
-  Object.assign(form, { name: props.supplier?.name || '', website: props.supplier?.website || '', notes: props.supplier?.notes || '' })
+  Object.assign(form, { name: props.supplier?.name || '', website: props.supplier?.website || '', notes: props.supplier?.notes || '', rechargeRatio: props.supplier?.recharge_ratio ?? '' })
   selected.value = []; createdSupplierId.value = null; identityLocked.value = false; enabled.value = true; error.value = ''; recoveryChoices.value = []; recoveryId.value = ''; supplierAttempted = false; draftPending = false; accountSearch.value = ''
   if (!props.supplier) void loadAccounts(1)
 }, { immediate: true })
@@ -105,7 +111,7 @@ async function resolveSupplier(): Promise<number | null> {
   }
   supplierAttempted = true; draftPending = true; identityLocked.value = true
   try {
-    const result = await upstreamCenterAPI.createSupplier({ name: form.name.trim(), website: form.website.trim(), notes: form.notes.trim() })
+    const result = await upstreamCenterAPI.createSupplier({ name: form.name.trim(), website: form.website.trim(), notes: form.notes.trim(), recharge_ratio: rechargeRatio.value })
     createdSupplierId.value = result.id; emit('changed')
     return result.id
   } catch (err) {
@@ -117,13 +123,14 @@ async function resolveSupplier(): Promise<number | null> {
 async function save() {
   if (saving.value) return
   error.value = ''
+  if (rechargeRatio.value != null && (!Number.isFinite(rechargeRatio.value) || rechargeRatio.value < 0.000001 || rechargeRatio.value > 1000000)) { error.value = t('upstreamCenter.recharge.invalid'); return }
   for (const item of selected.value.filter(item => item.status !== 'done')) {
     const models = parsedModels(item.modelsText)
     if (!models.length || models.length > 8 || !item.targetName.trim()) { error.value = `${item.name}: ${t(models.length > 8 ? 'upstreamCenter.form.maxModels' : 'upstreamCenter.form.requiredModels')}`; return }
   }
   saving.value = true
   try {
-    if (props.supplier) { await upstreamCenterAPI.updateSupplier(props.supplier.id, { name: form.name.trim(), website: form.website.trim(), notes: form.notes.trim() }); emit('saved'); emit('close'); return }
+    if (props.supplier) { await upstreamCenterAPI.updateSupplier(props.supplier.id, { name: form.name.trim(), website: form.website.trim(), notes: form.notes.trim(), recharge_ratio: rechargeRatio.value }); emit('saved'); emit('close'); return }
     const id = await resolveSupplier()
     if (!id) return
     const existing = selected.value.length ? (await upstreamCenterAPI.overview()).suppliers.find(item => item.id === id) : undefined

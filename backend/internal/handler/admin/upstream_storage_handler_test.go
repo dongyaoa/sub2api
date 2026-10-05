@@ -17,6 +17,7 @@ func TestUpstreamStorageHandlerRejectsInvalidMutationBeforeRepository(t *testing
 	r := gin.New()
 	r.PUT("/storage", h.SaveStoragePolicy)
 	r.POST("/purge", h.PurgeStorage)
+	r.POST("/restore", h.RestoreStorage)
 	for _, tc := range []struct{ method, path, body string }{
 		{http.MethodPut, "/storage", `{}`},
 		{http.MethodPut, "/storage", `{"enabled":true,"history_retention_days":7,"snapshot_retention_days":7}`},
@@ -25,6 +26,10 @@ func TestUpstreamStorageHandlerRejectsInvalidMutationBeforeRepository(t *testing
 		{http.MethodPost, "/purge", `{"kind":"supplier","id":1}`},
 		{http.MethodPost, "/purge", `{"kind":"all","id":1,"confirm_name":"secret-invalid"}`},
 		{http.MethodPost, "/purge", `{"kind":"target","id":0,"confirm_name":"secret-invalid"}`},
+		{http.MethodPost, "/restore", `{"kind":"target","id":0}`},
+		{http.MethodPost, "/restore", `{"kind":"intelligence","id":0}`},
+		{http.MethodPost, "/restore", `{"kind":"secret-invalid","id":1}`},
+		{http.MethodPost, "/restore", `{"kind":"supplier","id":"secret-invalid"}`},
 	} {
 		req := httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
 		req.Header.Set("Content-Type", "application/json")

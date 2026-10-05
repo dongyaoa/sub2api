@@ -18,14 +18,22 @@ type UpstreamFinanceSummary struct {
 	TotalTokens          *int64 `json:"total_tokens"`
 	UnknownTokenRequests int64  `json:"unknown_token_requests"`
 	// Account statistics cost times account rate; this is not an upstream debit.
-	AccountBilled        float64    `json:"account_billed"`
-	CostSource           string     `json:"cost_source"`
-	Currency             string     `json:"currency"`
-	From                 time.Time  `json:"from"`
-	To                   time.Time  `json:"to"`
+	AccountBilled float64   `json:"account_billed"`
+	CostSource    string    `json:"cost_source"`
+	Currency      string    `json:"currency"`
+	From          time.Time `json:"from"`
+	To            time.Time `json:"to"`
+	// RemoteUsed is paid cost after optional per-supplier recharge conversion.
+	// RemoteRawUsed retains the original reported credit total for display.
 	RemoteUsed           *float64   `json:"remote_used"`
 	RemoteSyncedAt       *time.Time `json:"remote_synced_at"`
 	RemoteStale          bool       `json:"remote_stale"`
+	RemoteRawUsed        *float64   `json:"remote_raw_used"`
+	CostPartial          bool       `json:"cost_partial"`
+	KnownKeyCount        int        `json:"known_key_count"`
+	MissingKeyCount      int        `json:"missing_key_count"`
+	ArchivedKeyCount     int        `json:"archived_key_count"`
+	ConversionApplied    bool       `json:"conversion_applied"`
 	ReconciliationDelta  *float64   `json:"reconciliation_delta"`
 	UnpricedMonitorCount int64      `json:"unpriced_monitor_count"`
 }
@@ -122,6 +130,7 @@ type UpstreamFinancePeriods struct {
 // UpstreamFinanceTarget is internal and deliberately has no exported JSON form.
 // Credentials must never be serialized by handlers or persisted in snapshots.
 type UpstreamFinanceTarget struct {
+	RechargeRatio              *float64   `json:"-"`
 	ID                         int64      `json:"-"`
 	SupplierID                 *int64     `json:"-"`
 	Provider                   string     `json:"-"`

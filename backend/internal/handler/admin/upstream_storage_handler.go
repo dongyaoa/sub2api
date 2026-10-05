@@ -54,3 +54,16 @@ func (h *UpstreamCenterHandler) PurgeStorage(c *gin.Context) {
 	}
 	response.Success(c, nil)
 }
+
+func (h *UpstreamCenterHandler) RestoreStorage(c *gin.Context) {
+	var in service.UpstreamStorageRestoreInput
+	if c.ShouldBindJSON(&in) != nil {
+		response.ErrorFrom(c, service.ErrUpstreamStorageRestoreInvalid)
+		return
+	}
+	result, err := h.svc.RestoreStorage(c.Request.Context(), in)
+	if response.ErrorFrom(c, err) {
+		return
+	}
+	response.Success(c, result)
+}

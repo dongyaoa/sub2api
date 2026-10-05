@@ -2,14 +2,15 @@ import type { UpstreamFinanceSummary, UpstreamHistoryRecord, UpstreamTarget } fr
 export { hslForPct as availabilityColor } from '@/composables/useChannelMonitorFormat'
 
 export function actualProfit(summary: UpstreamFinanceSummary | null | undefined): number | null {
-  return summary?.cost_source === 'reported' && summary.remote_used != null ? summary.profit : null
+  return summary?.cost_source === 'reported' && summary.remote_used != null && !summary.cost_partial ? summary.profit : null
 }
 
 export function actualUpstreamUsed(summary: UpstreamFinanceSummary | null | undefined): number | null {
-  return summary?.cost_source === 'reported' ? summary.remote_used : null
+  return summary?.cost_source === 'reported' || summary?.cost_partial ? summary.remote_used : null
 }
 
-export function financeSource(summary: UpstreamFinanceSummary | null | undefined): 'reported' | 'estimated' | 'mixed' | 'unknown' {
+export function financeSource(summary: UpstreamFinanceSummary | null | undefined): 'reported' | 'estimated' | 'mixed' | 'unknown' | 'partial' {
+  if (summary?.cost_partial) return 'partial'
   if (summary?.cost_source === 'reported' && summary.remote_used != null) return 'reported'
   return summary?.cost_source === 'estimated' || summary?.cost_source === 'mixed' ? summary.cost_source : 'unknown'
 }

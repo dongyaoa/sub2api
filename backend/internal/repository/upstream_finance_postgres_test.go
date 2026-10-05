@@ -36,7 +36,7 @@ func TestUpstreamFinancePostgresLedger(t *testing.T) {
 	_, err = db.ExecContext(ctx, `CREATE TABLE accounts (id BIGINT PRIMARY KEY, credentials JSONB NOT NULL DEFAULT '{}', platform TEXT NOT NULL DEFAULT 'openai', type TEXT NOT NULL DEFAULT 'apikey', deleted_at TIMESTAMPTZ);
 CREATE TABLE usage_logs (id BIGSERIAL PRIMARY KEY, created_at TIMESTAMPTZ NOT NULL, account_id BIGINT NOT NULL, group_id BIGINT, user_id BIGINT NOT NULL DEFAULT 1, api_key_id BIGINT NOT NULL DEFAULT 1, requested_model TEXT, model TEXT NOT NULL DEFAULT 'gpt-test', request_id TEXT, actual_cost NUMERIC NOT NULL DEFAULT 0, total_cost NUMERIC NOT NULL DEFAULT 0, account_stats_cost NUMERIC, account_rate_multiplier NUMERIC, billing_type SMALLINT NOT NULL DEFAULT 0, input_tokens INT NOT NULL DEFAULT 0, output_tokens INT NOT NULL DEFAULT 0, cache_creation_tokens INT NOT NULL DEFAULT 0, cache_read_tokens INT NOT NULL DEFAULT 0);`)
 	require.NoError(t, err)
-	for _, name := range []string{"242_upstream_center.sql", "243_upstream_finance.sql", "243_upstream_finance.sql", "244_upstream_remote_billing.sql", "244_upstream_remote_billing.sql", "247_upstream_finance_usage_totals.sql", "247_upstream_finance_usage_totals.sql", "253_upstream_newapi_credentials.sql", "253_upstream_newapi_credentials.sql", "254_upstream_storage_retention.sql", "254_upstream_storage_retention.sql", "265_upstream_finance_reported_day.sql", "265_upstream_finance_reported_day.sql", "266_upstream_finance_reported_30_days.sql", "266_upstream_finance_reported_30_days.sql"} {
+	for _, name := range []string{"242_upstream_center.sql", "243_upstream_finance.sql", "243_upstream_finance.sql", "244_upstream_remote_billing.sql", "244_upstream_remote_billing.sql", "247_upstream_finance_usage_totals.sql", "247_upstream_finance_usage_totals.sql", "253_upstream_newapi_credentials.sql", "253_upstream_newapi_credentials.sql", "254_upstream_storage_retention.sql", "254_upstream_storage_retention.sql", "265_upstream_finance_reported_day.sql", "265_upstream_finance_reported_day.sql", "266_upstream_finance_reported_30_days.sql", "266_upstream_finance_reported_30_days.sql", "267_upstream_supplier_recharge_ratio.sql", "267_upstream_supplier_recharge_ratio.sql"} {
 		migration, err := migrations.FS.ReadFile(name)
 		require.NoError(t, err)
 		_, err = db.ExecContext(ctx, string(migration))
@@ -77,10 +77,10 @@ INSERT INTO upstream_monitor_history(target_id,supplier_id,target_name,supplier_
 	q := service.UpstreamFinanceQuery{From: from, To: from.Add(24 * time.Hour), Page: 1, PageSize: 50}
 	summary, err := repo.Summary(ctx, q)
 	require.NoError(t, err)
-	require.Equal(t, int64(2), summary.RequestCount)
-	require.InDelta(t, 19, summary.Revenue, 1e-9)
+	require.Equal(t, int64(1), summary.RequestCount)
+	require.InDelta(t, 10, summary.Revenue, 1e-9, "moved supplier history is excluded from current summary")
 	require.Nil(t, summary.BusinessCost, "local account pricing is not a verified upstream debit")
-	require.InDelta(t, 8, summary.AccountBilled, 1e-9)
+	require.InDelta(t, 2, summary.AccountBilled, 1e-9)
 	require.NotNil(t, summary.TotalTokens)
 	require.Zero(t, *summary.TotalTokens)
 	require.Nil(t, summary.Profit, "upstream usage cannot be attributed to this historical range")
@@ -89,7 +89,7 @@ INSERT INTO upstream_monitor_history(target_id,supplier_id,target_name,supplier_
 	q.SupplierID = &one
 	summary, err = repo.Summary(ctx, q)
 	require.NoError(t, err)
-	require.InDelta(t, 9, summary.Revenue, 1e-9)
+	require.Zero(t, summary.Revenue)
 	require.Nil(t, summary.Profit)
 	// Usage retention and hard account deletion leave the financial ledger intact.
 	_, err = db.ExecContext(ctx, `UPDATE accounts SET credentials='{"api_key":"changed","base_url":"https://example.com"}' WHERE id=1;
@@ -114,7 +114,7 @@ DELETE FROM usage_logs; DELETE FROM accounts WHERE id=1;`)
 	require.NoError(t, err)
 	require.Nil(t, summary.Profit)
 	require.Nil(t, summary.MonitorCost)
-	require.Equal(t, int64(1), summary.UnpricedMonitorCount)
+	require.Zero(t, summary.UnpricedMonitorCount)
 
 	// Sync claims are exclusive, old credentials cannot persist a new observation.
 	now := time.Now().UTC()

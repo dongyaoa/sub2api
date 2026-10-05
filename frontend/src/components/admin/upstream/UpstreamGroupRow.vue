@@ -74,6 +74,7 @@
       </dl>
     </div>
     <p v-if="target.finance?.remote_stale && target.finance.remote_synced_at" class="mt-2 text-[10px] text-amber-600 dark:text-amber-400">{{ t('upstreamCenter.finance.stale') }} · {{ t('upstreamCenter.wallet.syncedAt', { time: dateTime(target.finance.remote_synced_at) }) }}</p>
+    <UpstreamFinanceNotice class="mt-2" :summary="target.finance" />
     <p v-if="target.balance?.status === 'error'" class="mt-2 truncate text-[10px] text-amber-600 dark:text-amber-400" :title="upstreamSyncError(target.balance.error, t)">{{ t('upstreamCenter.balanceFailed') }}<span v-if="target.balance.error"> · {{ upstreamSyncError(target.balance.error, t) }}</span></p>
   </section>
 </template>
@@ -87,6 +88,7 @@ import type { UpstreamHistoryRecord, UpstreamTarget } from '@/api/admin/upstream
 import UpstreamHistoryBar from './UpstreamHistoryBar.vue'
 import UpstreamStatusBadge from './UpstreamStatusBadge.vue'
 import UpstreamRateBadge from './UpstreamRateBadge.vue'
+import UpstreamFinanceNotice from './UpstreamFinanceNotice.vue'
 import { upstreamSyncError } from './newapi'
 import { actualProfit, actualUpstreamUsed, amount, availability, availabilityColor, compactTokens, dateTime, latency, latencyColor, money, targetStatus } from './format'
 

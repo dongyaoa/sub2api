@@ -268,6 +268,10 @@ func (s *UpstreamFinanceService) fetchSub2APIBalance(ctx context.Context, target
 	query := request.Query()
 	query.Set("days", "30")
 	query.Set("timezone", timezone.Name())
+	// model_stats uses date parameters on Sub2API versions that do not expose
+	// daily_usage. Its default is a rolling 30 days, which is a different range.
+	query.Set("start_date", dayStart.AddDate(0, 0, -29).Format("2006-01-02"))
+	query.Set("end_date", dayStart.Format("2006-01-02"))
 	request.RawQuery = query.Encode()
 	requestURL = request.String()
 	// The dialer rechecks DNS at connection time. Validation also disallows URL
@@ -328,7 +332,7 @@ func (s *UpstreamFinanceService) fetchSub2APIBalance(ctx context.Context, target
 			parsed.DayStart, parsed.DayEnd = &dayStart, &dayEnd
 			parsed.DaySyncedAt = &completedAt
 		}
-		parsed.Last30DaysUsed = parseUpstreamDailyUsed(body)
+		parsed.Last30DaysUsed = parseUpstreamPeriodUsed(body)
 		if parsed.Last30DaysUsed != nil {
 			periodStart := dayStart.AddDate(0, 0, -29)
 			parsed.PeriodStart, parsed.PeriodEnd = &periodStart, &dayEnd

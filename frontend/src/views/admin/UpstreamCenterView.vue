@@ -41,6 +41,7 @@
             <EmptyState v-else-if="search" class="card py-12" :title="t('upstreamCenter.noMatches')" />
             <EmptyState v-else class="card py-12" :title="t(tab === 'suppliers' ? 'upstreamCenter.emptySuppliers' : 'upstreamCenter.emptyMonitors')" :description="t(tab === 'suppliers' ? 'upstreamCenter.emptySuppliersHint' : 'upstreamCenter.emptyMonitorsHint')" :action-text="t(tab === 'suppliers' ? 'upstreamCenter.addSupplier' : 'upstreamCenter.addMonitor')" @action="tab === 'suppliers' ? openSupplier() : openTarget()"><template #icon><Icon :name="tab === 'suppliers' ? 'server' : 'chart'" size="xl" class="text-primary-500" /></template></EmptyState>
           </div>
+          <UpstreamFinanceNotice v-if="overview && tab === 'suppliers'" :summary="overview.summary" />
           <p v-if="overview && tab === 'suppliers'" class="text-[10px] leading-5 text-gray-400 dark:text-dark-400">{{ t(actualProfit(overview.summary) == null ? 'upstreamCenter.financeUnavailable' : 'upstreamCenter.finance.note') }}<span class="ml-1">{{ t('upstreamCenter.finance.accountingDate', { from: dateTime(overview.summary.from), to: dateTime(overview.summary.to) }) }}</span><span v-if="actualProfit(overview.summary) != null && overview.summary.remote_synced_at" class="ml-1">{{ t('upstreamCenter.wallet.syncedAt', { time: dateTime(overview.summary.remote_synced_at) }) }}</span></p>
           <p v-else-if="overview" class="text-[10px] leading-5 text-gray-400 dark:text-dark-400">{{ t('upstreamCenter.latencyHint') }}</p>
         </template>
@@ -64,6 +65,7 @@ import Icon from '@/components/icons/Icon.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import UpstreamDeleteDialog from '@/components/admin/upstream/UpstreamDeleteDialog.vue'
 import UpstreamStorageDialog from '@/components/admin/upstream/UpstreamStorageDialog.vue'
+import UpstreamFinanceNotice from '@/components/admin/upstream/UpstreamFinanceNotice.vue'
 import IntelligenceMonitorPanel from '@/components/admin/upstream/IntelligenceMonitorPanel.vue'
 import UpstreamSupplierCard from '@/components/admin/upstream/UpstreamSupplierCard.vue'
 import UpstreamTargetCard from '@/components/admin/upstream/UpstreamTargetCard.vue'

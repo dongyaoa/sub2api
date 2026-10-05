@@ -23,6 +23,32 @@ function mountPanel(supplier: UpstreamSupplier | null = null) {
 }
 
 describe('upstream consumption and profit totals', () => {
+  it('uses server-converted amounts without applying the supplier recharge ratio again', async () => {
+    const converted = summary({ revenue: 5, remote_used: 2, remote_raw_used: 20, profit: 3, conversion_applied: true })
+    financeSummary.mockResolvedValue({ today: converted, last_30_days: converted })
+    const wrapper = mountPanel({ id: 2, targets: [], recharge_ratio: 10 } as unknown as UpstreamSupplier)
+    await flushPromises()
+    expect(wrapper.get('[data-period="today"]').text()).toContain(money(2))
+    expect(wrapper.get('[data-period="today"]').text()).toContain(money(3))
+    expect(wrapper.get('[data-period="today"]').text()).not.toContain(money(0.2))
+    expect(wrapper.find('[data-testid="supplier-recharge-ratio"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="finance-converted"]').exists()).toBe(true)
+    wrapper.unmount()
+  })
+  it('keeps known partial costs visible but hides profit until all active keys are covered', async () => {
+    const partial = summary({ cost_source: 'unknown', remote_used: 2, profit: 10, cost_partial: true, known_key_count: 1, missing_key_count: 1, archived_key_count: 2 })
+    financeSummary.mockResolvedValue({ today: partial, last_30_days: partial })
+    const wrapper = mountPanel()
+    await flushPromises()
+    expect(wrapper.get('[data-period="today"]').text()).toContain(money(2))
+    expect(wrapper.get('[data-period="today"]').text()).not.toContain(money(10))
+    expect(wrapper.get('[data-period="today"]').text()).toContain('upstreamCenter.finance.pending')
+    expect(wrapper.find('[data-testid="finance-partial"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="finance-archived"]').exists()).toBe(true)
+    expect(wrapper.find('[data-testid="finance-converted"]').exists()).toBe(false)
+    expect(wrapper.find('[data-testid="supplier-recharge-ratio"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
   it('shows today and the last 30 days without a request ledger or date inputs', async () => {
     financeSummary.mockResolvedValue({ today: summary(), last_30_days: summary({ revenue: 120, remote_used: 40, profit: 80, from: '2026-09-06T00:00:00+08:00' }) })
     const wrapper = mountPanel({ id: 2, targets: [] } as unknown as UpstreamSupplier)

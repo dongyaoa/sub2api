@@ -3,6 +3,7 @@ import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import UpstreamSupplierDialog from './UpstreamSupplierDialog.vue'
 import Select from '@/components/common/Select.vue'
+import type { UpstreamSupplier } from '@/api/admin/upstreamCenter'
 
 const mocks = vi.hoisted(() => ({ createSupplier: vi.fn(), updateSupplier: vi.fn(), createTarget: vi.fn(), overview: vi.fn(), list: vi.fn(), getById: vi.fn() }))
 vi.mock('@/api/admin/upstreamCenter', () => ({ upstreamCenterAPI: { createSupplier: mocks.createSupplier, updateSupplier: mocks.updateSupplier, createTarget: mocks.createTarget, overview: mocks.overview } }))
@@ -10,7 +11,7 @@ vi.mock('@/api/admin/accounts', () => ({ list: mocks.list, getById: mocks.getByI
 vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
 const dialog = defineComponent({ props: ['show'], template: '<div v-if="show"><slot /><slot name="footer" /></div>' })
 let wrapper: VueWrapper | undefined
-function render() { wrapper = mount(UpstreamSupplierDialog, { attachTo: document.body, props: { show: true, supplier: null }, global: { stubs: { BaseDialog: dialog, Icon: true, transition: true } } }); return wrapper }
+function render(editing: UpstreamSupplier | null = null) { wrapper = mount(UpstreamSupplierDialog, { attachTo: document.body, props: { show: true, supplier: editing }, global: { stubs: { BaseDialog: dialog, Icon: true, transition: true } } }); return wrapper }
 const account = (id: number) => ({ id, name: `Account ${id}`, platform: 'openai', credentials: { base_url: 'https://upstream.example/v1', ...(id === 1 ? { model_mapping: { 'model-from-account': 'remote-model' } } : {}) } })
 const supplier = { id: 10, name: 'Account 1', website: 'https://upstream.example', targets: [] }
 beforeEach(() => {
@@ -25,6 +26,29 @@ afterEach(() => { wrapper?.unmount(); wrapper = undefined; document.body.innerHT
 async function choose(view: VueWrapper, id: number) { await view.get(`input[aria-label="Account ${id}"]`).setValue(true); await flushPromises() }
 
 describe('upstream account batch import', () => {
+  it('creates a supplier with an optional recharge ratio and leaves conversion disabled by default', async () => {
+    const view = render(); await flushPromises()
+    expect((view.get('#supplier-recharge-ratio').element as HTMLInputElement).value).toBe('')
+    await view.get('#supplier-name').setValue('Converted supplier')
+    await view.get('#supplier-website').setValue('https://example.com')
+    await view.get('#supplier-recharge-ratio').setValue('5')
+    await view.get('form').trigger('submit'); await flushPromises()
+    expect(mocks.createSupplier).toHaveBeenCalledWith({ name: 'Converted supplier', website: 'https://example.com', notes: '', recharge_ratio: 5 })
+  })
+  it('loads an existing ratio and sends null when it is cleared', async () => {
+    const view = render({ ...supplier, recharge_ratio: 10 } as unknown as UpstreamSupplier)
+    expect((view.get('#supplier-recharge-ratio').element as HTMLInputElement).value).toBe('10')
+    await view.get('#supplier-recharge-ratio').setValue('')
+    await view.get('form').trigger('submit'); await flushPromises()
+    expect(mocks.updateSupplier).toHaveBeenCalledWith(10, expect.objectContaining({ recharge_ratio: null }))
+  })
+  it.each(['0', '-1', '0.0000001', '1000001'])('does not save invalid recharge ratio %s', async value => {
+    const view = render({ ...supplier, recharge_ratio: null } as unknown as UpstreamSupplier)
+    await view.get('#supplier-recharge-ratio').setValue(value)
+    await view.get('form').trigger('submit'); await flushPromises()
+    expect(mocks.updateSupplier).not.toHaveBeenCalled()
+    expect(view.text()).toContain('upstreamCenter.recharge.invalid')
+  })
   it('isolates pending account imports when the supplier form closes and reopens', async () => {
     let rejectOldImport: (error: unknown) => void = () => undefined
     let resolveNewImport: (value: unknown) => void = () => undefined
@@ -63,6 +87,7 @@ describe('upstream account batch import', () => {
     await view.get('#import-interval-2').setValue('90')
     await view.get('form').trigger('submit'); await flushPromises()
     expect(mocks.createSupplier).toHaveBeenCalledTimes(1)
+    expect(mocks.createSupplier).toHaveBeenCalledWith(expect.objectContaining({ recharge_ratio: null }))
     expect(mocks.createTarget).toHaveBeenCalledTimes(2)
     expect(mocks.createTarget).toHaveBeenNthCalledWith(1, expect.objectContaining({ supplier_id: 10, account_ids: [1], endpoint: 'https://upstream.example/v1', models: ['gpt-5.6-sol'], interval_seconds: 30, enabled: true }))
     expect(mocks.createTarget).toHaveBeenNthCalledWith(2, expect.objectContaining({ supplier_id: 10, account_ids: [2], models: ['model-a', 'model-b'], interval_seconds: 90 }))

@@ -59,6 +59,22 @@ func TestUpstreamFinanceParseReportedDailyUsage(t *testing.T) {
 	}
 }
 
+func TestUpstreamFinanceParsePeriodUsesReportedModelStatsFallback(t *testing.T) {
+	for _, tc := range []struct {
+		body string
+		want *float64
+	}{
+		{`{"model_stats":[{"model":"a","actual_cost":2,"cost":999},{"model":"b","actual_cost":"3.5"}]}`, financeFloat(5.5)},
+		{`{"data":{"daily_usage":null,"model_stats":[{"actual_cost":0}]}}`, financeFloat(0)},
+		{`{"daily_usage":[{"actual_cost":1}],"model_stats":[{"actual_cost":2}]}`, financeFloat(1)},
+		{`{"daily_usage":[{"cost":1}],"model_stats":[{"actual_cost":2}]}`, nil},
+		{`{"model_stats":[{"cost":1}],"usage":{"total":{"actual_cost":1000}}}`, nil},
+		{`{"code":500,"model_stats":[{"actual_cost":2}]}`, nil},
+	} {
+		require.Equal(t, tc.want, parseUpstreamPeriodUsed([]byte(tc.body)), tc.body)
+	}
+}
+
 func TestUpstreamFinanceRejectsFalseZeroAndErrors(t *testing.T) {
 	for _, body := range []string{`{}`, `{"message":"unauthorized"}`, `{"error":{"message":"secret"}}`, `{"balance":"NaN"}`, `{"balance":1e50}`, `{"balance":1} {}`, `{"code":401,"data":{"balance":10}}`, `{"code":401,"balance":10}`, `{"mode":"unrestricted","remaining":5}`, `{"isValid":false,"balance":10}`, `{"success":false,"data":{"balance":10}}`, `{"isValid":false,"data":{"balance":10}}`, `{"error":{"message":"unauthorized"},"data":{"balance":10}}`, `{"data":{"success":false,"balance":10}}`} {
 		_, err := parseUpstreamUsage([]byte(body))
@@ -132,6 +148,8 @@ func TestUpstreamFinanceFetchSeparatesTodayFrom30DayHistory(t *testing.T) {
 	svc.client.Transport = financeRoundTrip(func(req *http.Request) (*http.Response, error) {
 		require.Equal(t, "30", req.URL.Query().Get("days"))
 		require.Equal(t, timezone.Name(), req.URL.Query().Get("timezone"))
+		require.Equal(t, "2026-09-06", req.URL.Query().Get("start_date"))
+		require.Equal(t, "2026-10-05", req.URL.Query().Get("end_date"))
 		body := `{"balance":99,"usage":{"today":{"actual_cost":1},"total":{"actual_cost":999}},"daily_usage":[{"date":"2026-10-04","actual_cost":2},{"date":"2026-10-05","actual_cost":1}]}`
 		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(body)), Request: req}, nil
 	})
@@ -142,6 +160,16 @@ func TestUpstreamFinanceFetchSeparatesTodayFrom30DayHistory(t *testing.T) {
 	require.True(t, snapshot.DayStart.Equal(timezone.StartOfDay(now)))
 	require.True(t, snapshot.PeriodStart.Equal(timezone.StartOfDay(now).AddDate(0, 0, -29)))
 	require.True(t, snapshot.PeriodEnd.Equal(timezone.StartOfDay(now).AddDate(0, 0, 1)))
+	svc.client.Transport = financeRoundTrip(func(req *http.Request) (*http.Response, error) {
+		require.Equal(t, "2026-09-06", req.URL.Query().Get("start_date"))
+		require.Equal(t, "2026-10-05", req.URL.Query().Get("end_date"))
+		body := `{"balance":99,"usage":{"today":{"actual_cost":1},"total":{"actual_cost":999}},"model_stats":[{"model":"a","actual_cost":4},{"model":"b","actual_cost":5}]}`
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(body)), Request: req}, nil
+	})
+	legacy := svc.fetchSub2APIBalance(context.Background(), &UpstreamFinanceTarget{ID: 2, Endpoint: "https://8.8.8.8", APIKeyEncrypted: "test-only"})
+	require.Equal(t, "ok", legacy.Status)
+	require.Equal(t, 9.0, *legacy.Last30DaysUsed, "explicit-window model totals support upstreams without daily_usage")
+	require.Equal(t, 1.0, *legacy.DayUsed)
 }
 
 type financeTestRepo struct {

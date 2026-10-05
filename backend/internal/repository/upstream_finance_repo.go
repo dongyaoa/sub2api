@@ -23,6 +23,14 @@ WHERE l.created_at >= $1 AND l.created_at < $2
  AND ($3::bigint IS NULL OR l.supplier_id = $3)
  AND ($4::bigint IS NULL OR l.target_id = $4)`
 
+// Current statistics include only active keys under their current supplier.
+// The original ledger query is retained for historical detail reads.
+const upstreamFinanceActiveLedgerSQL = upstreamFinanceLedgerSQL + `
+ AND EXISTS (SELECT 1 FROM upstream_targets t LEFT JOIN upstream_suppliers s ON s.id=t.supplier_id
+ WHERE t.id=l.target_id AND t.deleted_at IS NULL
+ AND (t.supplier_id IS NULL OR s.deleted_at IS NULL)
+ AND t.supplier_id IS NOT DISTINCT FROM l.supplier_id)`
+
 func upstreamFinanceArgs(q service.UpstreamFinanceQuery) []any {
 	return []any{q.From, q.To, q.SupplierID, q.TargetID}
 }
@@ -33,7 +41,7 @@ func (r *upstreamFinanceRepository) Summary(ctx context.Context, q service.Upstr
  COALESCE(SUM(l.business_cost),0) AS cost, COUNT(*) AS requests,
  CASE WHEN COUNT(*) FILTER (WHERE l.total_tokens IS NULL)=0 THEN COALESCE(SUM(l.total_tokens),0) END AS tokens,
  COUNT(*) FILTER (WHERE l.total_tokens IS NULL) AS unknown_tokens
- ` + upstreamFinanceLedgerSQL + `
+ ` + upstreamFinanceActiveLedgerSQL + `
 ), archived AS (
  SELECT r.* FROM upstream_monitor_cost_rollups r
  WHERE r.hour_start < $2 AND r.hour_start + INTERVAL '1 hour' > $1
@@ -41,6 +49,9 @@ func (r *upstreamFinanceRepository) Summary(ctx context.Context, q service.Upstr
  AND ($4::bigint IS NOT NULL OR r.supplier_id IS NOT NULL)
  AND ($3::bigint IS NULL OR r.supplier_id = $3)
  AND ($4::bigint IS NULL OR r.target_id = $4)
+ AND EXISTS (SELECT 1 FROM upstream_targets t LEFT JOIN upstream_suppliers s ON s.id=t.supplier_id
+ WHERE t.id=r.target_id AND t.deleted_at IS NULL AND (t.supplier_id IS NULL OR s.deleted_at IS NULL)
+ AND t.supplier_id IS NOT DISTINCT FROM r.supplier_id)
 ), monitor_sources AS (
  SELECT COALESCE(SUM(h.cost),0) AS cost,
  COUNT(*) FILTER (WHERE h.cost IS NULL OR h.cost_source = 'unknown') AS unpriced,
@@ -51,6 +62,9 @@ func (r *upstreamFinanceRepository) Summary(ctx context.Context, q service.Upstr
  AND ($4::bigint IS NOT NULL OR h.supplier_id IS NOT NULL)
  AND ($3::bigint IS NULL OR h.supplier_id = $3)
  AND ($4::bigint IS NULL OR h.target_id = $4)
+ AND EXISTS (SELECT 1 FROM upstream_targets t LEFT JOIN upstream_suppliers s ON s.id=t.supplier_id
+ WHERE t.id=h.target_id AND t.deleted_at IS NULL AND (t.supplier_id IS NULL OR s.deleted_at IS NULL)
+ AND t.supplier_id IS NOT DISTINCT FROM h.supplier_id)
  UNION ALL
  SELECT COALESCE(SUM(cost),0),COALESCE(SUM(unpriced_count),0),
  COALESCE(SUM(reported_count),0),COALESCE(SUM(estimated_count),0)
@@ -122,9 +136,9 @@ func (r *upstreamFinanceRepository) Details(ctx context.Context, q service.Upstr
 
 func (r *upstreamFinanceRepository) GetTarget(ctx context.Context, id int64) (*service.UpstreamFinanceTarget, error) {
 	t := &service.UpstreamFinanceTarget{}
-	err := r.db.QueryRowContext(ctx, `SELECT t.id,t.supplier_id,t.provider,t.endpoint,t.api_key_encrypted,t.api_key_fingerprint,t.wallet_ref,t.newapi_user_id,t.newapi_access_token_encrypted,t.profit_identity_since
+	err := r.db.QueryRowContext(ctx, `SELECT t.id,t.supplier_id,t.provider,t.endpoint,t.api_key_encrypted,t.api_key_fingerprint,t.wallet_ref,t.newapi_user_id,t.newapi_access_token_encrypted,t.profit_identity_since,s.recharge_ratio
  FROM upstream_targets t LEFT JOIN upstream_suppliers s ON s.id=t.supplier_id
- WHERE t.id=$1 AND t.deleted_at IS NULL AND (t.supplier_id IS NULL OR s.deleted_at IS NULL)`, id).Scan(&t.ID, &t.SupplierID, &t.Provider, &t.Endpoint, &t.APIKeyEncrypted, &t.APIKeyFingerprint, &t.WalletRef, &t.NewAPIUserID, &t.NewAPIAccessTokenEncrypted, &t.ProfitIdentitySince)
+ WHERE t.id=$1 AND t.deleted_at IS NULL AND (t.supplier_id IS NULL OR s.deleted_at IS NULL)`, id).Scan(&t.ID, &t.SupplierID, &t.Provider, &t.Endpoint, &t.APIKeyEncrypted, &t.APIKeyFingerprint, &t.WalletRef, &t.NewAPIUserID, &t.NewAPIAccessTokenEncrypted, &t.ProfitIdentitySince, &t.RechargeRatio)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, service.ErrUpstreamFinanceTargetNotFound
 	}

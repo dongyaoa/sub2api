@@ -97,6 +97,17 @@ func parseUpstreamUsage(body []byte) (*UpstreamBalanceSnapshot, error) {
 // daily_usage is filtered by the requested timezone/window on the upstream.
 // Its date labels may use a different DB timezone, so sum every returned row.
 func parseUpstreamDailyUsed(body []byte) *float64 {
+	return parseUpstreamReportedRows(body, false)
+}
+
+// Older Sub2API deployments omit best-effort daily_usage but return per-model
+// actual charges for the explicit start_date/end_date requested by the caller.
+// A malformed present daily report is not replaced with a different report.
+func parseUpstreamPeriodUsed(body []byte) *float64 {
+	return parseUpstreamReportedRows(body, true)
+}
+
+func parseUpstreamReportedRows(body []byte, allowModelStats bool) *float64 {
 	var payload map[string]any
 	decoder := json.NewDecoder(bytes.NewReader(body))
 	decoder.UseNumber()
@@ -109,7 +120,11 @@ func parseUpstreamDailyUsed(body []byte) *float64 {
 	if upstreamUsagePayloadFailed(payload) {
 		return nil
 	}
-	rows, ok := payload["daily_usage"].([]any)
+	value := payload["daily_usage"]
+	if value == nil && allowModelStats {
+		value = payload["model_stats"]
+	}
+	rows, ok := value.([]any)
 	if !ok {
 		return nil
 	}

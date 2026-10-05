@@ -4,6 +4,12 @@ vi.mock('@/api/client', () => ({ apiClient: client }))
 import { upstreamCenterAPI } from '@/api/admin/upstreamCenter'
 beforeEach(() => { vi.clearAllMocks() })
 describe('upstream storage API contract', () => {
+  it('restores only the specified archived upstream or key group', async () => {
+    const result = { suppliers_restored: 1, targets_restored: 2, bindings_restored: 2 }
+    client.post.mockResolvedValue({ data: result })
+    await expect(upstreamCenterAPI.restore({ kind: 'supplier', id: 4 })).resolves.toEqual(result)
+    expect(client.post).toHaveBeenCalledWith('/admin/upstream-center/storage/restore', { kind: 'supplier', id: 4 }, { timeout: 60000 })
+  })
   it('uses read-only endpoints for policy and archives, forwarding cancellation', async () => {
     const signal = new AbortController().signal
     const policy = { enabled: true, history_retention_days: 30, snapshot_retention_days: 7, last_cleanup_at: null, last_result: null }
