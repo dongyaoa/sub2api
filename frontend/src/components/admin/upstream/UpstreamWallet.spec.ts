@@ -4,6 +4,13 @@ import UpstreamWallet from './UpstreamWallet.vue'
 import type { UpstreamBalanceSnapshot, UpstreamBillingSnapshot } from '@/api/admin/upstreamCenter'
 vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (key: string, params?: { time?: string }) => `${key}${params?.time ? ` ${params.time}` : ''}` }) }))
 describe('upstream wallet sync failure', () => {
+  it('adds separators only after the first wallet', () => {
+    const wallet: UpstreamBalanceSnapshot = { target_id: 7, wallet_ref: 'default', kind: 'wallet', balance: 42, quota_remaining: null, today_used: null, total_used: null, currency: 'USD', status: 'ok', synced_at: null, error: '' }
+    const wrapper = mount(UpstreamWallet, { props: { wallets: [wallet, { ...wallet, target_id: 8 }] }, global: { stubs: { Icon: true } } })
+    expect(wrapper.element.children[0].classList.contains('border-t')).toBe(false)
+    expect(wrapper.element.children[1].classList.contains('border-t')).toBe(true)
+    wrapper.unmount()
+  })
   it('distinguishes unlimited New API key quota from a finite wallet balance', async () => {
     const wallet: UpstreamBalanceSnapshot = { target_id: 7, wallet_ref: 'default', kind: 'key_quota', balance: null, quota_remaining: null, unlimited_quota: true, today_used: null, total_used: 10, currency: 'USD', status: 'ok', synced_at: null, error: '', billing: { source: 'newapi_token', error: 'newapi_account_auth_required' } as UpstreamBillingSnapshot }
     const wrapper = mount(UpstreamWallet, { props: { wallets: [wallet] }, global: { stubs: { Icon: true } } })
