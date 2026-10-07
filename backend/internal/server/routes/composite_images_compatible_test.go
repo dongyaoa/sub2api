@@ -158,7 +158,13 @@ func TestCompositeCompatibleImagesEndToEnd(t *testing.T) {
 			require.Contains(t, rec.Body.String(), "aW1hZ2U=")
 			require.Len(t, usage.logs, 1, "the image must reach usage recording, not just return HTTP 200")
 			require.Equal(t, 1, usage.logs[0].ImageCount)
-			require.InDelta(t, price, usage.logs[0].ActualCost, 1e-9)
+			// No model pricing card is configured, so use the model default,
+			// not the legacy flat image prices on the composite group.
+			wantCost := 0.201 // Image edits without a size default to 2K.
+			if scenario == "generation" {
+				wantCost = 0.134 // The generation request explicitly selects 1K.
+			}
+			require.InDelta(t, wantCost, usage.logs[0].ActualCost, 1e-9)
 			require.Equal(t, publicModel, usage.logs[0].RequestedModel)
 		})
 	}
