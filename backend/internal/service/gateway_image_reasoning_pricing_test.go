@@ -38,8 +38,8 @@ func TestRecordUsage_ImageReasoningPricing(t *testing.T) {
 							}
 							if source == PricingSourceGroup {
 								group.ModelPricing = []ChannelModelPricing{pricing}
-								// A matching group card owns the multiplier; the channel must not stack on top.
-								pricing.ReasoningEffortMultipliers = map[string]float64{"high": 3}
+								// Model-level group cards remain the fallback when no channel model card exists.
+								delete(cache.pricingByGroupModel, channelModelKey{groupID: groupID, model: model})
 							}
 							apiKey := &APIKey{ID: 10, GroupID: &groupID, Group: group}
 							account := &Account{ID: 30, Platform: platform, Type: AccountTypeAPIKey}

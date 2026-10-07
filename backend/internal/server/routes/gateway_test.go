@@ -132,6 +132,8 @@ func TestGatewayRoutesAsyncImagesPathsAreRegistered(t *testing.T) {
 	}
 
 	for _, route := range []string{
+		"GET /v1/images/pricing",
+		"GET /images/pricing",
 		"POST /v1/images/generations/async",
 		"POST /v1/images/edits/async",
 		"GET /v1/images/tasks",

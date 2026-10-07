@@ -133,9 +133,71 @@ func TestUpstreamProfitIdentityAndArchivedSourcesPostgres(t *testing.T) {
 
 	_, err = db.ExecContext(ctx, `UPDATE upstream_targets SET deleted_at=NOW() WHERE id=$1`, createdID)
 	require.NoError(t, err)
-	sources, err := repo.LoadProfitSources(ctx, dayStart)
+	sources, err := repo.LoadProfitSources(ctx, dayStart, dayStart.AddDate(0, 0, 1))
 	require.NoError(t, err)
 	require.NotNil(t, sources.Targets[createdID])
 	require.NotNil(t, sources.Targets[createdID].ArchivedAt)
 	require.Nil(t, sources.Balances[createdID])
+}
+
+func TestUpstreamProfitPostgresParticipationMatchesBusinessPeriodAndOwnership(t *testing.T) {
+	db, ctx, _ := upstreamStorageTestDB(t)
+	repo := &upstreamFinanceRepository{db: db}
+	now := time.Now().UTC().Truncate(time.Microsecond)
+	start := timezone.StartOfDay(now)
+	end := start.AddDate(0, 0, 1)
+	periodStart := start.AddDate(0, 0, -29)
+	_, err := db.ExecContext(ctx, `UPDATE upstream_targets SET supplier_id=1 WHERE id=2;
+ INSERT INTO upstream_targets(id,supplier_id,name,provider,endpoint,api_key_encrypted,api_key_fingerprint) VALUES
+ (4,1,'Moved supplier','openai','https://example.com','cipher-four','fourth'),
+ (5,1,'Monitor only','openai','https://example.com','cipher-five','fifth')`)
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, `INSERT INTO upstream_finance_ledger(usage_id,created_at,target_id,target_name,supplier_id,account_id,user_id,api_key_id,model,revenue,business_cost,billing_type,total_tokens) VALUES
+ (1,$1,1,'Free business',1,1,1,1,'m',0,999,0,100),
+ (2,$2,2,'Yesterday business',1,1,1,1,'m',5,999,0,100),
+ (3,$1,4,'Former supplier',2,1,1,1,'m',100,999,0,100)`, now, start.Add(-time.Hour))
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, `INSERT INTO upstream_monitor_history(target_id,supplier_id,target_name,model,status,checked_at,cost,cost_source)
+ VALUES(5,1,'Monitor only','m','operational',$1,9,'reported')`, now)
+	require.NoError(t, err)
+	for _, item := range []struct {
+		id           int64
+		day, monthly float64
+	}{{1, 0.25, 2}, {2, 99, 3}, {5, 9, 100}} {
+		target, err := repo.GetTarget(ctx, item.id)
+		require.NoError(t, err)
+		_, err = db.ExecContext(ctx, `INSERT INTO upstream_balance_snapshots(target_id,identity_hash,wallet_ref,kind,currency,status,synced_at,day_used,day_start,day_end,last_30_days_used,period_start,period_end)
+ VALUES($1,$2,'default','wallet','USD','ok',$3,$4,$5,$6,$7,$8,$6)`, item.id, service.UpstreamBalanceIdentity(target), now, item.day, start, end, item.monthly, periodStart)
+		require.NoError(t, err)
+	}
+	finance := service.NewUpstreamFinanceService(repo, nil, nil, nil, nil)
+	periods, err := finance.PeriodSummaries(ctx, nil, nil)
+	require.NoError(t, err)
+	require.Zero(t, periods.Today.Revenue)
+	require.Equal(t, int64(1), periods.Today.RequestCount)
+	require.Equal(t, 0.25, *periods.Today.RemoteUsed)
+	require.Equal(t, -0.25, *periods.Today.Profit)
+	require.Equal(t, 3, periods.Today.InactiveKeyCount)
+	require.Zero(t, periods.Today.MissingKeyCount)
+	require.Equal(t, 5.0, periods.Last30Days.Revenue)
+	require.Equal(t, int64(2), periods.Last30Days.RequestCount)
+	require.Equal(t, 5.0, *periods.Last30Days.RemoteUsed)
+	require.Equal(t, 0.0, *periods.Last30Days.Profit)
+	require.Equal(t, 2, periods.Last30Days.InactiveKeyCount)
+	supplierID := int64(1)
+	overview, err := finance.OverviewFinance(ctx, []*service.UpstreamSupplier{{ID: 1}}, []*service.UpstreamTarget{{ID: 1, SupplierID: &supplierID}, {ID: 5, SupplierID: &supplierID}}, start, end)
+	require.NoError(t, err)
+	require.Equal(t, periods.Today.Profit, overview.Summary.Profit)
+	require.Equal(t, periods.Today.Profit, overview.Suppliers[1].Profit)
+	require.Equal(t, 9.0, *overview.Targets[5].RemoteUsed, "single monitored-key detail still exposes its upstream spending")
+	// The only target with today's business is removed from the current scope;
+	// all remaining keys are monitoring-only today, so the totals are zero.
+	_, err = db.ExecContext(ctx, `UPDATE upstream_targets SET deleted_at=NOW() WHERE id=1`)
+	require.NoError(t, err)
+	empty, err := finance.PeriodSummaries(ctx, nil, nil)
+	require.NoError(t, err)
+	require.Zero(t, empty.Today.Revenue)
+	require.Equal(t, 0.0, *empty.Today.RemoteUsed)
+	require.Equal(t, 0.0, *empty.Today.Profit)
+	require.False(t, empty.Today.CostPartial)
 }

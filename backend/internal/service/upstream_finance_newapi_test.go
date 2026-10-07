@@ -40,7 +40,7 @@ func newAPIFinanceFixture(t *testing.T, responses map[string]string, authorized 
 		case "/api/status":
 			require.Empty(t, req.Header.Get("Authorization"))
 			require.Empty(t, req.Header.Get("New-Api-User"))
-		case "/api/user/self", "/api/token/search", "/api/token/13", "/api/user/self/groups":
+		case "/api/user/self", "/api/token/search", "/api/token/13", "/api/user/self/groups", "/api/log/self":
 			require.Equal(t, "Bearer console-secret", req.Header.Get("Authorization"))
 			require.Equal(t, "42", req.Header.Get("New-Api-User"))
 		default:
@@ -63,7 +63,7 @@ func newAPIFinanceFixture(t *testing.T, responses map[string]string, authorized 
 func TestUpstreamFinanceNewAPIAutoDetectionKeyQuota(t *testing.T) {
 	svc, target, paths := newAPIFinanceFixture(t, newAPIFixtures(), false)
 	got := svc.fetchBalance(context.Background(), target)
-	require.Equal(t, []string{"/v1/usage", "/api/usage/token/", "/api/status"}, *paths)
+	require.Equal(t, []string{"/v1/usage", "/api/usage/token/", "/api/status", "/api/log/token"}, *paths)
 	require.Equal(t, "key_quota", got.Kind)
 	require.Equal(t, "ok", got.Status)
 	require.Equal(t, "USD", got.Currency, "display exchange must not change system USD")
@@ -78,7 +78,7 @@ func TestUpstreamFinanceNewAPIAutoDetectionKeyQuota(t *testing.T) {
 func TestUpstreamFinanceNewAPIAccountWalletAndEffectiveRatio(t *testing.T) {
 	svc, target, paths := newAPIFinanceFixture(t, newAPIFixtures(), true)
 	got := svc.fetchBalance(context.Background(), target)
-	require.Len(t, *paths, 4)
+	require.Len(t, *paths, 5)
 	require.NotContains(t, *paths, "/api/usage/token/", "authorized polling avoids the strict key-usage rate limit")
 	require.Equal(t, "wallet", got.Kind)
 	require.Equal(t, 20.0, *got.Balance)

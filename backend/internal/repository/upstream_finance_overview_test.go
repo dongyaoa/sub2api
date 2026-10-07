@@ -53,3 +53,33 @@ func TestUpstreamOverviewFinanceQueryCountIndependentOfCardCount(t *testing.T) {
 		})
 	}
 }
+
+func TestUpstreamProfitSourcesBatchBusinessParticipation(t *testing.T) {
+	for _, count := range []int{1, 1000} {
+		t.Run(fmt.Sprint(count), func(t *testing.T) {
+			db, mock, err := sqlmock.New()
+			require.NoError(t, err)
+			defer func() { _ = db.Close() }()
+			end := time.Now().Truncate(time.Microsecond)
+			start := end.AddDate(0, 0, -30)
+			lastBusiness := end.Add(-time.Hour)
+			metadata := sqlmock.NewRows([]string{"id", "supplier_id", "provider", "endpoint", "key", "key_fingerprint", "wallet", "user_id", "pat", "profit_identity_since", "archived_at", "recharge_ratio", "last_business_at"})
+			for n := 1; n <= count; n++ {
+				var last any
+				if n%2 == 1 {
+					last = lastBusiness
+				}
+				metadata.AddRow(n, 1, "openai", "https://example.test", "encrypted", fmt.Sprint(n), "default", 0, "", start, nil, nil, last)
+			}
+			mock.ExpectQuery(`WITH business AS .*MAX\(created_at\).*created_at >= \$1 AND created_at < \$2.*b.supplier_id IS NOT DISTINCT FROM t.supplier_id`).WithArgs(start, end).WillReturnRows(metadata)
+			mock.ExpectQuery(`WITH identities AS.*upstream_balance_snapshots`).WithArgs(sqlmock.AnyArg(), sqlmock.AnyArg()).WillReturnRows(sqlmock.NewRows([]string{"id"}))
+			data, err := (&upstreamFinanceRepository{db: db}).LoadProfitSources(context.Background(), start, end)
+			require.NoError(t, err)
+			require.Len(t, data.Targets, count)
+			require.Len(t, data.LastBusinessAt, (count+1)/2)
+			require.Equal(t, lastBusiness, data.LastBusinessAt[1])
+			require.NotContains(t, data.LastBusinessAt, int64(2))
+			require.NoError(t, mock.ExpectationsWereMet(), "participation and snapshots require two queries regardless of target count")
+		})
+	}
+}

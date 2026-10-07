@@ -17,6 +17,9 @@ const errorKeys: Record<string, string> = {
   newapi_request_failed: 'requestFailed',
   newapi_response_unsupported: 'responseUnsupported',
   newapi_rate_limited: 'rateLimited',
+  newapi_usage_account_auth_required: 'usageAuthorizationRequired',
+  newapi_usage_incomplete: 'usageIncomplete',
+  newapi_usage_unavailable: 'usageUnavailable',
 }
 
 export function upstreamSyncError(error: string | null | undefined, translate: (key: string) => string): string {

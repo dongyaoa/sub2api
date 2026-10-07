@@ -7,8 +7,29 @@ import {
   clearImageTasks,
   deleteImageTask,
   listImageTasks,
+  listImageModels,
+  getImageModelPricing,
   submitImageEditTask,
 } from '../api'
+
+describe('image studio model configuration API', () => {
+  afterEach(() => { vi.unstubAllGlobals() })
+
+  it('requests the key-specific studio model catalog and authoritative pricing', async () => {
+    const models = { object: 'list', data: [{ id: 'gemini-nano-banana-2.1', image_generation: true }] }
+    const pricing = { model: 'gemini-nano-banana-2.1', billing_mode: 'image', tiers: { '1K': { base_price: 0.1, unit_price: 0.1 } } }
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => models })
+      .mockResolvedValueOnce({ ok: true, json: async () => pricing })
+    vi.stubGlobal('fetch', fetchMock)
+
+    await expect(listImageModels('site-key')).resolves.toEqual(models)
+    await expect(getImageModelPricing('site-key', 'gemini-nano-banana-2.1')).resolves.toEqual(pricing)
+    expect(fetchMock.mock.calls[0][0]).toMatch(/\/v1\/models\?image_studio=1$/)
+    expect(fetchMock.mock.calls[1][0]).toMatch(/\/v1\/images\/pricing\?model=gemini-nano-banana-2\.1$/)
+    expect(fetchMock.mock.calls[1][1].headers).toEqual({ Authorization: 'Bearer site-key' })
+  })
+})
 
 describe('image studio external API', () => {
   afterEach(() => {

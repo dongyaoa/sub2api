@@ -8,7 +8,7 @@
           <div class="mb-2 flex min-h-8 items-center justify-between gap-3">
             <h2 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('imageStudio.settings') }}</h2>
             <span
-              v-if="selectedGroup"
+              v-if="estimatedCost != null"
               class="rounded-md bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
             >
               {{ t('imageStudio.estimate', { amount: formatUSD(estimatedCost) }) }}
@@ -279,7 +279,16 @@
                 <span class="text-xs font-medium text-gray-700 dark:text-gray-300">{{ t('imageStudio.pricing') }}</span>
                 <span class="max-w-[150px] truncate text-[11px] text-gray-400">{{ selectedGroup.name }}</span>
               </div>
-              <div class="grid grid-cols-3 gap-1.5">
+              <p v-if="loadingPricing" class="flex items-center gap-1.5 text-xs text-gray-400">
+                <Icon name="refresh" size="xs" class="animate-spin" />
+                {{ t('imageStudio.loadingPricing') }}
+              </p>
+              <div v-else-if="pricingError" class="flex items-center justify-between gap-2 text-xs text-red-600 dark:text-red-400">
+                <span>{{ t('imageStudio.pricingFailed') }}</span>
+                <button type="button" class="shrink-0 font-medium underline" @click="loadPricing">{{ t('imageStudio.retryPricing') }}</button>
+              </div>
+              <p v-else-if="modelPricing?.billing_mode === 'token'" class="text-xs leading-5 text-gray-500 dark:text-gray-400">{{ t('imageStudio.tokenPricingHint') }}</p>
+              <div v-else class="grid grid-cols-3 gap-1.5">
                 <div
                   v-for="price in priceTiers"
                   :key="price.tier"
@@ -302,7 +311,7 @@
             >
               <Icon :name="isWorking ? 'refresh' : (operation === 'edit' ? 'edit' : 'sparkles')" size="md" :class="isWorking ? 'animate-spin' : ''" />
               <span>{{ actionButtonLabel }}</span>
-              <span v-if="!isWorking && selectedGroup" class="text-white/75">{{ formatUSD(estimatedCost) }}</span>
+              <span v-if="!isWorking && estimatedCost != null" class="text-white/75">{{ formatUSD(estimatedCost) }}</span>
             </button>
           </form>
           </section>
@@ -545,11 +554,9 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
-import userChannelsAPI, { type UserAvailableChannel, type UserSupportedModelPricing } from '@/api/channels'
-import { userGroupsAPI } from '@/api/groups'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
@@ -563,6 +570,7 @@ import {
   clearImageTasks,
   deleteImageTask,
   extractTaskImageData,
+  getImageModelPricing,
   getImageTask,
   listImageModels,
   listImageTasks,
@@ -586,6 +594,8 @@ import { estimateImageCost, formatUSD, getImagePriceTiers } from './pricing'
 import type {
   GenerateImageRequest,
   ImageAspectRatio,
+  ImageModel,
+  ImageModelPricing,
   ImageQuality,
   ImageResolutionTier,
   ImageStudioError,
@@ -634,10 +644,11 @@ const sourcePreviewUrls = ref<string[]>([])
 const sourceInput = ref<HTMLInputElement | null>(null)
 const sourceDragActive = ref(false)
 const apiKeys = ref<ApiKey[]>([])
-const availableChannels = ref<UserAvailableChannel[]>([])
-const userRates = ref<Record<number, number>>({})
 const selectedKeyId = ref<number | null>(null)
-const models = ref<Array<{ id: string; display_name?: string }>>([])
+const models = ref<ImageModel[]>([])
+const modelPricing = ref<ImageModelPricing | null>(null)
+const loadingPricing = ref(false)
+const pricingError = ref('')
 const model = ref('')
 const prompt = ref('')
 const quality = ref<ImageQuality>('auto')
@@ -666,6 +677,7 @@ const deletingHistoryId = ref('')
 
 let historySequence = 0
 let modelController: AbortController | null = null
+let pricingController: AbortController | null = null
 let historyController: AbortController | null = null
 let taskController: AbortController | null = null
 let pollTimer: ReturnType<typeof setTimeout> | null = null
@@ -706,45 +718,22 @@ const maxQuantity = computed(() => getMaxImageQuantity(platform.value))
 const maxSourceImages = computed(() => getMaxSourceImageQuantity(platform.value))
 const openAI4KEnabled = computed(() => (
   platform.value === 'openai' &&
-  selectedGroup.value?.image_price_4k != null &&
-  Number.isFinite(Number(selectedGroup.value.image_price_4k))
+  modelPricing.value?.openai4k_allowed === true
 ))
 const resolutionOptions = computed(() => getResolutionOptions(platform.value, openAI4KEnabled.value))
 const ratioOptions = computed(() => getAspectRatioOptions(platform.value))
-const modelSquarePricing = computed<UserSupportedModelPricing | null>(() => {
-  const group = selectedGroup.value
-  const modelName = model.value.trim().toLowerCase()
-  if (!group || group.platform !== 'gemini' || !modelName) return null
-  const candidates: UserSupportedModelPricing[] = []
-  for (const channel of availableChannels.value) {
-    for (const section of channel.platforms) {
-      if (section.platform !== group.platform || !section.groups.some((item) => item.id === group.id)) continue
-      for (const supported of section.supported_models) {
-        if (supported.name.trim().toLowerCase() === modelName && supported.pricing) {
-          candidates.push(supported.pricing)
-        }
-      }
-    }
-  }
-  return candidates.find((pricing) => pricing.billing_mode === 'image' || pricing.billing_mode === 'per_request') || null
-})
 const outputSizeLabel = computed(() => platform.value === 'openai'
   ? getOpenAIImageSize(ratio.value, resolution.value).replace('x', ' x ')
   : resolution.value + ' · ' + ratio.value)
-const priceTiers = computed(() => {
-  if (!selectedGroup.value) return []
-  return getImagePriceTiers(selectedGroup.value, model.value, userRates.value[selectedGroup.value.id], modelSquarePricing.value)
-})
-const estimatedCost = computed(() => {
-  if (!selectedGroup.value) return 0
-  return estimateImageCost(selectedGroup.value, model.value, resolution.value, quantity.value, userRates.value[selectedGroup.value.id], modelSquarePricing.value)
-})
+const priceTiers = computed(() => getImagePriceTiers(modelPricing.value))
+const estimatedCost = computed(() => estimateImageCost(modelPricing.value, resolution.value, quantity.value))
 const images = computed(() => task.value ? extractTaskImageData(task.value) : [])
 const activeImage = computed(() => images.value[activeImageIndex.value] || images.value[0] || null)
 const taskId = computed(() => task.value?.task_id || task.value?.id || '')
 const isWorking = computed(() => submitting.value || viewState.value === 'processing')
 const canGenerate = computed(() => {
   if (isWorking.value || !model.value.trim() || !prompt.value.trim()) return false
+  if (loadingModels.value || loadingPricing.value || !modelPricing.value || pricingError.value) return false
   if (operation.value === 'edit' && (!supportsImageEditing(platform.value) || sourceImageFiles.value.length === 0)) return false
   return !!selectedKey.value
 })
@@ -916,22 +905,26 @@ function operationLabel(value: StudioOperation): string {
 
 async function loadModels(preferredModel = '') {
   modelController?.abort()
+  loadingModels.value = true
   models.value = []
   model.value = preferredModel
   const key = selectedKey.value
-  if (!key) return
+  if (!key) {
+    loadingModels.value = false
+    return
+  }
   const controller = new AbortController()
   modelController = controller
-  loadingModels.value = true
   try {
     const response = await listImageModels(key.key, controller.signal)
+    if (modelController !== controller || selectedKey.value?.id !== key.id) return
     const filtered = filterImageModels(platform.value, response.data || [])
     models.value = filtered
     if (!filtered.some((item) => item.id === preferredModel)) {
       model.value = filtered[0]?.id || ''
     }
   } catch (error) {
-    if ((error as Error).name !== 'AbortError') {
+    if (modelController === controller && selectedKey.value?.id === key.id && (error as Error).name !== 'AbortError') {
       model.value = ''
       appStore.showError(errorText(error, t('imageStudio.modelsFailed')))
     }
@@ -942,6 +935,39 @@ async function loadModels(preferredModel = '') {
     }
   }
 }
+
+async function loadPricing() {
+  pricingController?.abort()
+  pricingController = null
+  modelPricing.value = null
+  pricingError.value = ''
+  loadingPricing.value = false
+  const key = selectedKey.value
+  const selectedModel = model.value.trim()
+  if (!key || !selectedModel || loadingModels.value) return
+  const controller = new AbortController()
+  pricingController = controller
+  loadingPricing.value = true
+  try {
+    const quote = await getImageModelPricing(key.key, selectedModel, controller.signal)
+    if (pricingController !== controller || selectedKey.value?.id !== key.id || model.value.trim() !== selectedModel) return
+    modelPricing.value = quote
+    const normalized = normalizeStudioSelection(platform.value, ratio.value, resolution.value, openAI4KEnabled.value)
+    ratio.value = normalized.ratio
+    resolution.value = normalized.resolution
+  } catch (error) {
+    if (pricingController === controller && (error as Error).name !== 'AbortError') {
+      pricingError.value = errorText(error, t('imageStudio.pricingFailed'))
+    }
+  } finally {
+    if (pricingController === controller) {
+      loadingPricing.value = false
+      pricingController = null
+    }
+  }
+}
+
+watch([selectedKeyId, model, loadingModels], () => { void loadPricing() }, { flush: 'sync' })
 
 function stopPolling() {
   taskController?.abort()
@@ -1432,14 +1458,8 @@ async function restoreTask(stored: StoredImageTask) {
 onMounted(async () => {
   elapsedTimer = setInterval(() => { now.value = Date.now() }, 1000)
   try {
-    const [keys, channels, rates] = await Promise.all([
-      listEligibleImageKeys(),
-      userChannelsAPI.getAvailable().catch(() => [] as UserAvailableChannel[]),
-      userGroupsAPI.getUserGroupRates().catch(() => ({})),
-    ])
+    const keys = await listEligibleImageKeys()
     apiKeys.value = keys
-    availableChannels.value = channels
-    userRates.value = rates
     const stored = readPersistedTask()
     if (stored) {
       const storedKey = keys.find((key) => key.id === stored.apiKeyId)
@@ -1464,6 +1484,7 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   modelController?.abort()
+  pricingController?.abort()
   historyController?.abort()
   stopPolling()
   if (elapsedTimer) clearInterval(elapsedTimer)

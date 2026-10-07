@@ -10,11 +10,21 @@ export interface ImageModel {
   id: string
   object?: string
   display_name?: string
+  image_generation?: boolean
 }
 
 export interface ImageModelsResponse {
   object: string
   data: ImageModel[]
+}
+
+export interface ImageModelPricing {
+  model: string
+  billing_mode: string
+  pricing_source: string
+  rate_multiplier: number
+  openai4k_allowed: boolean
+  tiers: Record<ImageResolutionTier, { base_price: number; unit_price: number }> | null
 }
 
 export interface GenerateImageRequest {

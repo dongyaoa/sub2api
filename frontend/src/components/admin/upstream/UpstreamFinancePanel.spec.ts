@@ -6,7 +6,7 @@ import { money } from './format'
 
 const financeSummary = vi.hoisted(() => vi.fn())
 vi.mock('@/api/admin/upstreamCenter', () => ({ upstreamCenterAPI: { financeSummary } }))
-vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
+vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (key: string, params?: { count?: number }) => params?.count == null ? key : `${key} ${params.count}` }) }))
 beforeEach(() => { financeSummary.mockReset() })
 
 function summary(overrides: Partial<UpstreamFinanceSummary> = {}): UpstreamFinanceSummary {
@@ -36,7 +36,7 @@ describe('upstream consumption and profit totals', () => {
     wrapper.unmount()
   })
   it('keeps known partial costs visible but hides profit until all active keys are covered', async () => {
-    const partial = summary({ cost_source: 'unknown', remote_used: 2, profit: 10, cost_partial: true, known_key_count: 1, missing_key_count: 1, archived_key_count: 2 })
+    const partial = summary({ cost_source: 'unknown', remote_used: 2, profit: 10, cost_partial: true, known_key_count: 1, missing_key_count: 1, archived_key_count: 2, inactive_key_count: 3 })
     financeSummary.mockResolvedValue({ today: partial, last_30_days: partial })
     const wrapper = mountPanel()
     await flushPromises()
@@ -45,8 +45,35 @@ describe('upstream consumption and profit totals', () => {
     expect(wrapper.get('[data-period="today"]').text()).toContain('upstreamCenter.finance.pending')
     expect(wrapper.find('[data-testid="finance-partial"]').exists()).toBe(true)
     expect(wrapper.find('[data-testid="finance-archived"]').exists()).toBe(true)
+    expect(wrapper.get('[data-period="today"] [data-testid="finance-inactive"]').text()).toBe('upstreamCenter.finance.inactiveScope 3')
     expect(wrapper.find('[data-testid="finance-converted"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="supplier-recharge-ratio"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+  it('shows period-specific unused key exclusions without blocking reported profit', async () => {
+    financeSummary.mockResolvedValue({
+      today: summary({ inactive_key_count: 3 }),
+      last_30_days: summary({ revenue: 120, remote_used: 40, profit: 80, inactive_key_count: 1 }),
+    })
+    const wrapper = mountPanel()
+    await flushPromises()
+    expect(wrapper.get('[data-period="today"] [data-testid="finance-inactive"]').text()).toBe('upstreamCenter.finance.inactiveScope 3')
+    expect(wrapper.get('[data-period="last30Days"] [data-testid="finance-inactive"]').text()).toBe('upstreamCenter.finance.inactiveScope 1')
+    expect(wrapper.get('[data-period="today"]').text()).toContain(money(8))
+    expect(wrapper.get('[data-period="last30Days"]').text()).toContain(money(80))
+    expect(wrapper.text()).toContain('upstreamCenter.finance.aggregateScope')
+    expect(wrapper.text()).not.toContain('upstreamCenter.finance.pending')
+    wrapper.unmount()
+  })
+  it('shows zero business totals when all keys were only monitored in the period', async () => {
+    const inactive = summary({ revenue: 0, remote_used: 0, profit: 0, request_count: 0, inactive_key_count: 2 })
+    financeSummary.mockResolvedValue({ today: inactive, last_30_days: inactive })
+    const wrapper = mountPanel()
+    await flushPromises()
+    expect(wrapper.get('[data-period="today"]').text()).toContain(money(0))
+    expect(wrapper.get('[data-period="today"] [data-testid="finance-inactive"]').text()).toBe('upstreamCenter.finance.inactiveScope 2')
+    expect(wrapper.text()).not.toContain('upstreamCenter.finance.pending')
+    expect(wrapper.text()).not.toContain('upstreamCenter.financeUnavailable')
     wrapper.unmount()
   })
   it('shows today and the last 30 days without a request ledger or date inputs', async () => {
@@ -112,6 +139,7 @@ describe('upstream consumption and profit totals', () => {
     await wrapper.findAll('[role="option"]').find(option => option.text() === 'Group 9')!.trigger('click')
     await flushPromises()
     expect(financeSummary).toHaveBeenLastCalledWith({ supplier_id: 2, target_id: 9 }, expect.any(AbortSignal))
+    expect(wrapper.text()).not.toContain('upstreamCenter.finance.aggregateScope')
     expect(financeSummary).toHaveBeenCalledTimes(2)
     await wrapper.setProps({ supplier: { ...supplier, name: 'Updated supplier' } })
     await flushPromises()
@@ -121,6 +149,7 @@ describe('upstream consumption and profit totals', () => {
     await wrapper.findAll('[role="option"]').find(option => option.text() === 'upstreamCenter.finance.allGroups')!.trigger('click')
     await flushPromises()
     expect(financeSummary).toHaveBeenLastCalledWith({ supplier_id: 2, target_id: undefined }, expect.any(AbortSignal))
+    expect(wrapper.text()).toContain('upstreamCenter.finance.aggregateScope')
     wrapper.unmount()
   })
 })

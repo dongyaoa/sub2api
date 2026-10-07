@@ -204,7 +204,7 @@ func TestNewAPICacheGatesQuotaPerOriginAndSearchPerUser(t *testing.T) {
 	require.True(t, svc.allowNewAPIQuota("https://EXAMPLE.com:443/prefix/"))
 	require.False(t, svc.allowNewAPIQuota("https://example.com/another-prefix"))
 	require.True(t, svc.allowNewAPIQuota("https://other.example.com/prefix"))
-	*now = now.Add(64 * time.Second)
+	*now = now.Add(newAPIQuotaRequestGap - time.Second)
 	require.False(t, svc.allowNewAPIQuota("https://example.com/prefix"))
 	*now = now.Add(time.Second)
 	require.True(t, svc.allowNewAPIQuota("https://example.com/prefix"))

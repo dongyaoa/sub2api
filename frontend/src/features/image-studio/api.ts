@@ -3,6 +3,7 @@ import type {
   GenerateImageRequest,
   ImageGenerationResult,
   ImageModelsResponse,
+  ImageModelPricing,
   ImageStudioError,
   ImageTask,
 } from './types'
@@ -113,7 +114,21 @@ export async function generateExternalImageEdit(
   return response.json()
 }
 export async function listImageModels(apiKey: string, signal?: AbortSignal): Promise<ImageModelsResponse> {
-  const response = await fetch(buildGatewayUrl('/v1/models'), {
+  const response = await fetch(buildGatewayUrl('/v1/models?image_studio=1'), {
+    headers: authHeaders(apiKey),
+    signal,
+  })
+  if (!response.ok) throw await parseImageStudioError(response)
+  return response.json()
+}
+
+export async function getImageModelPricing(
+  apiKey: string,
+  model: string,
+  signal?: AbortSignal,
+): Promise<ImageModelPricing> {
+  const query = new URLSearchParams({ model })
+  const response = await fetch(buildGatewayUrl(`/v1/images/pricing?${query.toString()}`), {
     headers: authHeaders(apiKey),
     signal,
   })

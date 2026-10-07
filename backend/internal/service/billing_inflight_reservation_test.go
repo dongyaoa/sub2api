@@ -151,7 +151,7 @@ func TestInflightEstimate_MediaKinds(t *testing.T) {
 
 	est, priced := svc.EstimateInflightReservation(context.Background(), apiKey, InflightEstimateRequest{Model: "gpt-image-1", Kind: InflightEstimateImage, Units: 2})
 	require.True(t, priced)
-	require.GreaterOrEqual(t, est, 0.6, "image estimate uses the highest size tier × n")
+	require.InDelta(t, svc.billingService.CalculateImageCost("gpt-image-1", ImageBillingSize4K, 2, nil, 1).ActualCost, est, 1e-12, "image estimate uses model default; legacy group price is ignored")
 
 	est, priced = svc.EstimateInflightReservation(context.Background(), apiKey, InflightEstimateRequest{Model: "grok-web-search", Kind: InflightEstimatePerRequest, SearchCalls: 1})
 	require.True(t, priced)
@@ -160,6 +160,18 @@ func TestInflightEstimate_MediaKinds(t *testing.T) {
 	est, priced = svc.EstimateInflightReservation(context.Background(), apiKey, InflightEstimateRequest{Model: "realtime", Kind: InflightEstimateAudio, AudioMode: "realtime", AudioUnits: 1})
 	require.True(t, priced)
 	require.Greater(t, est, 0.0)
+}
+
+func TestInflightEstimate_ImageUsesChannelPriceRatherThanFlatGroupPrice(t *testing.T) {
+	groupID, flat := int64(31), 99.0
+	svc := newInflightEstimateGateway(t, nil)
+	svc.resolver = newOpenAIImageChannelPricingResolverForTest(t, groupID, "gemini-nano-banana-2.1", 0.1)
+	apiKey := &APIKey{User: &User{ID: 1}, GroupID: &groupID, Group: &Group{
+		ID: groupID, Platform: PlatformGemini, RateMultiplier: 1, ImagePrice4K: &flat,
+	}}
+	est, priced := svc.EstimateInflightReservation(context.Background(), apiKey, InflightEstimateRequest{Model: "gemini-nano-banana-2.1", Kind: InflightEstimateImage, Units: 2})
+	require.True(t, priced)
+	require.InDelta(t, 0.2, est, 1e-12)
 }
 
 // ---------------------------------------------------------------------------

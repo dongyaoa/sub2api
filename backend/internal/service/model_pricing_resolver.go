@@ -128,6 +128,29 @@ func (r *ModelPricingResolver) Resolve(ctx context.Context, input PricingInput) 
 	return resolved
 }
 
+// ResolveImagePricing keeps image model prices independent from legacy flat
+// group image prices. Channel model cards take precedence for image requests;
+// the regular token/video resolver retains its existing group-first behavior.
+// nil means use the model's default per-image price.
+func (r *ModelPricingResolver) ResolveImagePricing(ctx context.Context, input PricingInput) *ResolvedPricing {
+	if r == nil {
+		return nil
+	}
+	if input.GroupID != nil {
+		if configured := r.lookupChannelPricingNormalized(ctx, *input.GroupID, input.Model); configured != nil {
+			resolved := r.resolveConfiguredPricing(configured, input.Model, PricingSourceChannel)
+			resolved.longContextPricingEnabled = input.Group == nil || input.Group.LongContextPricingEnabled
+			return resolved
+		}
+	}
+	if configured := matchGroupModelPricing(input.Group, input.Model); configured != nil {
+		resolved := r.resolveConfiguredPricing(configured, input.Model, PricingSourceGroup)
+		resolved.longContextPricingEnabled = input.Group == nil || input.Group.LongContextPricingEnabled
+		return resolved
+	}
+	return nil
+}
+
 func (r *ModelPricingResolver) resolveConfiguredPricing(config *ChannelModelPricing, model, source string) *ResolvedPricing {
 	mode := config.BillingMode
 	if mode == "" {

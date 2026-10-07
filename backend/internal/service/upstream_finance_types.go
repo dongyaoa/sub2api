@@ -33,6 +33,7 @@ type UpstreamFinanceSummary struct {
 	KnownKeyCount        int        `json:"known_key_count"`
 	MissingKeyCount      int        `json:"missing_key_count"`
 	ArchivedKeyCount     int        `json:"archived_key_count"`
+	InactiveKeyCount     int        `json:"inactive_key_count"`
 	ConversionApplied    bool       `json:"conversion_applied"`
 	ReconciliationDelta  *float64   `json:"reconciliation_delta"`
 	UnpricedMonitorCount int64      `json:"unpriced_monitor_count"`

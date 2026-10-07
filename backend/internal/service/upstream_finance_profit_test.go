@@ -16,8 +16,9 @@ func TestUpstreamDailyProfitKeepsLastSuccessfulAmountDuringRefresh(t *testing.T)
 	synced := now.Add(-10 * time.Minute)
 	cost := 1.0
 	sources := &UpstreamProfitSources{
-		Targets:  map[int64]*UpstreamFinanceTarget{11: {ID: 11, SupplierID: &supplier, Endpoint: "https://example.com", APIKeyFingerprint: "key", ProfitIdentitySince: now.Add(-time.Hour)}},
-		Balances: map[int64]*UpstreamBalanceSnapshot{11: {Status: "error", Currency: "USD", DayUsed: &cost, DayStart: &start, DayEnd: &end, SyncedAt: &synced}},
+		LastBusinessAt: map[int64]time.Time{11: now},
+		Targets:        map[int64]*UpstreamFinanceTarget{11: {ID: 11, SupplierID: &supplier, Endpoint: "https://example.com", APIKeyFingerprint: "key", ProfitIdentitySince: now.Add(-time.Hour)}},
+		Balances:       map[int64]*UpstreamBalanceSnapshot{11: {Status: "error", Currency: "USD", DayUsed: &cost, DayStart: &start, DayEnd: &end, SyncedAt: &synced}},
 	}
 	summary := &UpstreamFinanceSummary{Revenue: 2, CostSource: "unknown"}
 	applyUpstreamDailyProfit(summary, UpstreamFinanceQuery{From: start, To: end}, sources, now)
@@ -38,6 +39,7 @@ func TestUpstreamDailyProfitKeepsLastSuccessfulAmountDuringRefresh(t *testing.T)
 	require.True(t, partial.RemoteStale)
 	// The stale copy cannot become today's cost after local midnight.
 	tomorrow := now.AddDate(0, 0, 1)
+	sources.LastBusinessAt[11] = tomorrow
 	next := &UpstreamFinanceSummary{Revenue: 2, CostSource: "unknown"}
 	applyUpstreamDailyProfit(next, UpstreamFinanceQuery{From: end, To: end.AddDate(0, 0, 1)}, sources, tomorrow)
 	require.Nil(t, next.Profit)
@@ -49,6 +51,7 @@ func TestUpstreamPeriodProfitUses30DayChargeAndDeduplicatesKeys(t *testing.T) {
 	supplier := int64(7)
 	synced := now.Add(-time.Minute)
 	sources := &UpstreamProfitSources{
+		LastBusinessAt: map[int64]time.Time{11: now, 12: now},
 		Targets: map[int64]*UpstreamFinanceTarget{
 			11: {ID: 11, SupplierID: &supplier, Endpoint: "https://example.com", APIKeyFingerprint: "key"},
 			12: {ID: 12, SupplierID: &supplier, Endpoint: "https://example.com/v1", APIKeyFingerprint: "key"},
@@ -90,6 +93,7 @@ func TestUpstreamPeriodProfitRetainsKnownKeyCostsAndConvertsEachSupplier(t *test
 	start, end := timezone.StartOfDay(now).AddDate(0, 0, -29), timezone.StartOfDay(now).AddDate(0, 0, 1)
 	one, two := int64(1), int64(2)
 	sources := &UpstreamProfitSources{
+		LastBusinessAt: map[int64]time.Time{1: now, 2: now, 3: now},
 		Targets: map[int64]*UpstreamFinanceTarget{
 			1: {ID: 1, SupplierID: &one, Endpoint: "https://example.com", APIKeyFingerprint: "one", RechargeRatio: financeFloat(10)},
 			2: {ID: 2, SupplierID: &one, Endpoint: "https://example.com", APIKeyFingerprint: "two", RechargeRatio: financeFloat(10)},
@@ -170,6 +174,7 @@ func TestUpstreamDailyProfitUsesReportedCharge(t *testing.T) {
 	cost := 1.0
 	synced := now.Add(-time.Minute)
 	sources := &UpstreamProfitSources{
+		LastBusinessAt: map[int64]time.Time{targetID: now},
 		Targets: map[int64]*UpstreamFinanceTarget{targetID: {
 			ID: targetID, SupplierID: &supplier, Endpoint: "https://example.com/v1",
 			APIKeyFingerprint: "one", ProfitIdentitySince: dayStart.Add(-time.Hour),
@@ -204,6 +209,7 @@ func TestUpstreamDailyProfitRejectsUnreconciledCost(t *testing.T) {
 	stale := now.Add(-4 * time.Minute)
 	makeSources := func() *UpstreamProfitSources {
 		return &UpstreamProfitSources{
+			LastBusinessAt: map[int64]time.Time{11: now},
 			Targets: map[int64]*UpstreamFinanceTarget{11: {
 				ID: 11, SupplierID: &supplier, Endpoint: "https://example.com/v1",
 				APIKeyFingerprint: "one", ProfitIdentitySince: dayStart.Add(-time.Hour),
@@ -253,4 +259,112 @@ func TestUpstreamDailyProfitRejectsUnreconciledCost(t *testing.T) {
 		applyUpstreamDailyProfit(summary, q, makeSources(), now)
 		require.Nil(t, summary.Profit)
 	}
+}
+
+func TestUpstreamProfitAggregateExcludesKeysWithoutBusiness(t *testing.T) {
+	now := time.Date(2026, 10, 7, 12, 0, 0, 0, timezone.Location())
+	start, end := timezone.StartOfDay(now), timezone.StartOfDay(now).AddDate(0, 0, 1)
+	supplier := int64(1)
+	sources := &UpstreamProfitSources{
+		Targets: map[int64]*UpstreamFinanceTarget{
+			1: {ID: 1, SupplierID: &supplier, Endpoint: "https://example.com", APIKeyFingerprint: "business"},
+			2: {ID: 2, SupplierID: &supplier, Endpoint: "https://example.com", APIKeyFingerprint: "monitor"},
+			3: {ID: 3, SupplierID: &supplier, Endpoint: "https://example.com", APIKeyFingerprint: "pending"},
+		},
+		Balances: map[int64]*UpstreamBalanceSnapshot{
+			1: {Status: "ok", Currency: "USD", DayUsed: financeFloat(2), DayStart: &start, DayEnd: &end, DaySyncedAt: &now},
+			2: {Status: "ok", Currency: "USD", DayUsed: financeFloat(99), DayStart: &start, DayEnd: &end, DaySyncedAt: &now},
+		},
+		LastBusinessAt: map[int64]time.Time{1: now},
+	}
+	for _, q := range []UpstreamFinanceQuery{
+		{From: start, To: end},
+		{SupplierID: &supplier, From: start, To: end},
+	} {
+		// A zero-revenue request is still real business and must incur its cost.
+		summary := &UpstreamFinanceSummary{RequestCount: 1}
+		applyUpstreamDailyProfit(summary, q, sources, now)
+		require.Equal(t, 2.0, *summary.RemoteUsed)
+		require.Equal(t, -2.0, *summary.Profit)
+		require.Equal(t, 1, summary.KnownKeyCount)
+		require.Equal(t, 2, summary.InactiveKeyCount)
+		require.Zero(t, summary.MissingKeyCount)
+		require.False(t, summary.CostPartial)
+	}
+
+	// Single-key detail remains useful even when the key is only monitored.
+	monitorID := int64(2)
+	detail := &UpstreamFinanceSummary{}
+	applyUpstreamDailyProfit(detail, UpstreamFinanceQuery{TargetID: &monitorID, From: start, To: end}, sources, now)
+	require.Equal(t, 99.0, *detail.RemoteUsed)
+	require.Equal(t, -99.0, *detail.Profit)
+	require.Zero(t, detail.InactiveKeyCount)
+
+	// Once the pending key serves a business request, unknown cost must remain
+	// explicit instead of producing a falsely complete profit.
+	sources.LastBusinessAt[3] = now
+	partial := &UpstreamFinanceSummary{RequestCount: 2, Revenue: 4}
+	applyUpstreamDailyProfit(partial, UpstreamFinanceQuery{From: start, To: end}, sources, now)
+	require.Equal(t, 2.0, *partial.RemoteUsed)
+	require.True(t, partial.CostPartial)
+	require.Equal(t, 1, partial.MissingKeyCount)
+	require.Nil(t, partial.Profit)
+}
+
+func TestUpstreamProfitParticipationUsesEachCalendarWindow(t *testing.T) {
+	now := time.Date(2026, 10, 7, 12, 0, 0, 0, timezone.Location())
+	start, end := timezone.StartOfDay(now), timezone.StartOfDay(now).AddDate(0, 0, 1)
+	periodStart := start.AddDate(0, 0, -29)
+	supplier := int64(1)
+	sources := &UpstreamProfitSources{
+		Targets: map[int64]*UpstreamFinanceTarget{
+			1: {ID: 1, SupplierID: &supplier, Endpoint: "https://example.com", APIKeyFingerprint: "prior-day"},
+			2: {ID: 2, SupplierID: &supplier, Endpoint: "https://example.com", APIKeyFingerprint: "old"},
+			3: {ID: 3, SupplierID: &supplier, Endpoint: "https://example.com", APIKeyFingerprint: "future"},
+		},
+		Balances: map[int64]*UpstreamBalanceSnapshot{
+			1: {Status: "ok", Currency: "USD", Last30DaysUsed: financeFloat(3), PeriodStart: &periodStart, PeriodEnd: &end, PeriodSyncedAt: &now},
+		},
+		LastBusinessAt: map[int64]time.Time{1: periodStart, 2: periodStart.Add(-time.Nanosecond), 3: end},
+	}
+	daily := &UpstreamFinanceSummary{}
+	applyUpstreamDailyProfit(daily, UpstreamFinanceQuery{From: start, To: end}, sources, now)
+	require.Equal(t, 0.0, *daily.RemoteUsed)
+	require.Equal(t, 0.0, *daily.Profit)
+	require.Zero(t, daily.Revenue)
+	require.Equal(t, 3, daily.InactiveKeyCount)
+	require.False(t, daily.CostPartial)
+	require.Zero(t, daily.MissingKeyCount)
+
+	month := &UpstreamFinanceSummary{RequestCount: 1, Revenue: 5}
+	applyUpstreamPeriodProfit(month, UpstreamFinanceQuery{From: periodStart, To: end}, sources, now, true)
+	require.Equal(t, 3.0, *month.RemoteUsed)
+	require.Equal(t, 2.0, *month.Profit)
+	require.Equal(t, 2, month.InactiveKeyCount)
+	require.Equal(t, 1, month.KnownKeyCount)
+}
+
+func TestUpstreamProfitUsesIdleDuplicateSnapshotWithBusinessConversion(t *testing.T) {
+	now := time.Date(2026, 10, 7, 12, 0, 0, 0, timezone.Location())
+	start, end := timezone.StartOfDay(now), timezone.StartOfDay(now).AddDate(0, 0, 1)
+	one, two := int64(1), int64(2)
+	sources := &UpstreamProfitSources{
+		Targets: map[int64]*UpstreamFinanceTarget{
+			1: {ID: 1, SupplierID: &one, Endpoint: "https://example.com", APIKeyFingerprint: "same-key", RechargeRatio: financeFloat(10)},
+			2: {ID: 2, SupplierID: &two, Endpoint: "https://example.com/v1", APIKeyFingerprint: "same-key", RechargeRatio: financeFloat(2)},
+		},
+		Balances: map[int64]*UpstreamBalanceSnapshot{
+			2: {Status: "ok", Currency: "USD", DayUsed: financeFloat(10), DayStart: &start, DayEnd: &end, DaySyncedAt: &now},
+		},
+		LastBusinessAt: map[int64]time.Time{1: now},
+	}
+	summary := &UpstreamFinanceSummary{Revenue: 3, RequestCount: 1}
+	applyUpstreamDailyProfit(summary, UpstreamFinanceQuery{From: start, To: end}, sources, now)
+	require.Equal(t, 1.0, *summary.RemoteUsed)
+	require.Equal(t, 10.0, *summary.RemoteRawUsed)
+	require.Equal(t, 2.0, *summary.Profit)
+	require.Equal(t, 1, summary.KnownKeyCount)
+	require.Equal(t, 1, summary.InactiveKeyCount)
+	require.True(t, summary.ConversionApplied)
+	require.False(t, summary.CostPartial)
 }

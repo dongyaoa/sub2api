@@ -4,9 +4,13 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"io"
 	"mime/multipart"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
+	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
 
@@ -41,6 +45,30 @@ func TestBuildGeminiStudioImageRequestAcceptsGeminiProImage(t *testing.T) {
 	)
 	require.NoError(t, err)
 	require.Equal(t, gemini3ProImageLegacyModel, model)
+}
+
+func TestBuildGeminiStudioImageRequestAcceptsConfiguredAliases(t *testing.T) {
+	for _, modelID := range []string{"gemini-nano-banana-2.1", "CustomBanana2", "gemini-2.5-flash-image"} {
+		t.Run(modelID, func(t *testing.T) {
+			body, err := json.Marshal(map[string]any{"model": modelID, "prompt": "draw a banana", "n": 1})
+			require.NoError(t, err)
+			model, _, err := buildGeminiStudioImageRequest("/v1/images/generations", "application/json", body)
+			require.NoError(t, err)
+			require.Equal(t, modelID, model)
+		})
+	}
+}
+
+func TestPrepareGeminiStudioImageContextPreservesConfiguredAlias(t *testing.T) {
+	c, _ := gin.CreateTestContext(httptest.NewRecorder())
+	c.Request = httptest.NewRequest(http.MethodPost, "/v1/images/generations", bytes.NewBufferString(`{"model":"CustomBanana2","prompt":"draw a banana","n":1}`))
+	c.Request.Header.Set("Content-Type", "application/json")
+	require.NoError(t, prepareGeminiStudioImageContext(c))
+	require.Equal(t, "/v1beta/models/CustomBanana2:generateContent", c.Request.URL.Path)
+	require.Equal(t, "CustomBanana2:generateContent", c.Param("modelAction"))
+	convertedBody, err := io.ReadAll(c.Request.Body)
+	require.NoError(t, err)
+	require.Contains(t, string(convertedBody), `"responseModalities":["TEXT","IMAGE"]`)
 }
 
 func TestBuildGeminiStudioImageRequestEdit(t *testing.T) {
@@ -79,8 +107,14 @@ func TestBuildGeminiStudioImageRequestEdit(t *testing.T) {
 }
 
 func TestBuildGeminiStudioImageRequestRejectsUnsupportedInputs(t *testing.T) {
-	_, _, err := buildGeminiStudioImageRequest("/v1/images/generations", "application/json", []byte(`{"model":"gemini-2.5-flash-image","prompt":"draw","n":1}`))
-	require.ErrorContains(t, err, "model must be")
+	for _, modelID := range []string{"../gemini-nano-banana-2.1", "gemini/image", "banana:generateContent", "banana?key=test"} {
+		body, err := json.Marshal(map[string]any{"model": modelID, "prompt": "draw", "n": 1})
+		require.NoError(t, err)
+		_, _, err = buildGeminiStudioImageRequest("/v1/images/generations", "application/json", body)
+		require.ErrorContains(t, err, "invalid model")
+	}
+	_, _, err := buildGeminiStudioImageRequest("/v1/images/generations", "application/json", []byte(`{"prompt":"draw","n":1}`))
+	require.ErrorContains(t, err, "model is required")
 	_, _, err = buildGeminiStudioImageRequest("/v1/images/generations", "application/json", []byte(`{"model":"gemini-3.1-flash-image","prompt":"draw","n":2}`))
 	require.ErrorContains(t, err, "one image per request")
 }

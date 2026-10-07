@@ -12,10 +12,13 @@ import (
 	"strconv"
 	"strings"
 	"unicode/utf8"
+
+	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 )
 
 // New API exposes key quota separately from the user's wallet. The model key
-// can read only /api/usage/token/; console authorization stays on account APIs.
+// can read /api/usage/token/ and recent /api/log/token records; console
+// authorization stays on account APIs.
 // Contracts: QuantumNous/new-api controller/{token,user,group,misc}.go,
 // verified against v0.10.8 and v1.0.0-rc.40. No generation is performed here.
 type newAPIEnvelope struct {
@@ -167,7 +170,7 @@ func (s *UpstreamFinanceService) fetchNewAPIBalance(ctx context.Context, target 
 		unit = *status.QuotaPerUnit
 	}
 	defer func() {
-		for _, value := range []*float64{snapshot.Balance, snapshot.QuotaRemaining, snapshot.TotalUsed} {
+		for _, value := range []*float64{snapshot.Balance, snapshot.QuotaRemaining, snapshot.TotalUsed, snapshot.DayUsed, snapshot.Last30DaysUsed} {
 			if unit > 0 && value != nil {
 				converted := *value / unit
 				if !newAPIQuota(&converted, true) {
@@ -176,10 +179,14 @@ func (s *UpstreamFinanceService) fetchNewAPIBalance(ctx context.Context, target 
 			}
 		}
 		if unit > 0 {
-			for _, value := range []*float64{snapshot.Balance, snapshot.QuotaRemaining, snapshot.TotalUsed} {
+			for _, value := range []*float64{snapshot.Balance, snapshot.QuotaRemaining, snapshot.TotalUsed, snapshot.DayUsed, snapshot.Last30DaysUsed} {
 				if value != nil {
 					*value /= unit
 				}
+			}
+			if snapshot.DayUsed != nil {
+				value := *snapshot.DayUsed
+				snapshot.TodayUsed = &value
 			}
 			snapshot.Currency, snapshot.CurrencySource = "USD", "newapi_status"
 		} else if snapshot.Status == "ok" {
@@ -187,6 +194,9 @@ func (s *UpstreamFinanceService) fetchNewAPIBalance(ctx context.Context, target 
 		}
 	}()
 	if target.NewAPIUserID <= 0 || target.NewAPIAccessTokenEncrypted == "" {
+		if recognized && unit > 0 {
+			snapshot.Error = s.fetchNewAPIRecentUsage(ctx, base, key, snapshot, timezone.StartOfDay(now))
+		}
 		return snapshot, recognized
 	}
 	billing.Source = "newapi_account"
@@ -234,6 +244,11 @@ func (s *UpstreamFinanceService) fetchNewAPIBalance(ctx context.Context, target 
 		snapshot.Kind, snapshot.Balance = "wallet", user.Quota
 	} else {
 		snapshot.Error = "newapi_response_unsupported"
+	}
+	// Usage is independently verifiable even when the group has a dynamic or
+	// unavailable multiplier. Never derive its cost from the group's rate.
+	if unit > 0 {
+		snapshot.Error = s.fetchNewAPIAccountUsage(ctx, base, consoleKey, target, token.ID, snapshot, timezone.StartOfDay(now))
 	}
 	group := *token.Group
 	if group == "" {

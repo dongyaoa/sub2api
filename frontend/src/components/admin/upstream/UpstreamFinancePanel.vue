@@ -28,6 +28,7 @@
       </section>
       <div class="rounded-xl bg-primary-50/60 p-3.5 text-xs leading-5 text-primary-800 dark:bg-primary-500/10 dark:text-primary-200">
         <p>{{ t('upstreamCenter.finance.note') }}</p>
+        <p v-if="!target && !targetId" class="mt-1 opacity-80">{{ t('upstreamCenter.finance.aggregateScope') }}</p>
         <p class="mt-1 opacity-80">{{ t('upstreamCenter.finance.bindingHint') }}</p>
       </div>
     </template>

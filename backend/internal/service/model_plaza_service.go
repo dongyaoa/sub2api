@@ -96,7 +96,7 @@ func NewModelPlazaService(
 //   - 渠道按 lower(name) 排序后遍历，保证同名模型去重结果确定；
 //   - 同分组同名模型「先见者胜」，仅当已存条目无定价而新条目有定价时升级替换；
 //   - token 模型的单价与阶梯按实收口径合成（见 ResolveContextPricingSchedule），
-//     图片计费模型的档位价按实收口径合成（见 plazaImageDisplayPricing）；
+//     图片计费模型沿用模型定价，不叠加旧分组图片价；
 //   - 每个模型附带官方参考价（查不到为 nil）；
 //   - 只返回 Models 非空的分组；分组按 RateMultiplier 升序（同倍率按名称），
 //     组内模型按名称排序。
@@ -227,8 +227,15 @@ func (s *ModelPlazaService) ListGroups(ctx context.Context) ([]PlazaGroup, error
 
 // fillDisplayPricing 把模型的展示定价换成实收口径：
 // token 模型取计费阶梯表（单价与档位均由真实计费函数得出），
-// 图片/按次模型（或阶梯表不可用时）沿用渠道定价与分组图片档位价。
+// 图片/按次模型（或阶梯表不可用时）沿用模型定价。
 func (s *ModelPlazaService) fillDisplayPricing(ctx context.Context, m *PlazaModel, g *Group) {
+	if s.resolver != nil {
+		gid := g.ID
+		if resolved := s.resolver.ResolveImagePricing(ctx, PricingInput{Model: m.Name, GroupID: &gid, Group: g}); resolved != nil && (resolved.Mode == BillingModeImage || resolved.Mode == BillingModePerRequest) {
+			m.Pricing = resolved.channelPricing
+			return
+		}
+	}
 	if groupPricing := matchGroupModelPricing(g, m.Name); groupPricing != nil {
 		m.Pricing = groupPricing
 	}
@@ -247,7 +254,6 @@ func (s *ModelPlazaService) fillDisplayPricing(ctx context.Context, m *PlazaMode
 			return
 		}
 	}
-	m.Pricing = plazaImageDisplayPricing(m.Pricing, g)
 }
 
 // plazaPricingFromSchedule 把阶梯表压成展示用的 ChannelModelPricing：
@@ -288,53 +294,6 @@ func plazaIntervalsFromTiers(tiers []ContextPricingTier) []PricingInterval {
 		})
 	}
 	return intervals
-}
-
-// plazaImageDisplayPricing 为图片计费模型合成展示定价，使档位价与实收口径一致：
-// 每档（1K/2K/4K）单价 = 分组图片价 > 渠道同档位价 > 渠道默认按次价，无价的档不展示。
-// 分组未配任何图片价、或定价非图片模式时原样返回。返回克隆，不修改入参
-// （渠道定价指针指向缓存共享数据）。
-func plazaImageDisplayPricing(p *ChannelModelPricing, g *Group) *ChannelModelPricing {
-	if p == nil || g == nil || p.BillingMode != BillingModeImage {
-		return p
-	}
-	if g.ImagePrice1K == nil && g.ImagePrice2K == nil && g.ImagePrice4K == nil {
-		return p
-	}
-	channelTierPrice := func(label string) *float64 {
-		for i := range p.Intervals {
-			if p.Intervals[i].TierLabel == label && p.Intervals[i].PerRequestPrice != nil {
-				return p.Intervals[i].PerRequestPrice
-			}
-		}
-		return p.PerRequestPrice
-	}
-	tiers := []struct {
-		label      string
-		groupPrice *float64
-	}{
-		{"1K", g.ImagePrice1K},
-		{"2K", g.ImagePrice2K},
-		{"4K", g.ImagePrice4K},
-	}
-	clone := *p
-	clone.Intervals = make([]PricingInterval, 0, len(tiers))
-	for i, t := range tiers {
-		price := t.groupPrice
-		if price == nil {
-			price = channelTierPrice(t.label)
-		}
-		if price == nil {
-			continue
-		}
-		v := *price
-		clone.Intervals = append(clone.Intervals, PricingInterval{
-			TierLabel:       t.label,
-			PerRequestPrice: &v,
-			SortOrder:       i,
-		})
-	}
-	return &clone
 }
 
 // lookupOfficialPricing 查询模型的官方参考价（与计费同源：LiteLLM → 内置兜底 → 模型策略），

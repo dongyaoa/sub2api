@@ -93,6 +93,7 @@ export interface UpstreamFinanceSummary {
   known_key_count?: number
   missing_key_count?: number
   archived_key_count?: number
+  inactive_key_count?: number
   reconciliation_delta: number | null
   unpriced_monitor_count: number
 }

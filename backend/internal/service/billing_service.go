@@ -1755,20 +1755,49 @@ func (s *BillingService) calculatePerRequestCost(resolved *ResolvedPricing, inpu
 		units = float64(count)
 	}
 
-	var unitPrice float64
-
-	if input.SizeTier != "" {
+	unitPrice := resolved.DefaultPerRequestPrice
+	if resolved.Mode == BillingModeVideo {
+		// Preserve the separate video billing policy.
 		unitPrice = input.Resolver.GetRequestTierPrice(resolved, input.SizeTier)
-	}
-
-	if unitPrice == 0 {
-		totalContext := input.Tokens.InputTokens + input.Tokens.CacheCreationTokens + input.Tokens.CacheReadTokens
-		unitPrice = input.Resolver.GetRequestTierPriceByContext(resolved, totalContext)
-	}
-
-	// 回退到默认按次价格
-	if unitPrice == 0 {
-		unitPrice = resolved.DefaultPerRequestPrice
+		if unitPrice == 0 {
+			totalContext := input.Tokens.InputTokens + input.Tokens.CacheCreationTokens + input.Tokens.CacheReadTokens
+			unitPrice = input.Resolver.GetRequestTierPriceByContext(resolved, totalContext)
+		}
+		if unitPrice == 0 {
+			unitPrice = resolved.DefaultPerRequestPrice
+		}
+	} else {
+		if resolved.Mode == BillingModeImage &&
+			(resolved.channelPricing == nil || resolved.channelPricing.PerRequestPrice == nil) && unitPrice == 0 {
+			unitPrice = s.getDefaultImagePrice(input.Model, input.SizeTier)
+		}
+		matchedTier := false
+		if input.SizeTier != "" {
+			for _, tier := range resolved.RequestTiers {
+				if strings.EqualFold(strings.TrimSpace(tier.TierLabel), strings.TrimSpace(input.SizeTier)) && tier.PerRequestPrice != nil {
+					unitPrice = *tier.PerRequestPrice
+					matchedTier = true // An explicitly configured zero is free, not absent.
+					break
+				}
+			}
+		}
+		if !matchedTier {
+			// Resolution tiers are not token-context intervals. A missing 2K/4K
+			// tier must not accidentally borrow the first configured 1K tier.
+			contextTiers := resolved.RequestTiers
+			if resolved.Mode != BillingModeVideo {
+				contextTiers = nil
+				for _, tier := range resolved.RequestTiers {
+					if strings.TrimSpace(tier.TierLabel) == "" {
+						contextTiers = append(contextTiers, tier)
+					}
+				}
+			}
+			totalContext := input.Tokens.InputTokens + input.Tokens.CacheCreationTokens + input.Tokens.CacheReadTokens
+			if tier := FindMatchingInterval(contextTiers, totalContext); tier != nil && tier.PerRequestPrice != nil {
+				unitPrice = *tier.PerRequestPrice
+			}
+		}
 	}
 
 	totalCost := unitPrice * units

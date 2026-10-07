@@ -247,9 +247,8 @@ func TestListPlazaGroups_OfficialPricingFill(t *testing.T) {
 	require.Nil(t, byName["token-absent"].OfficialPricing)
 }
 
-func TestListPlazaGroups_GroupImagePriceOverridesChannelPricing(t *testing.T) {
-	// 图片计费模型:档位价按实收口径合成(分组图片价 > 渠道档位价 > 渠道默认按次价),
-	// 分组独立倍率字段透传;未配图片价的分组保持渠道定价原样。
+func TestListPlazaGroups_ChannelImagePricingIgnoresFlatGroupPrice(t *testing.T) {
+	// All groups show the channel model card; legacy flat image prices do not overwrite it.
 	perReq := 0.2
 	tier4K := 0.3
 	imgPrice := 0.02
@@ -286,15 +285,10 @@ func TestListPlazaGroups_GroupImagePriceOverridesChannelPricing(t *testing.T) {
 	require.Len(t, media.Models, 1)
 	p := media.Models[0].Pricing
 	require.NotNil(t, p)
-	require.Len(t, p.Intervals, 3)
-	tierPrices := map[string]float64{}
-	for _, iv := range p.Intervals {
-		require.NotNil(t, iv.PerRequestPrice)
-		tierPrices[iv.TierLabel] = *iv.PerRequestPrice
-	}
-	require.InDelta(t, 0.02, tierPrices["1K"], 1e-9, "1K 用分组图片价")
-	require.InDelta(t, 0.2, tierPrices["2K"], 1e-9, "2K 分组未配,回落渠道默认按次价")
-	require.InDelta(t, 0.3, tierPrices["4K"], 1e-9, "4K 分组未配,回落渠道档位价")
+	require.Len(t, p.Intervals, 1)
+	require.InDelta(t, 0.2, *p.PerRequestPrice, 1e-9)
+	require.Equal(t, "4K", p.Intervals[0].TierLabel)
+	require.InDelta(t, 0.3, *p.Intervals[0].PerRequestPrice, 1e-9)
 
 	plain := byName["g-plain"]
 	require.False(t, plain.ImageRateIndependent)
@@ -448,7 +442,7 @@ func TestListGroups_GroupTokenCardOverridesChannelPricing(t *testing.T) {
 	require.Empty(t, m.Pricing.Intervals)
 }
 
-func TestListGroups_ImageModelKeepsTierSynthesisWithBilling(t *testing.T) {
+func TestListGroups_ImageModelKeepsChannelPricingWithBilling(t *testing.T) {
 	channels := []Channel{{
 		ID: 1, Name: "ch", Status: StatusActive, GroupIDs: []int64{10},
 		ModelPricing: []ChannelModelPricing{{
@@ -466,9 +460,8 @@ func TestListGroups_ImageModelKeepsTierSynthesisWithBilling(t *testing.T) {
 	m := out[0].Models[0]
 	require.Equal(t, BillingModeImage, m.Pricing.BillingMode)
 	require.Empty(t, m.LongContextBasis)
-	require.Len(t, m.Pricing.Intervals, 3)
-	require.InDelta(t, 0.02, *m.Pricing.Intervals[0].PerRequestPrice, 1e-12)
-	require.InDelta(t, 0.04, *m.Pricing.Intervals[1].PerRequestPrice, 1e-12)
+	require.Empty(t, m.Pricing.Intervals)
+	require.InDelta(t, 0.04, *m.Pricing.PerRequestPrice, 1e-12)
 }
 
 func TestListGroups_CatalogMissingStillShowsChannelFlatPricing(t *testing.T) {

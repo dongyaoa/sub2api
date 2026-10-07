@@ -17,4 +17,11 @@ describe('New API sync display', () => {
     expect(upstreamSyncError('newapi_rate_limited', t)).toBe('upstreamCenter.newapi.errors.rateLimited')
     expect(upstreamSyncError('Upstream connection timed out.', t)).toBe('Upstream connection timed out.')
   })
+  it.each([
+    ['newapi_usage_account_auth_required', 'usageAuthorizationRequired'],
+    ['newapi_usage_incomplete', 'usageIncomplete'],
+    ['newapi_usage_unavailable', 'usageUnavailable'],
+  ])('explains %s instead of exposing the diagnostic code', (code, key) => {
+    expect(upstreamSyncError(code, value => value)).toBe(`upstreamCenter.newapi.errors.${key}`)
+  })
 })

@@ -9,24 +9,26 @@ import (
 )
 
 // UpstreamProfitSources contains current ownership and credential-matched
-// observations. All active targets participate in duplicate-key detection.
+// observations. LastBusinessAt contains only real ledger requests under the
+// target's current supplier. Monitoring requests never establish participation.
 type UpstreamProfitSources struct {
-	Targets  map[int64]*UpstreamFinanceTarget
-	Balances map[int64]*UpstreamBalanceSnapshot
+	Targets        map[int64]*UpstreamFinanceTarget
+	Balances       map[int64]*UpstreamBalanceSnapshot
+	LastBusinessAt map[int64]time.Time
 }
 
 type UpstreamProfitSourcesRepository interface {
-	LoadProfitSources(context.Context, time.Time) (*UpstreamProfitSources, error)
+	LoadProfitSources(context.Context, time.Time, time.Time) (*UpstreamProfitSources, error)
 }
 
 const upstreamProfitSnapshotMaxAge = 3 * time.Minute
 
-func (s *UpstreamFinanceService) profitSources(ctx context.Context, dayStart time.Time) (*UpstreamProfitSources, error) {
+func (s *UpstreamFinanceService) profitSources(ctx context.Context, from, to time.Time) (*UpstreamProfitSources, error) {
 	repo, ok := s.repo.(UpstreamProfitSourcesRepository)
 	if !ok {
 		return nil, nil
 	}
-	return repo.LoadProfitSources(ctx, dayStart)
+	return repo.LoadProfitSources(ctx, from, to)
 }
 
 func applyUpstreamDailyProfit(summary *UpstreamFinanceSummary, q UpstreamFinanceQuery, sources *UpstreamProfitSources, now time.Time) {
@@ -51,12 +53,13 @@ func applyUpstreamPeriodProfit(summary *UpstreamFinanceSummary, q UpstreamFinanc
 	// Missing usage is explicit: retain known costs without claiming full profit.
 	type keyObservation struct {
 		amounts              []*UpstreamBalanceSnapshot
+		participates         bool
 		ratio                float64
 		invalidRatio         bool
 		conversionConfigured bool
 	}
 	keys := make(map[string]*keyObservation)
-	missing, archived := 0, 0
+	missing, archived, inactive := 0, 0, 0
 	for id, target := range sources.Targets {
 		if target == nil {
 			continue
@@ -71,31 +74,51 @@ func applyUpstreamPeriodProfit(summary *UpstreamFinanceSummary, q UpstreamFinanc
 			archived++
 			continue
 		}
+		lastBusiness := sources.LastBusinessAt[id]
+		participates := q.TargetID != nil || !lastBusiness.Before(periodStart) && lastBusiness.Before(dayEnd)
+		if !participates {
+			inactive++
+		}
 		endpoint, err := upstreamUsageURL(target.Endpoint)
 		if err != nil || target.APIKeyFingerprint == "" {
-			missing++
+			if participates {
+				missing++
+			}
 			continue
 		}
 		key := endpoint + "\x00" + target.APIKeyFingerprint
+		observation := keys[key]
+		if observation == nil {
+			observation = &keyObservation{}
+			keys[key] = observation
+		}
+		// An idle copy of the same remote key can still provide a fresher
+		// observation. Its supplier's conversion rate must not affect the cost
+		// of the supplier that actually served local business requests.
+		observation.amounts = append(observation.amounts, sources.Balances[id])
+		if !participates {
+			continue
+		}
 		ratio := 1.0
 		if target.RechargeRatio != nil {
 			ratio = *target.RechargeRatio
 		}
-		observation := keys[key]
-		if observation == nil {
-			observation = &keyObservation{ratio: ratio}
-			keys[key] = observation
+		if !observation.participates {
+			observation.ratio = ratio
+			observation.participates = true
 		}
 		// One remote key cannot be converted using conflicting supplier prices.
 		observation.invalidRatio = observation.invalidRatio || ratio <= 0 || math.IsNaN(ratio) || math.IsInf(ratio, 0) || ratio != observation.ratio
 		observation.conversionConfigured = observation.conversionConfigured || target.RechargeRatio != nil
-		observation.amounts = append(observation.amounts, sources.Balances[id])
 	}
 	var used, rawUsed float64
 	var oldest time.Time
 	stale, converted := false, false
 	known := 0
 	for _, observation := range keys {
+		if !observation.participates {
+			continue
+		}
 		if observation.invalidRatio {
 			missing++
 			continue
@@ -147,6 +170,7 @@ func applyUpstreamPeriodProfit(summary *UpstreamFinanceSummary, q UpstreamFinanc
 	summary.CostPartial = missing > 0
 	summary.KnownKeyCount, summary.MissingKeyCount = known, missing
 	summary.ArchivedKeyCount = archived
+	summary.InactiveKeyCount = inactive
 	summary.ConversionApplied = converted
 	summary.BusinessCost, summary.RemoteUsed, summary.RemoteRawUsed = nil, nil, nil
 	summary.RemoteSyncedAt, summary.Profit = nil, nil

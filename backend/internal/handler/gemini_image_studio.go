@@ -54,20 +54,17 @@ type geminiStudioRequest struct {
 	} `json:"generationConfig"`
 }
 
-func isGeminiStudioImageModel(model string) bool {
-	switch strings.ToLower(strings.TrimSpace(model)) {
-	case gemini31FlashImageModel, gemini3ProImageLegacyModel, gemini3ProImageModel:
-		return true
-	default:
-		return false
-	}
-}
-
 func buildGeminiStudioImageRequest(path, contentType string, body []byte) (string, []byte, error) {
 	metadata := parseAsyncImageTaskMetadata(path, contentType, body)
-	model := strings.ToLower(strings.TrimSpace(metadata.Model))
-	if !isGeminiStudioImageModel(model) {
-		return "", nil, fmt.Errorf("model must be %s, %s, or %s", gemini31FlashImageModel, gemini3ProImageLegacyModel, gemini3ProImageModel)
+	model := strings.TrimSpace(metadata.Model)
+	if model == "" {
+		return "", nil, errors.New("model is required")
+	}
+	// Model availability and aliases are configured by the group and upstream
+	// accounts. Keep the requested ID intact; the normal Gemini gateway enforces
+	// those restrictions after this adapter builds the native request.
+	if !service.IsSafeGeminiModelPathSegment(model) {
+		return "", nil, errors.New("invalid model for Gemini image generation")
 	}
 	if strings.TrimSpace(metadata.Prompt) == "" {
 		return "", nil, errors.New("prompt is required")

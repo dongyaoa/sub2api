@@ -60,12 +60,6 @@ const OPENAI_4K_SIZES: Record<ImageAspectRatio, string> = {
   '21:9': '3584x1536',
 }
 
-const GEMINI_IMAGE_MODELS = new Set([
-  'gemini-3.1-flash-image',
-  'gemini-3-pro-image',
-  'gemini-3-pro-image-preview',
-])
-
 export function isImageStudioPlatform(platform: string | undefined): platform is ImageStudioPlatform {
   return platform === 'openai' || platform === 'gemini' || platform === 'grok'
 }
@@ -73,7 +67,7 @@ export function isImageStudioPlatform(platform: string | undefined): platform is
 export function isImageGenerationModel(platform: ImageStudioPlatform, modelId: string): boolean {
   const id = modelId.trim().toLowerCase()
   if (platform === 'openai') return id.startsWith('gpt-image-')
-  if (platform === 'gemini') return GEMINI_IMAGE_MODELS.has(id)
+  if (platform === 'gemini') return /(?:image|imagen|nano[-_ ]?banana)/i.test(id)
   return id === 'grok-imagine-image' || id === 'grok-imagine-image-quality' || id === 'grok-imagine-image-2.0'
 }
 
@@ -81,8 +75,9 @@ export function filterImageModels(platform: ImageStudioPlatform, models: ImageMo
   const seen = new Set<string>()
   return models.filter((model) => {
     const id = model.id?.trim()
-    if (!id || seen.has(id) || !isImageGenerationModel(platform, id)) return false
-    seen.add(id)
+    if (!id || seen.has(id.toLowerCase())) return false
+    if (model.image_generation === false || (model.image_generation !== true && !isImageGenerationModel(platform, id))) return false
+    seen.add(id.toLowerCase())
     return true
   })
 }

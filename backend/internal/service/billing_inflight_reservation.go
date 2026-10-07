@@ -490,7 +490,11 @@ func (d inflightEstimateDeps) estimateOne(ctx context.Context, apiKey *APIKey, m
 			in.GroupID = apiKey.GroupID
 			in.Group = apiKey.Group
 		}
-		resolved = d.resolver.Resolve(ctx, in)
+		if req.Kind == InflightEstimateImage {
+			resolved = d.resolver.ResolveImagePricing(ctx, in)
+		} else {
+			resolved = d.resolver.Resolve(ctx, in)
+		}
 	}
 
 	inputTokens, outputTokens := tokenCounts(cfg, req.BodyBytes, req.MaxTokens)
@@ -512,19 +516,21 @@ func (d inflightEstimateDeps) estimateOne(ctx context.Context, apiKey *APIKey, m
 	perRequestMode := resolved != nil && (resolved.Mode == BillingModePerRequest || resolved.Mode == BillingModeImage || resolved.Mode == BillingModeVideo)
 	switch req.Kind {
 	case InflightEstimateImage:
-		if perRequestMode {
-			cost = maxPerRequestPrice(resolved) * float64(units) * imageRate
-		}
-		if d.billing != nil {
-			cfgImg := imagePriceConfigFromAPIKey(apiKey)
+		if resolved != nil && resolved.Mode == BillingModeToken {
+			cost = tokenCost()
+		} else if d.billing != nil {
 			for _, tier := range []string{ImageBillingSize1K, ImageBillingSize2K, ImageBillingSize4K} {
-				if b := d.billing.CalculateImageCost(model, tier, units, cfgImg, imageRate); b != nil && b.ActualCost > cost {
+				b := d.billing.CalculateImageCost(model, tier, units, nil, imageRate)
+				if perRequestMode {
+					b, _ = d.billing.CalculateCostUnified(CostInput{
+						Ctx: ctx, Model: model, RequestCount: units, SizeTier: tier,
+						RateMultiplier: imageRate, Resolver: d.resolver, Resolved: resolved,
+					})
+				}
+				if b != nil && b.ActualCost > cost {
 					cost = b.ActualCost
 				}
 			}
-		}
-		if cost <= 0 {
-			cost = tokenCost()
 		}
 	case InflightEstimateVideo:
 		if perRequestMode {

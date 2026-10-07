@@ -33,12 +33,24 @@ describe('image studio capabilities', () => {
       { id: 'gemini-3.1-flash-image' },
       { id: 'gemini-3-pro-image' },
       { id: 'gemini-3-pro-image-preview' },
+      { id: 'gemini-nano-banana-2.1' },
       { id: 'gemini-3-pro-preview' },
     ])).toEqual([
+      { id: 'gemini-2.5-flash-image' },
       { id: 'gemini-3.1-flash-image' },
       { id: 'gemini-3-pro-image' },
       { id: 'gemini-3-pro-image-preview' },
+      { id: 'gemini-nano-banana-2.1' },
     ])
+  })
+
+  it('accepts configured upstream aliases with image capability without listing chat models', () => {
+    expect(filterImageModels('gemini', [
+      { id: 'my-art-model', image_generation: true },
+      { id: 'MY-ART-MODEL', image_generation: true },
+      { id: 'gemini-image-chat', image_generation: false },
+      { id: 'gemini-3-pro' },
+    ])).toEqual([{ id: 'my-art-model', image_generation: true }])
   })
 
   it('maps OpenAI ratio and tier to supported image sizes', () => {

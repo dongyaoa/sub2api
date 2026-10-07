@@ -194,25 +194,36 @@ func (r *upstreamFinanceRepository) LoadOverviewFinance(ctx context.Context, q s
 	return out, rows.Err()
 }
 
-// LoadProfitSources resolves active credentials and reports in-period archives
-// for the excluded count. Archived keys never block remaining active totals.
-func (r *upstreamFinanceRepository) LoadProfitSources(ctx context.Context, start time.Time) (*service.UpstreamProfitSources, error) {
-	out := &service.UpstreamProfitSources{Targets: map[int64]*service.UpstreamFinanceTarget{}, Balances: map[int64]*service.UpstreamBalanceSnapshot{}}
-	rows, err := r.db.QueryContext(ctx, `SELECT t.id,t.supplier_id,t.provider,t.endpoint,t.api_key_encrypted,t.api_key_fingerprint,t.wallet_ref,t.newapi_user_id,t.newapi_access_token_encrypted,t.profit_identity_since,COALESCE(t.deleted_at,s.deleted_at),s.recharge_ratio
+// LoadProfitSources resolves credentials and business participation in one
+// batch. Archived keys never block totals; ledger ownership must match the
+// current supplier just as it does in the revenue aggregate.
+func (r *upstreamFinanceRepository) LoadProfitSources(ctx context.Context, start, end time.Time) (*service.UpstreamProfitSources, error) {
+	out := &service.UpstreamProfitSources{Targets: map[int64]*service.UpstreamFinanceTarget{}, Balances: map[int64]*service.UpstreamBalanceSnapshot{}, LastBusinessAt: map[int64]time.Time{}}
+	rows, err := r.db.QueryContext(ctx, `WITH business AS (
+ SELECT target_id,supplier_id,MAX(created_at) AS last_business_at
+ FROM upstream_finance_ledger WHERE created_at >= $1 AND created_at < $2
+ GROUP BY target_id,supplier_id
+)
+ SELECT t.id,t.supplier_id,t.provider,t.endpoint,t.api_key_encrypted,t.api_key_fingerprint,t.wallet_ref,t.newapi_user_id,t.newapi_access_token_encrypted,t.profit_identity_since,COALESCE(t.deleted_at,s.deleted_at),s.recharge_ratio,b.last_business_at
  FROM upstream_targets t LEFT JOIN upstream_suppliers s ON s.id=t.supplier_id
+ LEFT JOIN business b ON b.target_id=t.id AND b.supplier_id IS NOT DISTINCT FROM t.supplier_id
  WHERE (t.deleted_at IS NULL OR t.deleted_at >= $1)
- AND (t.supplier_id IS NULL OR s.deleted_at IS NULL OR s.deleted_at >= $1) ORDER BY t.id`, start)
+ AND (t.supplier_id IS NULL OR s.deleted_at IS NULL OR s.deleted_at >= $1) ORDER BY t.id`, start, end)
 	if err != nil {
 		return nil, err
 	}
 	ids, identities := []int64{}, []string{}
 	for rows.Next() {
 		t := &service.UpstreamFinanceTarget{}
-		if err = rows.Scan(&t.ID, &t.SupplierID, &t.Provider, &t.Endpoint, &t.APIKeyEncrypted, &t.APIKeyFingerprint, &t.WalletRef, &t.NewAPIUserID, &t.NewAPIAccessTokenEncrypted, &t.ProfitIdentitySince, &t.ArchivedAt, &t.RechargeRatio); err != nil {
+		var lastBusiness *time.Time
+		if err = rows.Scan(&t.ID, &t.SupplierID, &t.Provider, &t.Endpoint, &t.APIKeyEncrypted, &t.APIKeyFingerprint, &t.WalletRef, &t.NewAPIUserID, &t.NewAPIAccessTokenEncrypted, &t.ProfitIdentitySince, &t.ArchivedAt, &t.RechargeRatio, &lastBusiness); err != nil {
 			_ = rows.Close()
 			return nil, err
 		}
 		out.Targets[t.ID] = t
+		if lastBusiness != nil {
+			out.LastBusinessAt[t.ID] = *lastBusiness
+		}
 		if t.ArchivedAt == nil {
 			ids = append(ids, t.ID)
 			identities = append(identities, service.UpstreamBalanceIdentity(t))

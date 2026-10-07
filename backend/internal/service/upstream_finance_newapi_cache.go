@@ -14,8 +14,10 @@ import (
 const (
 	newAPIFinanceCacheLimit = 2048
 	newAPITokenCacheTTL     = 24 * time.Hour
-	newAPIQuotaRequestGap   = 65 * time.Second
-	newAPISearchRequestGap  = 7 * time.Second
+	// Usage and recent logs share the same 20 requests / 20 minutes gate.
+	// Reserve two reads for each Key-only synchronization.
+	newAPIQuotaRequestGap  = 130 * time.Second
+	newAPISearchRequestGap = 7 * time.Second
 )
 
 // Keep only verified identifiers, never keys, response bodies, or quota values.
@@ -25,6 +27,8 @@ type newAPIFinanceCache struct {
 	tokenIDs    map[string]newAPITokenIDEntry
 	quotaSites  map[string]newAPIQuotaSite
 	searchAfter map[string]time.Time
+	usage       map[string]*newAPIUsageCacheEntry
+	logSites    map[string]newAPILogRequestBudget
 }
 
 type newAPIQuotaSite struct {

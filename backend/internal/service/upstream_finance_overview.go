@@ -47,7 +47,7 @@ func (s *UpstreamFinanceService) OverviewFinance(ctx context.Context, suppliers 
 		for id, target := range data.BalanceTargets {
 			data.Balances[id] = completeUpstreamBalanceSnapshot(data.Balances[id], target, now)
 		}
-		sources, err := s.profitSources(ctx, timezone.StartOfDay(now))
+		sources, err := s.profitSources(ctx, q.From, q.To)
 		if err != nil {
 			return nil, err
 		}

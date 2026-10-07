@@ -86,7 +86,7 @@ func (s *UpstreamFinanceService) Summary(ctx context.Context, supplierID, target
 	if err != nil {
 		return nil, err
 	}
-	sources, err := s.profitSources(ctx, timezone.StartOfDay(s.now()))
+	sources, err := s.profitSources(ctx, q.From, q.To)
 	if err != nil {
 		return nil, err
 	}
@@ -114,7 +114,7 @@ func (s *UpstreamFinanceService) PeriodSummaries(ctx context.Context, supplierID
 	if err != nil {
 		return nil, err
 	}
-	sources, err := s.profitSources(ctx, monthQuery.From)
+	sources, err := s.profitSources(ctx, monthQuery.From, monthQuery.To)
 	if err != nil {
 		return nil, err
 	}
