@@ -29,6 +29,18 @@ export default {
       interval: '糖果测试间隔', intervalHint: '默认 3 分钟。定时检测总开关同时控制两项测试；关闭后仍可分别手动执行。',
       scoringHint: '标准答案为 21，仅用于评分，不包含在发送给模型的题目中。',
     },
+    promptSettings: {
+      custom: '监控提示词（选填）', customHint: '留空使用默认提示词。请要求返回可展示的 HTML，可包含 SVG 动画；只影响鹈鹕作品，不影响糖果测试。',
+      default: '查看默认提示词', channels: '为上游渠道单独设置提示词（可选）', configuredCount: '已设置 {count} 个',
+      priority: '实际调用的渠道有独立提示词时优先使用；否则使用本监控提示词，均未设置则使用默认提示词。',
+      selectGroup: '请先选择本站分组，再获取该分组下的上游渠道。', channelHint: '展开渠道名称即可编辑，留空继承本监控提示词。',
+      loading: '正在获取分组内的上游渠道…', loadFailed: '获取渠道失败，请刷新重试。未设置渠道提示词时仍可保存监控。', empty: '该分组暂无可配置的上游渠道。',
+      overridden: '独立提示词', inherited: '继承监控提示词', channelPrompt: '{name} 的提示词（选填）', clear: '清空并继承监控提示词', savedChannel: '已保存渠道',
+      unavailable: '该渠道已不在当前分组或已不可用，请清空它的独立提示词后保存。',
+      tooLong: '每条提示词最多 8000 个字符。', tooMany: '最多设置 200 个渠道提示词，所有提示词合计最多 64000 个字符。',
+      invalidCharacters: '请移除提示词中的无效字符。', invalidPrompt: '请检查监控提示词：最多 8000 个字符，且不能包含空字符。', invalidChannels: '请刷新渠道列表并检查渠道提示词，每条最多 8000 个字符。',
+      configured: '已设置自定义提示词', actual: '本次实际提示词',
+    },
     local: {
       alreadyAdded: '该站内分组已添加此模型的监测计划，请选择其他模型或编辑已有计划。',
       groupRate: '分组倍率', search: '搜索分组、计划或 Key',
@@ -80,7 +92,7 @@ export default {
     historical: '展示这次执行时保存的参数与倍率', times: '{count} 次记录', seconds: '{count} 秒', minutes: '{count} 分钟', hours: '{count} 小时',
     sourceMissing: '来源已归档或暂不可用', notScored: '通过作品对比观察表现，不生成自动智商评分。',
     form: {
-      modelHint: '默认 GPT-6 Astra，也可选择 GPT-6.1 Sol。思考强度固定为 high，使用相同的测试提示词。', validModel: '请选择有效的监测模型。',
+      modelHint: '默认 GPT-6 Astra，也可选择 GPT-6.1 Sol。思考强度固定为 high。', validModel: '请选择有效的监测模型。',
       name: '计划名称', namePlaceholder: '例如：北岸 · GPT 主力组', source: '检测来源', selectUpstream: '选择上游 Key 分组', selectGroup: '选择本站分组',
       endpoint: 'API 地址', key: 'API Key', keepKey: '留空保留已保存的 Key', protocol: '请求接口', sourceHint: '通过本站分组真实路由执行，使用当前管理员的专用监控 Key，并遵循正常计费与分组权限。',
       supplierNote: '上游备注', supplierPlaceholder: '哪一家中转', groupNote: '分组备注', groupPlaceholder: '哪个分组或线路', rateNote: '倍率备注', ratePlaceholder: '例如：标称 0.8×，活动价',

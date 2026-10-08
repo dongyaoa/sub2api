@@ -182,7 +182,10 @@ func (s *IntelligenceMonitorService) decoratePlan(p *IntelligenceMonitorPlan) {
 	p.OAuth = p.SourceType == "openai_oauth"
 	p.Model = intelligenceMonitorModel(p.Model)
 	p.ReasoningEffort = IntelligenceMonitorReasoning
-	p.Prompt = IntelligenceMonitorPrompt
+	p.Prompt = intelligencePlanPrompt(p)
+	if p.ChannelPrompts == nil {
+		p.ChannelPrompts = []IntelligenceChannelPrompt{}
+	}
 	if p.SourceType == "external" {
 		plain, err := s.encryptor.Decrypt(p.APIKeyEncrypted)
 		if err == nil && len(plain) > 8 {
@@ -282,6 +285,9 @@ func (s *IntelligenceMonitorService) SavePlan(ctx context.Context, id, actorID i
 		if json.Unmarshal(in.AccountID, &p.AccountID) != nil {
 			return nil, ErrIntelligenceInvalid
 		}
+	}
+	if err := s.configureIntelligencePrompts(ctx, p, old, in); err != nil {
+		return nil, err
 	}
 	if p.SourceType == "openai_oauth" {
 		account, err := s.intelligenceOAuthAccount(ctx, p.AccountID, p.Model)
@@ -423,7 +429,7 @@ func (s *IntelligenceMonitorService) cleanupKey(id, owner int64) {
 	}
 }
 func intelligenceEnabledOnly(in IntelligenceMonitorInput) bool {
-	return in.Enabled != nil && in.Model == nil && in.CandyEnabled == nil && in.CandyIntervalSeconds == nil && len(in.LocalAPIKeyID) == 0 && in.Name == nil && in.SourceType == nil && in.Endpoint == nil && in.APIKey == nil && len(in.UpstreamTargetID) == 0 && len(in.GroupID) == 0 && len(in.AccountID) == 0 && in.SupplierNote == nil && in.GroupNote == nil && in.RateNote == nil && in.Notes == nil && in.APIMode == nil && in.IntervalSeconds == nil && in.TimeoutSeconds == nil
+	return in.Enabled != nil && in.CustomPrompt == nil && in.ChannelPrompts == nil && in.Model == nil && in.CandyEnabled == nil && in.CandyIntervalSeconds == nil && len(in.LocalAPIKeyID) == 0 && in.Name == nil && in.SourceType == nil && in.Endpoint == nil && in.APIKey == nil && len(in.UpstreamTargetID) == 0 && len(in.GroupID) == 0 && len(in.AccountID) == 0 && in.SupplierNote == nil && in.GroupNote == nil && in.RateNote == nil && in.Notes == nil && in.APIMode == nil && in.IntervalSeconds == nil && in.TimeoutSeconds == nil
 }
 func (s *IntelligenceMonitorService) DeletePlan(ctx context.Context, id int64) error {
 	plan, err := s.repo.GetPlan(ctx, id)
@@ -473,6 +479,11 @@ func (s *IntelligenceMonitorService) enqueueTest(ctx context.Context, id int64, 
 	run.TestKind = kind
 	if kind == IntelligenceMonitorTestCandy {
 		run.Prompt = IntelligenceMonitorCandyPrompt
+	} else {
+		run.Prompt = intelligencePlanPrompt(p)
+		if p.SourceType == "local_group" && len(p.ChannelPrompts) > 0 {
+			run.SourceSnapshot["channel_prompts"] = append([]IntelligenceChannelPrompt(nil), p.ChannelPrompts...)
+		}
 	}
 	if scheduled {
 		run.Trigger = "scheduled"

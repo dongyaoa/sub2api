@@ -16,6 +16,24 @@ type IntelligenceMonitorHandler struct {
 func NewIntelligenceMonitorHandler(svc *service.IntelligenceMonitorService) *IntelligenceMonitorHandler {
 	return &IntelligenceMonitorHandler{svc: svc}
 }
+func (h *IntelligenceMonitorHandler) ListLocalChannels(c *gin.Context) {
+	values := c.Request.URL.Query()["group_id"]
+	if len(values) != 1 {
+		response.BadRequest(c, "one positive group_id is required")
+		return
+	}
+	id, err := strconv.ParseInt(values[0], 10, 64)
+	if err != nil || id <= 0 {
+		response.BadRequest(c, "invalid group_id")
+		return
+	}
+	items, err := h.svc.ListLocalChannels(c.Request.Context(), id)
+	if response.ErrorFrom(c, err) {
+		return
+	}
+	c.Header("Cache-Control", "no-store")
+	response.Success(c, gin.H{"items": items})
+}
 func (h *IntelligenceMonitorHandler) GetConcurrency(c *gin.Context) {
 	c.Header("Cache-Control", "no-store")
 	settings, err := h.svc.GetConcurrency(c.Request.Context())

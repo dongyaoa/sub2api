@@ -56,6 +56,7 @@
         <div class="grid gap-4 sm:grid-cols-2"><div><label for="intelligence-endpoint" class="input-label">{{ t('intelligenceMonitor.form.endpoint') }}</label><input id="intelligence-endpoint" v-model="form.endpoint" class="input" type="url" placeholder="https://api.example.com" required/></div><div><label for="intelligence-key" class="input-label">{{ t('intelligenceMonitor.form.key') }}</label><input id="intelligence-key" v-model="form.api_key" class="input" type="password" autocomplete="new-password" :required="!plan || plan.source_type !== 'external'" :placeholder="plan?.source_type === 'external' ? t('intelligenceMonitor.form.keepKey') : 'sk-…'"/></div></div>
         <div class="grid gap-3 sm:grid-cols-3"><div><label for="intelligence-supplier-note" class="input-label">{{ t('intelligenceMonitor.form.supplierNote') }}</label><input id="intelligence-supplier-note" v-model="form.supplier_note" class="input" maxlength="200" :placeholder="t('intelligenceMonitor.form.supplierPlaceholder')"/></div><div><label for="intelligence-group-note" class="input-label">{{ t('intelligenceMonitor.form.groupNote') }}</label><input id="intelligence-group-note" v-model="form.group_note" class="input" maxlength="200" :placeholder="t('intelligenceMonitor.form.groupPlaceholder')"/></div><div><label for="intelligence-rate-note" class="input-label">{{ t('intelligenceMonitor.form.rateNote') }}</label><input id="intelligence-rate-note" v-model="form.rate_note" class="input" maxlength="200" :placeholder="t('intelligenceMonitor.form.ratePlaceholder')"/></div></div>
       </template>
+      <IntelligencePromptSettings v-if="form.source_type === 'local_group'" ref="promptSettings" v-model:custom-prompt="form.custom_prompt" v-model:channel-prompts="form.channel_prompts" :group-id="form.group_id" :disabled="saving" />
       <div class="grid gap-4" :class="!oauthOnly && 'sm:grid-cols-2'">
         <div v-if="!oauthOnly"><label for="intelligence-api-mode" class="input-label">{{ t('intelligenceMonitor.form.protocol') }}</label><Select id="intelligence-api-mode" v-model="form.api_mode" :options="protocolOptions" :searchable="false" :aria-label="t('intelligenceMonitor.form.protocol')"/></div>
         <fieldset><legend class="input-label">{{ t('intelligenceMonitor.form.timeout') }}</legend><div class="grid gap-2" :class="timeoutOptions.length > 3 ? 'grid-cols-2' : 'grid-cols-3'"><button v-for="seconds in timeoutOptions" :key="seconds" type="button" class="duration-choice" :class="form.timeout_seconds === seconds && 'duration-choice-selected'" :data-timeout="seconds" :aria-pressed="form.timeout_seconds === seconds" @click="form.timeout_seconds = seconds">{{ durationLabel(seconds) }}</button></div><p class="mt-2 text-xs leading-5 text-gray-500">{{ t('intelligenceMonitor.form.timeoutHint') }}</p></fieldset>
@@ -69,7 +70,7 @@
       </div>
       <div class="rounded-xl border border-gray-200 p-4 dark:border-dark-700" data-testid="candy-option"><div class="flex items-center justify-between gap-4"><div><label for="intelligence-candy-enabled" class="text-sm font-medium text-gray-800 dark:text-gray-200">{{ t('intelligenceMonitor.candy.enabled') }}</label><p class="mt-1 text-xs leading-5 text-gray-500">{{ t('intelligenceMonitor.candy.enableHint') }}</p></div><Toggle id="intelligence-candy-enabled" v-model="form.candy_enabled"/></div><fieldset v-if="form.candy_enabled" class="mt-4"><legend class="input-label">{{ t('intelligenceMonitor.candy.interval') }}</legend><div class="grid grid-cols-4 gap-2"><button v-for="seconds in candyIntervals" :key="seconds" type="button" class="duration-choice" :class="form.candy_interval_seconds === seconds && 'duration-choice-selected'" :data-candy-interval="seconds" :aria-pressed="form.candy_interval_seconds === seconds" @click="form.candy_interval_seconds = seconds">{{ durationLabel(seconds) }}</button></div><p class="mt-2 text-xs text-gray-500">{{ t('intelligenceMonitor.candy.intervalHint') }}</p></fieldset></div>
       <div><label for="intelligence-notes" class="input-label">{{ t('intelligenceMonitor.notes') }}</label><textarea id="intelligence-notes" v-model="form.notes" class="input min-h-[76px]" maxlength="2000" :placeholder="t('intelligenceMonitor.form.notesPlaceholder')"/></div>
-      <details class="rounded-lg bg-gray-50 p-3 dark:bg-dark-900/50"><summary class="cursor-pointer text-xs font-medium text-gray-500">{{ t('intelligenceMonitor.prompt') }}</summary><p class="mt-2 text-xs leading-6 text-gray-600 dark:text-dark-300">{{ PELICAN_PROMPT }}</p></details>
+      <details v-if="form.source_type !== 'local_group'" class="rounded-lg bg-gray-50 p-3 dark:bg-dark-900/50"><summary class="cursor-pointer text-xs font-medium text-gray-500">{{ t('intelligenceMonitor.prompt') }}</summary><p class="mt-2 text-xs leading-6 text-gray-600 dark:text-dark-300">{{ PELICAN_PROMPT }}</p></details>
       <p v-if="error" role="alert" class="rounded-lg bg-rose-50 p-3 text-sm text-rose-600 dark:bg-rose-500/10 dark:text-rose-400">{{ error }}</p>
     </form>
     <template #footer><div class="flex justify-end gap-3"><button type="button" class="btn btn-secondary" :disabled="saving" @click="close">{{ t('common.cancel') }}</button><button type="submit" form="intelligence-plan-form" class="btn btn-primary" :disabled="saving || Boolean(duplicateSource) || (oauthOnly && (accountsLoading || !accountsReady || (lockedOAuth && Boolean(accountSelectionError))))">{{ t(saving ? 'intelligenceMonitor.form.saving' : 'intelligenceMonitor.form.save') }}</button></div></template>
@@ -92,6 +93,7 @@ import { extractApiErrorCode, extractApiErrorMessage, extractApiErrorMetadata } 
 import { intelligenceRateLabel } from './intelligencePreview'
 import { domain } from './format'
 import IntelligenceLocalSource from './IntelligenceLocalSource.vue'
+import IntelligencePromptSettings from './IntelligencePromptSettings.vue'
 const props = defineProps<{ show: boolean; plan: IntelligencePlan | null; overview: UpstreamOverview | null; oauthOnly?: boolean; oauthAccountId?: number; localOnly?: boolean; managedKeyIds?: number[]; monitoredAccountIds?: number[]; monitoredPlans?: IntelligencePlan[]; initialModel?: string; upstreamTargetId?: number }>()
 const emit = defineEmits<{ close: []; saved: [plan?: IntelligencePlan] }>()
 const { t } = useI18n()
@@ -100,6 +102,7 @@ const oauthOnly = computed(() => Boolean(props.oauthOnly && !lockedUpstream.valu
 const lockedOAuth = computed(() => oauthOnly.value && props.oauthAccountId !== undefined)
 const localOnly = computed(() => Boolean(props.localOnly && !lockedUpstream.value && !oauthOnly.value))
 const localSource = ref<InstanceType<typeof IntelligenceLocalSource> | null>(null)
+const promptSettings = ref<InstanceType<typeof IntelligencePromptSettings> | null>(null)
 const candyIntervals = [180, 300, 600, 900]
 const sources = computed<{value:IntelligenceSource;icon:'server'|'link'|'grid'}[]>(() => [{ value:'upstream',icon:'server' }, ...(props.plan?.source_type === 'local_group' ? [{ value:'local_group' as const,icon:'grid' as const }] : []),{ value:'external',icon:'link' }])
 const intervals = [300, 600, 900]
@@ -112,7 +115,7 @@ const timeoutOptions = computed(() => {
 })
 const modelOptions = PELICAN_MODELS.map(option => ({ ...option }))
 const protocolOptions = [{ value: 'responses', label: 'Responses' }, { value: 'chat_completions', label: 'Chat Completions' }]
-const defaults = (): IntelligencePlanInput & { model: string; candy_enabled: boolean; candy_interval_seconds: number } => ({ name:'',model:PELICAN_MODELS.some(option => option.value === props.initialModel) ? props.initialModel! : PELICAN_MODEL,source_type:oauthOnly.value?'openai_oauth':localOnly.value?'local_group':'upstream',account_id:null,endpoint:'',api_key:'',upstream_target_id:null,group_id:null,local_api_key_id:null,supplier_note:'',group_note:'',rate_note:'',notes:'',api_mode:'responses',enabled:true,candy_enabled:false,candy_interval_seconds:180,interval_seconds:300,timeout_seconds:600 })
+const defaults = (): IntelligencePlanInput & { model: string; candy_enabled: boolean; candy_interval_seconds: number } => ({ name:'',model:PELICAN_MODELS.some(option => option.value === props.initialModel) ? props.initialModel! : PELICAN_MODEL,source_type:oauthOnly.value?'openai_oauth':localOnly.value?'local_group':'upstream',account_id:null,endpoint:'',api_key:'',upstream_target_id:null,group_id:null,local_api_key_id:null,supplier_note:'',group_note:'',rate_note:'',notes:'',custom_prompt:'',channel_prompts:[],api_mode:'responses',enabled:true,candy_enabled:false,candy_interval_seconds:180,interval_seconds:300,timeout_seconds:600 })
 const form = reactive(defaults()), groups = ref<AdminGroup[]>([]), saving = ref(false), error = ref(''), groupError = ref(''), groupsLoading = ref(false)
 const intervalChoice = ref<number | 'custom'>(300), customInterval = ref('300'), intervalError = ref('')
 const eligibleSuppliers = computed(() => (props.overview?.suppliers || []).map(supplier => ({ ...supplier, targets: supplier.targets.filter(target => target.provider === 'openai') })).filter(supplier => supplier.targets.length))
@@ -136,6 +139,7 @@ function selectLocalSource(value: { groupId: number | null; keyId: number | null
   const changedGroup = form.group_id !== value.groupId
   form.group_id = value.groupId
   form.local_api_key_id = value.keyId
+  if (changedGroup) form.channel_prompts = []
   if (value.name && (changedGroup || !form.name.trim())) form.name = value.name
   error.value = ''
 }
@@ -297,6 +301,7 @@ async function save() {
   }
   if (localOnly.value) form.source_type = 'local_group'
   if (form.source_type === 'local_group' && !localSource.value?.validate()) return
+  if (form.source_type === 'local_group' && !promptSettings.value?.validate()) return
   if (!oauthOnly.value && !form.name.trim()) { error.value=t('intelligenceMonitor.form.requiredName'); return }
   if ((oauthOnly.value && !form.account_id) || (form.source_type==='upstream' && !form.upstream_target_id) || (form.source_type==='local_group' && !form.group_id)) { error.value=t('intelligenceMonitor.form.requiredSource'); return }
   if (oauthOnly.value && (!selectedAccount.value || !eligibleAccount(selectedAccount.value))) {
@@ -318,9 +323,14 @@ async function save() {
   }
   saving.value=true
   const input: IntelligencePlanInput = { name:oauthOnly.value?'':form.name.trim(),model:form.model,source_type:oauthOnly.value?'openai_oauth':form.source_type,account_id:oauthOnly.value?form.account_id:null,endpoint:form.source_type==='external' ? form.endpoint?.trim() : undefined,api_key:form.source_type==='external' ? form.api_key?.trim() || undefined : undefined,upstream_target_id:form.source_type==='upstream' ? form.upstream_target_id : null,group_id:form.source_type==='local_group' ? form.group_id : null,local_api_key_id:form.source_type==='local_group' ? form.local_api_key_id ?? null : undefined,supplier_note:form.supplier_note.trim(),group_note:form.group_note.trim(),rate_note:form.rate_note.trim(),notes:form.notes.trim(),api_mode:oauthOnly.value?'responses':form.api_mode,enabled:form.enabled,candy_enabled:Boolean(form.candy_enabled),candy_interval_seconds:form.candy_interval_seconds,interval_seconds:form.interval_seconds,timeout_seconds:form.timeout_seconds }
+  if (form.source_type === 'local_group') {
+    input.custom_prompt = form.custom_prompt?.trim() || ''
+    input.channel_prompts = (form.channel_prompts || []).filter(item => item.prompt.trim()).map(item => ({ account_id: item.account_id, prompt: item.prompt.trim() }))
+  }
   try { const saved = props.plan ? await intelligenceMonitorAPI.update(props.plan.id,input) : await intelligenceMonitorAPI.create(input); emit('saved', saved); emit('close') }
   catch (err) {
-    const detail = extractApiErrorMetadata(err)?.detail
+    const metadata = extractApiErrorMetadata(err)
+    const detail = metadata?.detail
     const detailText = typeof detail === 'string' ? detail.trim() : ''
     const code = extractApiErrorCode(err)
     error.value = code === 'INTELLIGENCE_OAUTH_PLAN_EXISTS'
@@ -333,6 +343,10 @@ async function save() {
       ? t('intelligenceMonitor.groupMonitor.alreadyExists')
       : code === 'INTELLIGENCE_LOCAL_PLAN_EXISTS'
       ? t('intelligenceMonitor.local.alreadyAdded')
+      : metadata?.field === 'custom_prompt'
+      ? t('intelligenceMonitor.promptSettings.invalidPrompt')
+      : metadata?.field === 'channel_prompts'
+      ? t(detailText.includes('no longer belongs') ? 'intelligenceMonitor.promptSettings.unavailable' : detailText.includes('64000') || detailText.includes('at most 200') ? 'intelligenceMonitor.promptSettings.tooMany' : 'intelligenceMonitor.promptSettings.invalidChannels')
       : /selected account must support.*model without remapping/.test(detailText)
       ? t('intelligenceMonitor.oauth.fixedModelRequired', { model: form.model })
       : detailText === 'the selected OAuth account is disabled, paused, expired, rate limited or cooling down'

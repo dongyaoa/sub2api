@@ -42,6 +42,8 @@ export interface IntelligencePlanInput {
   group_note: string
   rate_note: string
   notes: string
+  custom_prompt?: string
+  channel_prompts?: IntelligenceChannelPrompt[]
   api_mode: 'responses' | 'chat_completions'
   enabled: boolean
   candy_enabled?: boolean
@@ -49,6 +51,17 @@ export interface IntelligencePlanInput {
   local_api_key_id?: number | null
   interval_seconds: number
   timeout_seconds: number
+}
+export interface IntelligenceChannelPrompt {
+  account_id: number
+  prompt: string
+}
+export interface IntelligenceLocalChannel {
+  account_id: number
+  name: string
+  platform: string
+  type: string
+  status: string
 }
 export interface IntelligenceRun {
   id: number
@@ -116,6 +129,9 @@ export interface IntelligenceRunPage {
 }
 const base = '/admin/intelligence-monitors'
 export const intelligenceMonitorAPI = {
+  async localChannels(groupID: number, signal?: AbortSignal): Promise<{ items: IntelligenceLocalChannel[] }> {
+    return (await apiClient.get(`${base}/local-channels`, { params: { group_id: groupID }, signal })).data
+  },
   async publicDisplay(signal?: AbortSignal): Promise<IntelligencePublicDisplaySettings> {
     return (await apiClient.get(`${base}/public-display`, { signal })).data
   },

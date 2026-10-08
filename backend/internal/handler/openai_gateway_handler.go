@@ -796,7 +796,11 @@ func (h *OpenAIGatewayHandler) Responses(c *gin.Context) {
 				}
 			}()
 			service.RecordIntelligenceExecutionAccount(c.Request.Context(), account)
-			return h.gatewayService.Forward(c.Request.Context(), c, account, attemptBody)
+			monitorBody, err := service.ApplyIntelligenceChannelPrompt(c.Request.Context(), account, attemptBody, service.MonitorAPIModeResponses)
+			if err != nil {
+				return nil, err
+			}
+			return h.gatewayService.Forward(c.Request.Context(), c, account, monitorBody)
 		}()
 		var cyberBlockBodyHTTP []byte
 		if service.GetOpsCyberPolicy(c) != nil {

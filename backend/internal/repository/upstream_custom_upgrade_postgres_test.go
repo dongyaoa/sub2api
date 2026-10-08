@@ -127,6 +127,7 @@ VALUES(93001,93001,30,25,'COMPLETED',NOW(),'CUSTOM-UPGRADE',$1::jsonb)`, promoti
 		"257_intelligence_candy_monitor.sql", "258_intelligence_candy_schedule.sql", "259_intelligence_local_key_ownership.sql",
 		"260_intelligence_candy_grading_version.sql", "261_intelligence_candy_fingerprint.sql", "262_intelligence_monitor_models.sql",
 		"263_intelligence_deleted_oauth_cleanup.sql", "264_upstream_account_monitor_lookup.sql",
+		"268_intelligence_monitor_prompts.sql",
 	} {
 		require.Contains(t, after, name, "all upstream-center migrations must be recorded")
 	}

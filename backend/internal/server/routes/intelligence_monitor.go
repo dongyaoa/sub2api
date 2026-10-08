@@ -11,6 +11,7 @@ func registerIntelligenceMonitorRoutes(admin *gin.RouterGroup, h *handler.Handle
 	}
 	api := h.Admin.IntelligenceMonitor
 	group := admin.Group("/intelligence-monitors")
+	group.GET("/local-channels", api.ListLocalChannels)
 	group.GET("/concurrency", api.GetConcurrency)
 	group.PUT("/concurrency", api.UpdateConcurrency)
 	group.GET("/public-display", api.GetPublicDisplay)

@@ -13,9 +13,11 @@ type intelligenceExecutionTraceContextKey struct{}
 // This collector is shared only through the authenticated, one-use loopback
 // permit. The worker owns the run; gateway goroutines never mutate its snapshot.
 type intelligenceExecutionTrace struct {
-	mu       sync.Mutex
-	account  intelligenceExecutionAccount
-	attempts int
+	mu           sync.Mutex
+	account      intelligenceExecutionAccount
+	attempts     int
+	promptConfig *intelligenceChannelPromptConfig
+	prompt       string
 }
 
 type intelligenceExecutionAccount struct {
@@ -52,6 +54,7 @@ func RecordIntelligenceExecutionAccount(ctx context.Context, account *Account) {
 	trace.mu.Lock()
 	trace.account = current
 	trace.attempts++
+	trace.prompt = ""
 	trace.mu.Unlock()
 }
 

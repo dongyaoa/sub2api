@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"net/http"
@@ -291,30 +292,37 @@ func (h *GatewayHandler) ChatCompletions(c *gin.Context) {
 		}
 		var result *service.ForwardResult
 		setActualUpstreamEndpoint(c, "")
-		if account.Platform == service.PlatformGemini {
-			if h.geminiCompatService == nil {
-				h.chatCompletionsErrorResponse(c, http.StatusBadGateway, "upstream_error", "Gemini compatibility service is not configured")
-				if accountReleaseFunc != nil {
-					accountReleaseFunc()
+		service.RecordIntelligenceExecutionAccount(c.Request.Context(), account)
+		monitorBody, err := service.ApplyIntelligenceChannelPrompt(c.Request.Context(), account, forwardBody, service.MonitorAPIModeChatCompletions)
+		attemptParsedReq := parsedReq
+		if err == nil && !bytes.Equal(monitorBody, forwardBody) {
+			// Prompt overrides must not leave the cached body on another channel's
+			// prompt or mutate the canonical request used by the next attempt.
+			attemptParsedReq, err = parsedReq.CloneForBody(monitorBody)
+		}
+		if err == nil {
+			if account.Platform == service.PlatformGemini {
+				if h.geminiCompatService == nil {
+					h.chatCompletionsErrorResponse(c, http.StatusBadGateway, "upstream_error", "Gemini compatibility service is not configured")
+					if accountReleaseFunc != nil {
+						accountReleaseFunc()
+					}
+					return
 				}
-				return
-			}
-			service.RecordIntelligenceExecutionAccount(c.Request.Context(), account)
-			result, err = h.geminiCompatService.ForwardAsChatCompletions(c.Request.Context(), c, account, forwardBody)
-		} else if shouldUseAntigravityCompat(account) {
-			if h.antigravityGatewayService == nil {
-				h.chatCompletionsErrorResponse(c, http.StatusBadGateway, "upstream_error", "Antigravity compatibility service is not configured")
-				if accountReleaseFunc != nil {
-					accountReleaseFunc()
+				result, err = h.geminiCompatService.ForwardAsChatCompletions(c.Request.Context(), c, account, monitorBody)
+			} else if shouldUseAntigravityCompat(account) {
+				if h.antigravityGatewayService == nil {
+					h.chatCompletionsErrorResponse(c, http.StatusBadGateway, "upstream_error", "Antigravity compatibility service is not configured")
+					if accountReleaseFunc != nil {
+						accountReleaseFunc()
+					}
+					return
 				}
-				return
+				setActualUpstreamEndpoint(c, EndpointAntigravityGenerateContent)
+				result, err = h.antigravityGatewayService.ForwardAsChatCompletions(c.Request.Context(), c, account, monitorBody, attemptParsedReq)
+			} else {
+				result, err = h.gatewayService.ForwardAsChatCompletions(c.Request.Context(), c, account, monitorBody, attemptParsedReq)
 			}
-			setActualUpstreamEndpoint(c, EndpointAntigravityGenerateContent)
-			service.RecordIntelligenceExecutionAccount(c.Request.Context(), account)
-			result, err = h.antigravityGatewayService.ForwardAsChatCompletions(c.Request.Context(), c, account, forwardBody, parsedReq)
-		} else {
-			service.RecordIntelligenceExecutionAccount(c.Request.Context(), account)
-			result, err = h.gatewayService.ForwardAsChatCompletions(c.Request.Context(), c, account, forwardBody, parsedReq)
 		}
 
 		if accountReleaseFunc != nil {

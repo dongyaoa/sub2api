@@ -87,6 +87,8 @@ type IntelligenceMonitorPlan struct {
 	Model                    string                          `json:"model"`
 	ReasoningEffort          string                          `json:"reasoning_effort"`
 	Prompt                   string                          `json:"prompt"`
+	CustomPrompt             string                          `json:"custom_prompt"`
+	ChannelPrompts           []IntelligenceChannelPrompt     `json:"channel_prompts"`
 	SourceName               string                          `json:"source_name"`
 	RateSnapshot             *UpstreamRemoteBillingSnapshot  `json:"rate_snapshot"`
 	LatestRun                *IntelligenceMonitorRun         `json:"latest_run"`
@@ -96,25 +98,27 @@ type IntelligenceMonitorPlan struct {
 	AllowWhileBusy           bool                            `json:"-"`
 }
 type IntelligenceMonitorInput struct {
-	Model                *string         `json:"model"`
-	Name                 *string         `json:"name"`
-	SourceType           *string         `json:"source_type"`
-	Endpoint             *string         `json:"endpoint"`
-	APIKey               *string         `json:"api_key"`
-	UpstreamTargetID     json.RawMessage `json:"upstream_target_id"`
-	GroupID              json.RawMessage `json:"group_id"`
-	AccountID            json.RawMessage `json:"account_id"`
-	LocalAPIKeyID        json.RawMessage `json:"local_api_key_id"`
-	SupplierNote         *string         `json:"supplier_note"`
-	GroupNote            *string         `json:"group_note"`
-	RateNote             *string         `json:"rate_note"`
-	Notes                *string         `json:"notes"`
-	APIMode              *string         `json:"api_mode"`
-	Enabled              *bool           `json:"enabled"`
-	CandyEnabled         *bool           `json:"candy_enabled"`
-	CandyIntervalSeconds *int            `json:"candy_interval_seconds"`
-	IntervalSeconds      *int            `json:"interval_seconds"`
-	TimeoutSeconds       *int            `json:"timeout_seconds"`
+	CustomPrompt         *string                      `json:"custom_prompt"`
+	ChannelPrompts       *[]IntelligenceChannelPrompt `json:"channel_prompts"`
+	Model                *string                      `json:"model"`
+	Name                 *string                      `json:"name"`
+	SourceType           *string                      `json:"source_type"`
+	Endpoint             *string                      `json:"endpoint"`
+	APIKey               *string                      `json:"api_key"`
+	UpstreamTargetID     json.RawMessage              `json:"upstream_target_id"`
+	GroupID              json.RawMessage              `json:"group_id"`
+	AccountID            json.RawMessage              `json:"account_id"`
+	LocalAPIKeyID        json.RawMessage              `json:"local_api_key_id"`
+	SupplierNote         *string                      `json:"supplier_note"`
+	GroupNote            *string                      `json:"group_note"`
+	RateNote             *string                      `json:"rate_note"`
+	Notes                *string                      `json:"notes"`
+	APIMode              *string                      `json:"api_mode"`
+	Enabled              *bool                        `json:"enabled"`
+	CandyEnabled         *bool                        `json:"candy_enabled"`
+	CandyIntervalSeconds *int                         `json:"candy_interval_seconds"`
+	IntervalSeconds      *int                         `json:"interval_seconds"`
+	TimeoutSeconds       *int                         `json:"timeout_seconds"`
 }
 type IntelligenceMonitorRun struct {
 	ID                  int64                          `json:"id"`

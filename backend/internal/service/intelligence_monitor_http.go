@@ -22,15 +22,23 @@ func (s *IntelligenceMonitorService) clientAndEndpoint(run *IntelligenceMonitorR
 	return s.externalClient, run.SourceEndpoint
 }
 func (s *IntelligenceMonitorService) generate(ctx context.Context, run *IntelligenceMonitorRun, key string) (*int, string, string) {
+	prompt, maxOutputTokens, validTest := intelligenceTestRequestDefinition(run)
+	if !validTest {
+		return nil, "", "unsupported intelligence test"
+	}
 	completed := false
 	if run != nil && run.SourceType == "local_group" {
 		var trace *intelligenceExecutionTrace
 		ctx, trace = newIntelligenceExecutionTrace(ctx)
-		defer func() { run.SourceSnapshot = trace.sourceSnapshot(run.SourceSnapshot, completed) }()
-	}
-	prompt, maxOutputTokens, validTest := intelligenceTestRequestDefinition(run)
-	if !validTest {
-		return nil, "", "unsupported intelligence test"
+		if err := trace.configurePrompts(run, prompt); err != nil {
+			return nil, "", "invalid channel artwork prompt configuration"
+		}
+		defer func() {
+			run.SourceSnapshot = trace.sourceSnapshot(run.SourceSnapshot, completed)
+			if applied := trace.appliedPrompt(); applied != "" {
+				run.Prompt = applied
+			}
+		}()
 	}
 	run.Model = intelligenceMonitorModel(run.Model)
 	if err := validateIntelligenceMonitorModel(run.Model); err != nil {
@@ -53,7 +61,7 @@ func (s *IntelligenceMonitorService) generate(ctx context.Context, run *Intellig
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
-		return nil, "", "failed to build the fixed generation request"
+		return nil, "", "failed to build the generation request"
 	}
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, joinURL(endpoint, path), bytes.NewReader(body))
 	if err != nil {

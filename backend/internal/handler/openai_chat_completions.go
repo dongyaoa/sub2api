@@ -261,7 +261,11 @@ func (h *OpenAIGatewayHandler) ChatCompletions(c *gin.Context) {
 				}
 			}()
 			service.RecordIntelligenceExecutionAccount(c.Request.Context(), account)
-			return h.gatewayService.ForwardAsChatCompletions(c.Request.Context(), c, account, forwardBody, promptCacheKey, "")
+			monitorBody, err := service.ApplyIntelligenceChannelPrompt(c.Request.Context(), account, forwardBody, service.MonitorAPIModeChatCompletions)
+			if err != nil {
+				return nil, err
+			}
+			return h.gatewayService.ForwardAsChatCompletions(c.Request.Context(), c, account, monitorBody, promptCacheKey, "")
 		}()
 		var cyberBlockBodyChat []byte
 		if service.GetOpsCyberPolicy(c) != nil {

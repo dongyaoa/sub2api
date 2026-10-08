@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"net/http"
@@ -282,20 +283,28 @@ func (h *GatewayHandler) Responses(c *gin.Context) {
 		}
 		var result *service.ForwardResult
 		setActualUpstreamEndpoint(c, "")
-		if shouldUseAntigravityCompat(account) {
-			if h.antigravityGatewayService == nil {
-				h.responsesErrorResponse(c, http.StatusBadGateway, "upstream_error", "Antigravity compatibility service is not configured")
-				if accountReleaseFunc != nil {
-					accountReleaseFunc()
+		service.RecordIntelligenceExecutionAccount(requestCtx, account)
+		monitorBody, err := service.ApplyIntelligenceChannelPrompt(requestCtx, account, forwardBody, service.MonitorAPIModeResponses)
+		attemptParsedReq := parsedReq
+		if err == nil && !bytes.Equal(monitorBody, forwardBody) {
+			// Keep the prompt and parsed body in the same account attempt; failover
+			// must start again from the original request rather than this channel.
+			attemptParsedReq, err = parsedReq.CloneForBody(monitorBody)
+		}
+		if err == nil {
+			if shouldUseAntigravityCompat(account) {
+				if h.antigravityGatewayService == nil {
+					h.responsesErrorResponse(c, http.StatusBadGateway, "upstream_error", "Antigravity compatibility service is not configured")
+					if accountReleaseFunc != nil {
+						accountReleaseFunc()
+					}
+					return
 				}
-				return
+				setActualUpstreamEndpoint(c, EndpointAntigravityGenerateContent)
+				result, err = h.antigravityGatewayService.ForwardAsResponses(requestCtx, c, account, monitorBody, attemptParsedReq)
+			} else {
+				result, err = h.gatewayService.ForwardAsResponses(requestCtx, c, account, monitorBody, attemptParsedReq)
 			}
-			setActualUpstreamEndpoint(c, EndpointAntigravityGenerateContent)
-			service.RecordIntelligenceExecutionAccount(requestCtx, account)
-			result, err = h.antigravityGatewayService.ForwardAsResponses(requestCtx, c, account, forwardBody, parsedReq)
-		} else {
-			service.RecordIntelligenceExecutionAccount(requestCtx, account)
-			result, err = h.gatewayService.ForwardAsResponses(requestCtx, c, account, forwardBody, parsedReq)
 		}
 
 		if accountReleaseFunc != nil {

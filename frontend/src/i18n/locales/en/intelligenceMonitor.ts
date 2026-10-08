@@ -29,6 +29,18 @@ export default {
       interval: 'Candy test interval', intervalHint: 'Defaults to 3 minutes. The main scheduling switch controls both tests; each can still be run manually when scheduling is off.',
       scoringHint: 'The expected answer, 21, is used only for scoring and is not included in the prompt sent to the model.',
     },
+    promptSettings: {
+      custom: 'Monitoring prompt (optional)', customHint: 'Leave blank to use the default prompt. Request displayable HTML, optionally with SVG animation. This affects pelican artwork only, not candy tests.',
+      default: 'View default prompt', channels: 'Set prompts for individual upstream channels (optional)', configuredCount: '{count} configured',
+      priority: 'The channel handling the request uses its own prompt first, then this monitoring prompt, then the default prompt when neither is set.',
+      selectGroup: 'Select a local group to load its upstream channels.', channelHint: 'Expand a channel to edit its prompt. Leave blank to inherit this monitoring prompt.',
+      loading: 'Loading upstream channels in this group…', loadFailed: 'Unable to load channels. Refresh to retry. You can still save a monitor without channel prompts.', empty: 'No upstream channels are available in this group.',
+      overridden: 'Channel prompt', inherited: 'Inherits monitoring prompt', channelPrompt: 'Prompt for {name} (optional)', clear: 'Clear and inherit monitoring prompt', savedChannel: 'Saved channel',
+      unavailable: 'This channel is no longer in the group or is unavailable. Clear its prompt before saving.',
+      tooLong: 'Each prompt can contain up to 8000 characters.', tooMany: 'Configure up to 200 channel prompts, with no more than 64000 characters across all prompts.',
+      invalidCharacters: 'Remove invalid characters from the prompt.', invalidPrompt: 'Check the monitoring prompt: up to 8000 characters with no null characters.', invalidChannels: 'Refresh the channel list and check each channel prompt. Each allows up to 8000 characters.',
+      configured: 'Custom prompts configured', actual: 'Prompt used for this run',
+    },
     local: {
       alreadyAdded: 'This local group already has a plan for this model. Choose another model or edit the existing plan.',
       groupRate: 'Group multiplier', search: 'Search groups, plans or keys',
@@ -80,7 +92,7 @@ export default {
     historical: 'Parameters and rates saved when this run executed', times: '{count} runs', seconds: '{count} seconds', minutes: '{count} minutes', hours: '{count} hours',
     sourceMissing: 'Source archived or unavailable', notScored: 'Compare the generated results; no automatic intelligence score is assigned.',
     form: {
-      modelHint: 'GPT-6 Astra is the default; GPT-6.1 Sol is also available. Both use high reasoning effort and the same test prompt.', validModel: 'Select a supported monitoring model.',
+      modelHint: 'GPT-6 Astra is the default; GPT-6.1 Sol is also available. Both use high reasoning effort.', validModel: 'Select a supported monitoring model.',
       name: 'Plan name', namePlaceholder: 'For example: North relay · GPT primary', source: 'Test source', selectUpstream: 'Select upstream key group', selectGroup: 'Select local group',
       endpoint: 'API endpoint', key: 'API key', keepKey: 'Leave blank to keep the saved key', protocol: 'Request API', sourceHint: 'Runs through the local group gateway with a dedicated key owned by the current administrator. Normal billing and group permissions apply.',
       supplierNote: 'Provider note', supplierPlaceholder: 'Provider or relay', groupNote: 'Group note', groupPlaceholder: 'Group or route', rateNote: 'Rate note', ratePlaceholder: 'For example: advertised 0.8× promotion',

@@ -11,6 +11,7 @@
       </div>
 
       <IntelligenceModelInfo :model="plan.model" :effort="plan.reasoning_effort" class="mt-2.5" data-testid="local-plan-model" />
+      <span v-if="plan.custom_prompt?.trim() || plan.channel_prompts?.some(item => item.prompt.trim())" class="mt-2 text-[10px] text-primary-600 dark:text-primary-300" data-testid="local-custom-prompt">{{ t('intelligenceMonitor.promptSettings.configured') }}</span>
       <div class="my-3 min-w-0 rounded-lg bg-gray-50 px-2.5 py-2 dark:bg-dark-900/40">
         <div class="flex min-w-0 items-center justify-between gap-2 text-[10px]">
           <span class="inline-flex shrink-0 items-center gap-1 text-gray-500 dark:text-dark-300"><Icon name="key" size="xs" />{{ t(plan.local_api_key_managed !== false ? 'intelligenceMonitor.local.managedBadge' : 'intelligenceMonitor.local.ownBadge') }}</span>

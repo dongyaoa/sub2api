@@ -6,12 +6,12 @@ import type { UpstreamOverview } from '@/api/admin/upstreamCenter'
 import Select from '@/components/common/Select.vue'
 import IntelligencePlanDialog from './IntelligencePlanDialog.vue'
 
-const mocks = vi.hoisted(() => ({ accounts: vi.fn(), account: vi.fn(), groups: vi.fn(), create: vi.fn(), update: vi.fn(), keys: vi.fn() }))
+const mocks = vi.hoisted(() => ({ accounts: vi.fn(), account: vi.fn(), groups: vi.fn(), create: vi.fn(), update: vi.fn(), keys: vi.fn(), channels: vi.fn() }))
 vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (key: string, params?: { count?: number }) => params?.count === undefined ? key : `${key}:${params.count}` }) }))
 vi.mock('@/api/keys', () => ({ list: mocks.keys }))
 vi.mock('@/api/admin/accounts', () => ({ list: mocks.accounts, getById: mocks.account }))
 vi.mock('@/api/admin/groups', () => ({ getAll: mocks.groups }))
-vi.mock('@/api/admin/intelligenceMonitor', () => ({ intelligenceMonitorAPI: { create: mocks.create, update: mocks.update }, PELICAN_MODEL: 'gpt-6-astra', PELICAN_REASONING: 'high', PELICAN_PROMPT: 'Pelican animation' }))
+vi.mock('@/api/admin/intelligenceMonitor', () => ({ intelligenceMonitorAPI: { create: mocks.create, update: mocks.update, localChannels: mocks.channels }, PELICAN_MODEL: 'gpt-6-astra', PELICAN_REASONING: 'high', PELICAN_PROMPT: 'Pelican animation' }))
 const dialog = defineComponent({ props: ['show', 'title'], template: '<div v-if="show"><slot /><slot name="footer" /></div>' })
 const oauthAccount = (id: number, name: string, fields: Record<string, unknown> = {}) => ({ id, name, platform: 'openai', type: 'oauth', status: 'active', schedulable: true, ...fields })
 const page = (items: unknown[], number = 1, pages = 1) => ({ items, total: pages === 1 ? items.length : pages * 100, page: number, page_size: 100, pages })
@@ -36,12 +36,49 @@ beforeEach(() => {
   mocks.account.mockResolvedValue(oauthAccount(7, 'Fresh OAuth Seven'))
   mocks.groups.mockResolvedValue([])
   mocks.keys.mockResolvedValue({ items: [], total: 0, page: 1, page_size: 100, pages: 0 })
+  mocks.channels.mockResolvedValue({ items: [{ account_id: 11, name: 'North channel', platform: 'openai', type: 'apikey', status: 'active' }] })
   mocks.create.mockResolvedValue({})
   mocks.update.mockResolvedValue({})
 })
 afterEach(() => { wrapper?.unmount(); wrapper = undefined; document.body.innerHTML = ''; vi.useRealTimers() })
 
 describe('OAuth intelligence plan dialog', () => {
+  it('saves optional local prompts and clears only channel overrides when choosing another group', async () => {
+    mocks.groups.mockResolvedValue([{ id: 5, name: 'Local GPT', platform: 'openai', rate_multiplier: 1 }, { id: 6, name: 'Backup GPT', platform: 'openai', rate_multiplier: 1 }])
+    const view = render({ oauthOnly: false, localOnly: true }); await flushPromises()
+    await selectOption(view, '#intelligence-group', 'Local GPT')
+    await view.get('#intelligence-custom-prompt').setValue('  Draw a pelican in HTML  ')
+    await view.get('[data-testid="toggle-channel-prompts"]').trigger('click'); await flushPromises()
+    await view.get('#intelligence-channel-prompt-11').setValue('  Draw a red pelican in HTML  ')
+    await view.get('form').trigger('submit'); await flushPromises()
+    expect(mocks.create).toHaveBeenLastCalledWith(expect.objectContaining({ group_id: 5, custom_prompt: 'Draw a pelican in HTML', channel_prompts: [{ account_id: 11, prompt: 'Draw a red pelican in HTML' }] }))
+    await selectOption(view, '#intelligence-group', 'Backup GPT')
+    await view.get('form').trigger('submit'); await flushPromises()
+    expect(mocks.create).toHaveBeenLastCalledWith(expect.objectContaining({ group_id: 6, custom_prompt: 'Draw a pelican in HTML', channel_prompts: [] }))
+  })
+
+  it('restores saved local prompts and explicitly clears them to the default', async () => {
+    mocks.groups.mockResolvedValue([{ id: 5, name: 'Local GPT', platform: 'openai', rate_multiplier: 1 }])
+    const plan = savedPlan({ source_type: 'local_group', group_id: 5, account_id: null, custom_prompt: 'Saved plan prompt', channel_prompts: [{ account_id: 11, prompt: 'Saved channel prompt' }] })
+    const view = render({ oauthOnly: false, localOnly: true, plan }); await flushPromises()
+    expect((view.get('#intelligence-custom-prompt').element as HTMLTextAreaElement).value).toBe('Saved plan prompt')
+    expect((view.get('#intelligence-channel-prompt-11').element as HTMLTextAreaElement).value).toBe('Saved channel prompt')
+    await view.get('#intelligence-custom-prompt').setValue('')
+    await view.get('[data-clear-channel="11"]').trigger('click')
+    await view.get('form').trigger('submit'); await flushPromises()
+    expect(mocks.update).toHaveBeenCalledWith(plan.id, expect.objectContaining({ custom_prompt: '', channel_prompts: [] }))
+    expect(plan.channel_prompts).toEqual([{ account_id: 11, prompt: 'Saved channel prompt' }])
+  })
+
+  it('omits local prompt settings from OAuth plans', async () => {
+    const view = render(); await flushPromises()
+    expect(view.find('[data-testid="local-prompt-settings"]').exists()).toBe(false)
+    await selectOAuth(view)
+    await view.get('form').trigger('submit'); await flushPromises()
+    expect(mocks.create.mock.calls[0]![0]).not.toHaveProperty('custom_prompt')
+    expect(mocks.create.mock.calls[0]![0]).not.toHaveProperty('channel_prompts')
+  })
+
   it('defaults to Astra and offers Sol using the native non-searchable model selector', async () => {
     const view = render(); await flushPromises()
     expect(view.get('#intelligence-model').text()).toContain('GPT-6 Astra')
