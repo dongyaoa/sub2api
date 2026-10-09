@@ -160,7 +160,7 @@ function mountUsageView() {
         DateRangePicker: true,
         Icon: true,
         UsageStatsCards: false,
-        UsageTable: chartStub,
+        UsageTable: { ...chartStub, props: ['columns'] },
         UserErrorRequestsTable: chartStub,
         ModelDistributionChart: chartStub,
         GroupDistributionChart: chartStub,
@@ -218,9 +218,10 @@ describe('user UsageView', () => {
   })
 
   it('loads logs, stats, model stats, and snapshot on first render', async () => {
-    mountUsageView()
+    const wrapper = mountUsageView()
     await flushPromises()
 
+    expect(wrapper.findComponent(UsageTable).props('columns').map((column: { key: string }) => column.key)).toContain('latency')
     expect(query).toHaveBeenCalled()
     expect(getStats).toHaveBeenCalled()
     expect(getDashboardModels).toHaveBeenCalled()
@@ -243,7 +244,7 @@ describe('user UsageView', () => {
     const wrapper = mountUsageView()
     await flushPromises()
 
-    const columns = wrapper.findComponent(UsageTable).vm.$attrs.columns as Array<{ key: string }>
+    const columns = wrapper.findComponent(UsageTable).props('columns') as Array<{ key: string }>
     expect(columns.map((column) => column.key)).toEqual(expect.arrayContaining(['cache_rate']))
     expect(columns.findIndex((column) => column.key === 'cache_rate')).toBe(
       columns.findIndex((column) => column.key === 'tokens') + 1,
