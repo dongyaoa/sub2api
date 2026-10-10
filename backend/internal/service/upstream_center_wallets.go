@@ -29,6 +29,17 @@ func upstreamSupplierWallets(targets []*UpstreamTarget) []*UpstreamBalanceSnapsh
 			continue
 		}
 		observation := target.Balance
+		if target.NewAPIUserID > 0 && observation.Kind == "key_quota" {
+			if knownWallets[upstreamWalletScope(target)] {
+				continue
+			}
+			// Key allowances remain available on the group. The site sidebar
+			// has one account-wallet placeholder until a wallet can be verified.
+			copy := *observation
+			copy.Kind, copy.QuotaRemaining, copy.Balance = "unknown", nil, nil
+			copy.UnlimitedQuota = false
+			observation = &copy
+		}
 		ref := upstreamWalletRef(target)
 		identity := walletIdentity{ref: ref, account: upstreamWalletScope(target)}
 		switch observation.Kind {
@@ -38,7 +49,9 @@ func upstreamSupplierWallets(targets []*UpstreamTarget) []*UpstreamBalanceSnapsh
 			identity.kind, identity.targetID = observation.Kind, target.ID
 		case "wallet":
 			identity.kind = "wallet"
-			identity.currency = strings.ToUpper(strings.TrimSpace(observation.Currency))
+			if target.NewAPIUserID <= 0 {
+				identity.currency = strings.ToUpper(strings.TrimSpace(observation.Currency))
+			}
 		default:
 			if knownWallets[upstreamWalletScope(target)] {
 				continue
@@ -48,7 +61,11 @@ func upstreamSupplierWallets(targets []*UpstreamTarget) []*UpstreamBalanceSnapsh
 			identity.kind = "unresolved"
 		}
 		if pos, exists := positions[identity]; exists {
-			wallets[pos] = mergeUpstreamWalletBalances(wallets[pos], observation)
+			if target.NewAPIUserID > 0 {
+				wallets[pos] = mergeUpstreamNewAPIWalletBalances(wallets[pos], observation)
+			} else {
+				wallets[pos] = mergeUpstreamWalletBalances(wallets[pos], observation)
+			}
 			wallets[pos].WalletRef = ref
 		} else {
 			positions[identity] = len(wallets)
@@ -67,11 +84,17 @@ func upstreamWalletScope(target *UpstreamTarget) string {
 	if target.NewAPIUserID <= 0 {
 		return ref
 	}
-	base, _ := upstreamUsageURL(target.Endpoint)
-	return fmt.Sprintf("%s\x00newapi:%s:%d", ref, base, target.NewAPIUserID)
+	base := upstreamNewAPIBase(target.Endpoint)
+	if base == "" {
+		return fmt.Sprintf("invalid-newapi:%d", target.ID)
+	}
+	return fmt.Sprintf("newapi:%s:%d", base, target.NewAPIUserID)
 }
 
 func upstreamWalletRef(target *UpstreamTarget) string {
+	if target.NewAPIUserID > 0 {
+		return "default"
+	}
 	if ref := strings.TrimSpace(target.WalletRef); ref != "" {
 		return ref
 	}
@@ -87,6 +110,24 @@ func mergeUpstreamWalletBalances(current, candidate *UpstreamBalanceSnapshot) *U
 	// key's successful balance with another key's 401 creates a false failure.
 	result := *selected
 	return &result
+}
+
+func mergeUpstreamNewAPIWalletBalances(current, candidate *UpstreamBalanceSnapshot) *UpstreamBalanceSnapshot {
+	confirmed := func(snapshot *UpstreamBalanceSnapshot) bool {
+		return snapshot.Balance != nil && snapshot.Currency == "USD" && snapshot.CurrencySource == "newapi_status"
+	}
+	// /api/status may fail for one group while another group has already
+	// confirmed quota_per_unit. Prefer that complete monetary observation over
+	// a newer raw QUOTA amount for the same account; never mix their fields.
+	if confirmed(current) != confirmed(candidate) {
+		selected := current
+		if confirmed(candidate) {
+			selected = candidate
+		}
+		copy := *selected
+		return &copy
+	}
+	return mergeUpstreamWalletBalances(current, candidate)
 }
 
 func preferUpstreamWalletObservation(candidate, current *UpstreamBalanceSnapshot) bool {

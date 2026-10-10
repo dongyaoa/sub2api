@@ -45,6 +45,7 @@ func (h *UpstreamCenterHandler) SaveOrder(c *gin.Context) {
 }
 
 type upstreamSupplierRequest struct {
+	service.UpstreamSupplierNewAPIInput
 	Name          *string         `json:"name"`
 	Website       *string         `json:"website"`
 	Notes         *string         `json:"notes"`
@@ -63,7 +64,7 @@ func (h *UpstreamCenterHandler) saveSupplier(c *gin.Context, id int64) {
 		response.BadRequest(c, "invalid supplier configuration")
 		return
 	}
-	result, err := h.svc.SaveSupplier(c.Request.Context(), id, in.Name, in.Website, in.Notes, in.RechargeRatio)
+	result, err := h.svc.SaveSupplier(c.Request.Context(), id, in.Name, in.Website, in.Notes, in.RechargeRatio, in.UpstreamSupplierNewAPIInput)
 	if response.ErrorFrom(c, err) {
 		return
 	}

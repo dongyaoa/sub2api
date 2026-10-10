@@ -50,25 +50,31 @@ func (s *IntelligenceMonitorService) ListLocalChannels(ctx context.Context, grou
 	return channels, err
 }
 
+func intelligenceSupportsCustomPrompt(source string) bool {
+	return source == "local_group" || source == "upstream" || source == "external"
+}
+
 func intelligencePlanPrompt(p *IntelligenceMonitorPlan) string {
-	if p != nil && p.SourceType == "local_group" && strings.TrimSpace(p.CustomPrompt) != "" {
+	if p != nil && intelligenceSupportsCustomPrompt(p.SourceType) && strings.TrimSpace(p.CustomPrompt) != "" {
 		return strings.TrimSpace(p.CustomPrompt)
 	}
 	return IntelligenceMonitorPrompt
 }
 
 func (s *IntelligenceMonitorService) configureIntelligencePrompts(ctx context.Context, p, old *IntelligenceMonitorPlan, in IntelligenceMonitorInput) error {
-	if p.SourceType != "local_group" {
+	if !intelligenceSupportsCustomPrompt(p.SourceType) {
 		p.CustomPrompt, p.ChannelPrompts = "", []IntelligenceChannelPrompt{}
 		return nil
 	}
-	if old != nil && (old.SourceType != "local_group" || !sameUpstreamSupplier(old.GroupID, p.GroupID)) {
+	if old != nil && (old.SourceType != p.SourceType || (p.SourceType == "local_group" && !sameUpstreamSupplier(old.GroupID, p.GroupID))) {
 		p.CustomPrompt, p.ChannelPrompts = "", nil
 	}
 	if in.CustomPrompt != nil {
 		p.CustomPrompt = strings.TrimSpace(*in.CustomPrompt)
 	}
-	if in.ChannelPrompts != nil {
+	if p.SourceType != "local_group" {
+		p.ChannelPrompts = nil
+	} else if in.ChannelPrompts != nil {
 		p.ChannelPrompts = append([]IntelligenceChannelPrompt(nil), (*in.ChannelPrompts)...)
 	}
 	invalid := func(field, detail string) error {

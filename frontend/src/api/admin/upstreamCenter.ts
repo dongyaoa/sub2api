@@ -127,6 +127,7 @@ export interface UpstreamTarget extends Omit<UpstreamTargetInput, 'api_key' | 's
   id: number
   api_key_masked: string
   newapi_access_token_configured?: boolean
+  newapi_credentials_inherited?: boolean
   created_at: string
   updated_at: string
   last_checked_at: string | null
@@ -136,14 +137,16 @@ export interface UpstreamTarget extends Omit<UpstreamTargetInput, 'api_key' | 's
   finance: UpstreamFinanceSummary
 }
 
-export interface UpstreamSupplierInput { name: string; website: string; notes: string; recharge_ratio?: number | null }
-export interface UpstreamSupplier extends UpstreamSupplierInput {
+export interface UpstreamSupplierInput { name: string; website: string; notes: string; recharge_ratio?: number | null; newapi_user_id?: number; newapi_access_token?: string; newapi_api_base?: string }
+export interface UpstreamSupplier extends Omit<UpstreamSupplierInput, 'newapi_access_token'> {
   id: number
   created_at: string
   updated_at: string
   targets: UpstreamTarget[]
   finance: UpstreamFinanceSummary
   wallets: UpstreamBalanceSnapshot[]
+  newapi_access_token_configured?: boolean
+  newapi_legacy_conflict?: boolean
 }
 export interface UpstreamOverview {
   suppliers: UpstreamSupplier[]

@@ -8,11 +8,11 @@
       <div class="min-h-0 flex-1 space-y-4 overflow-y-auto pr-1" data-testid="candy-detail-scroll">
       <dl class="grid grid-cols-2 gap-3 rounded-xl bg-gray-50 p-3 text-xs dark:bg-dark-900/40 sm:grid-cols-4">
         <div><dt class="text-gray-400">{{ t('intelligenceMonitor.model') }}</dt><dd class="mt-1 break-words font-medium text-gray-700 dark:text-gray-200">{{ display.model }} · {{ display.reasoning_effort }}</dd></div>
-        <div><dt class="text-gray-400">{{ t('intelligenceMonitor.candy.answer') }}</dt><dd class="mt-1 break-words font-semibold">{{ display.answer || '—' }}<span class="ml-2 text-[10px] font-medium" :class="display.correct === true ? 'text-emerald-600 dark:text-emerald-400' : display.correct === false ? 'text-rose-600 dark:text-rose-400' : 'text-gray-400'">{{ t('intelligenceMonitor.candy.' + candyAnswerResult(display)) }}</span></dd></div>
+        <div><dt class="text-gray-400">{{ t('intelligenceMonitor.candy.answer') }}</dt><dd class="mt-1 break-words font-semibold">{{ display.answer || '—' }}<span class="ml-2 text-[10px] font-medium" :class="candyAnswerResult(display) === 'correct' ? 'text-emerald-600 dark:text-emerald-400' : candyAnswerResult(display) === 'incorrect' ? 'text-rose-600 dark:text-rose-400' : 'text-gray-400'">{{ t('intelligenceMonitor.candy.' + candyAnswerResult(display)) }}</span></dd></div>
         <div><dt class="text-gray-400">{{ t('intelligenceMonitor.totalDuration') }}</dt><dd class="mt-1 tabular-nums">{{ intelligenceDurationLabel(display, t) || '—' }}</dd></div>
         <div><dt class="text-gray-400">{{ t('intelligenceMonitor.http') }}</dt><dd class="mt-1 tabular-nums">{{ display.http_status ?? '—' }}</dd></div>
       </dl>
-      <p v-if="display.error" class="max-h-20 shrink-0 overflow-auto whitespace-pre-wrap break-words text-xs text-rose-600 dark:text-rose-400">{{ display.error }}</p>
+      <p v-if="display.error" class="max-h-20 shrink-0 overflow-auto whitespace-pre-wrap break-words text-xs text-amber-600 dark:text-amber-400">{{ display.error }}</p>
       <IntelligenceExecutionSource :run="display" class="!mt-0 max-h-40 shrink-0 overflow-y-auto" />
       <p v-if="error" role="alert" class="shrink-0 text-xs text-rose-600">{{ error }}</p>
       <section class="overflow-hidden rounded-xl border border-gray-200 dark:border-dark-700">

@@ -18,7 +18,7 @@ type intelligenceChannelPromptConfig struct {
 	accounts map[int64]string
 }
 
-func intelligenceLocalArtworkPrompt(raw string) (string, bool) {
+func intelligenceArtworkPrompt(raw string) (string, bool) {
 	prompt := strings.TrimSpace(raw)
 	if prompt == "" {
 		return IntelligenceMonitorPrompt, true
@@ -48,7 +48,7 @@ func (t *intelligenceExecutionTrace) configurePrompts(run *IntelligenceMonitorRu
 		characters = utf8.RuneCountInString(fallback)
 	}
 	for _, channel := range channels {
-		prompt, valid := intelligenceLocalArtworkPrompt(channel.Prompt)
+		prompt, valid := intelligenceArtworkPrompt(channel.Prompt)
 		if channel.AccountID <= 0 || !valid {
 			return errors.New("invalid channel prompt")
 		}

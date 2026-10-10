@@ -2,6 +2,7 @@
   <section class="group-row">
     <header class="flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
       <div class="flex min-w-0 flex-wrap items-center gap-2">
+        <UpstreamProviderBadge :provider="target.provider" />
         <button type="button" class="max-w-[240px] truncate text-left text-sm font-semibold text-gray-900 hover:text-primary-600 dark:text-gray-100 dark:hover:text-primary-400" :title="target.name" @click="emit('details', target, selectedModel)">{{ target.name }}</button>
         <UpstreamStatusBadge :status="targetStatus(target, selectedModel)" />
         <UpstreamRateBadge :billing="target.balance?.billing" />
@@ -87,6 +88,7 @@ import Icon from '@/components/icons/Icon.vue'
 import type { UpstreamHistoryRecord, UpstreamTarget } from '@/api/admin/upstreamCenter'
 import UpstreamHistoryBar from './UpstreamHistoryBar.vue'
 import UpstreamStatusBadge from './UpstreamStatusBadge.vue'
+import UpstreamProviderBadge from './UpstreamProviderBadge.vue'
 import UpstreamRateBadge from './UpstreamRateBadge.vue'
 import UpstreamFinanceNotice from './UpstreamFinanceNotice.vue'
 import { upstreamSyncError } from './newapi'

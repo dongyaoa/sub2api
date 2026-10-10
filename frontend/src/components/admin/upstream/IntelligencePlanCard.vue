@@ -19,6 +19,7 @@
         </div>
       </div>
       <p v-if="!compact && !oauth" class="plan-endpoint mt-2 truncate font-mono text-[10px] text-gray-400 dark:text-dark-400" :title="endpoint">{{ endpoint || '—' }}</p>
+      <span v-if="!oauth && plan.custom_prompt?.trim()" class="mt-2 text-[10px] text-primary-600 dark:text-primary-300" data-testid="intelligence-custom-prompt">{{ t('intelligenceMonitor.promptSettings.configured') }}</span>
       <div class="plan-group flex items-end justify-between gap-3" :class="!compact && 'mt-3'">
         <div class="min-w-0"><p class="text-[10px] text-gray-400">{{ t(oauth ? 'intelligenceMonitor.oauth.account' : 'intelligenceMonitor.group') }}</p><p class="mt-1 truncate text-xs font-medium text-gray-700 dark:text-gray-200" :title="groupName">{{ groupName }}</p></div>
         <div v-if="!oauth" class="shrink-0 text-right"><p class="text-[10px] text-gray-400">{{ t('intelligenceMonitor.rate') }}</p><p class="mt-0.5 text-lg font-semibold tabular-nums" :class="rate?.stale ? 'text-amber-500' : 'text-primary-600 dark:text-primary-400'">{{ intelligenceRateLabel(rate) || '—' }}</p></div>

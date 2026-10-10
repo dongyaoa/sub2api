@@ -6,10 +6,13 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
+	"net/http"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/require"
+	"github.com/tidwall/gjson"
 )
 
 type intelligencePromptTestRepo struct {
@@ -121,6 +124,80 @@ func TestIntelligencePromptsClearOldSourceAndGroupSettings(t *testing.T) {
 		require.NoError(t, svc.configureIntelligencePrompts(context.Background(), next, old, IntelligenceMonitorInput{}))
 		require.Empty(t, next.CustomPrompt)
 		require.Empty(t, next.ChannelPrompts)
+	}
+}
+
+func TestIntelligencePromptsUpstreamAndExternalPersistAndExecute(t *testing.T) {
+	for _, source := range []string{"upstream", "external"} {
+		for _, mode := range []string{MonitorAPIModeResponses, MonitorAPIModeChatCompletions} {
+			t.Run(source+"/"+mode, func(t *testing.T) {
+				ctx := context.Background()
+				repo := &intelligenceTestRepository{}
+				target := &UpstreamTarget{ID: 7, Name: "API group", Provider: MonitorProviderOpenAI, Endpoint: "https://8.8.8.8", APIKeyEncrypted: "encrypted:secret"}
+				svc := NewIntelligenceMonitorService(repo, upstreamTestEncryptor{}, &upstreamTestRepo{target: target}, nil, nil, nil, nil)
+				name, key, custom := "Artwork", "secret", "  创建 HTML，用 SVG 画一只红色鹈鹕。  "
+				channels := []IntelligenceChannelPrompt{{AccountID: 99, Prompt: "must not apply outside a local group"}}
+				in := IntelligenceMonitorInput{Name: &name, SourceType: &source, Endpoint: &target.Endpoint, APIKey: &key, APIMode: &mode, UpstreamTargetID: json.RawMessage(`7`), CustomPrompt: &custom, ChannelPrompts: &channels}
+				plan, err := svc.SavePlan(ctx, 0, 1, in)
+				require.NoError(t, err)
+				require.Equal(t, strings.TrimSpace(custom), plan.CustomPrompt)
+				require.Equal(t, plan.CustomPrompt, plan.Prompt)
+				require.Empty(t, plan.ChannelPrompts)
+				plan.ID, plan.CandyEnabled = 3, true
+				repo.plan = plan
+				run, err := svc.Enqueue(ctx, plan.ID)
+				require.NoError(t, err)
+				require.Equal(t, plan.CustomPrompt, run.Prompt)
+				require.NotContains(t, run.SourceSnapshot, "channel_prompts")
+				// Editing a plan after queueing must not change the queued request.
+				changed := "changed after enqueue"
+				_, err = svc.SavePlan(ctx, plan.ID, 1, IntelligenceMonitorInput{CustomPrompt: &changed})
+				require.NoError(t, err)
+				svc.externalClient = &http.Client{Transport: upstreamModelsTransport(func(request *http.Request) (*http.Response, error) {
+					body, err := io.ReadAll(request.Body)
+					require.NoError(t, err)
+					path := "input"
+					response := `{"status":"completed","output_text":"<html><svg></svg></html>"}`
+					if mode == MonitorAPIModeChatCompletions {
+						path = "messages.0.content"
+						response = `{"choices":[{"message":{"content":"<html><svg></svg></html>"},"finish_reason":"stop"}]}`
+					}
+					require.Equal(t, strings.TrimSpace(custom), gjson.GetBytes(body, path).String())
+					require.True(t, gjson.GetBytes(body, "stream").Bool())
+					return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(response))}, nil
+				})}
+				status, artwork, message := svc.generate(ctx, run, key)
+				require.Empty(t, message)
+				require.Equal(t, http.StatusOK, *status)
+				require.Contains(t, artwork, "<svg>")
+				candy, err := svc.EnqueueCandy(ctx, plan.ID)
+				require.NoError(t, err)
+				require.Equal(t, IntelligenceMonitorCandyPrompt, candy.Prompt)
+				updated, err := svc.SavePlan(ctx, plan.ID, 1, IntelligenceMonitorInput{Notes: &name})
+				require.NoError(t, err)
+				require.Equal(t, strings.TrimSpace(custom), updated.CustomPrompt, "omitting the field preserves the prompt")
+				blank := ""
+				updated, err = svc.SavePlan(ctx, plan.ID, 1, IntelligenceMonitorInput{CustomPrompt: &blank})
+				require.NoError(t, err)
+				require.Equal(t, IntelligenceMonitorPrompt, updated.Prompt)
+			})
+		}
+	}
+}
+
+func TestIntelligencePromptsNonLocalValidationAndFallback(t *testing.T) {
+	svc := &IntelligenceMonitorService{}
+	for _, source := range []string{"upstream", "external"} {
+		for _, prompt := range []string{strings.Repeat("鹈", 8001), "draw\x00pelican", string([]byte{0xff})} {
+			plan := &IntelligenceMonitorPlan{SourceType: source}
+			err := svc.configureIntelligencePrompts(context.Background(), plan, nil, IntelligenceMonitorInput{CustomPrompt: &prompt})
+			require.ErrorIs(t, err, ErrIntelligenceInvalid)
+			_, _, valid := intelligenceTestRequestDefinition(&IntelligenceMonitorRun{SourceType: source, Prompt: prompt})
+			require.False(t, valid)
+		}
+		prompt, _, valid := intelligenceTestRequestDefinition(&IntelligenceMonitorRun{SourceType: source, Prompt: " \n "})
+		require.True(t, valid)
+		require.Equal(t, IntelligenceMonitorPrompt, prompt)
 	}
 }
 

@@ -36,8 +36,18 @@ beforeEach(() => { vi.resetAllMocks(); mocks.accounts.mockResolvedValue({ items:
 afterEach(() => { wrapper?.unmount(); wrapper = undefined; document.body.innerHTML = '' })
 
 describe('upstream target credentials and form lifecycle', () => {
-  it.each([supplier, null])('saves optional New API authorization for a group or monitor without sending it to model discovery', async parentSupplier => {
-    const view = render(null, false, parentSupplier)
+  it('inherits site authorization without exposing, clearing or resubmitting group credentials', async () => {
+    const view = render({ ...target(), newapi_user_id: 42, newapi_access_token_configured: true }, false, { ...supplier, newapi_user_id: 42, newapi_access_token_configured: true })
+    await flushPromises()
+    expect(view.find('[data-testid="newapi-authorization"]').exists()).toBe(false)
+    expect(view.find('#target-newapi-token').exists()).toBe(false)
+    expect(view.find('#target-wallet').exists()).toBe(false)
+    expect(view.get('[data-testid="newapi-site-inheritance"]').text()).toContain('upstreamCenter.newapi.inheritedHint')
+    await view.get('form').trigger('submit'); await flushPromises()
+    expect(mocks.update).toHaveBeenCalledWith(9, expect.objectContaining({ newapi_user_id: undefined, newapi_access_token: undefined }))
+  })
+  it('saves optional New API authorization for an independent monitor without sending it to model discovery', async () => {
+    const view = render(null, false, null)
     await flushPromises()
     await view.get('#target-name').setValue('New API group')
     await view.get('#target-endpoint').setValue('https://new-api.example/v1')
@@ -54,7 +64,7 @@ describe('upstream target credentials and form lifecycle', () => {
     expect((view.get('#target-newapi-token').element as HTMLInputElement).value).toBe('')
   })
   it('preserves a saved New API authorization without returning the token to the form', async () => {
-    const view = render({ ...target(), newapi_user_id: 42, newapi_access_token_configured: true })
+    const view = render({ ...target(), supplier_id: null, newapi_user_id: 42, newapi_access_token_configured: true }, false, null)
     await flushPromises()
     expect(view.get('#target-newapi-enabled').attributes('aria-checked')).toBe('true')
     expect((view.get('#target-newapi-user').element as HTMLInputElement).value).toBe('42')
@@ -65,7 +75,7 @@ describe('upstream target credentials and form lifecycle', () => {
     expect(mocks.update).toHaveBeenCalledWith(9, expect.objectContaining({ newapi_user_id: 42, newapi_access_token: undefined }))
   })
   it.each(['endpoint', 'provider', 'userId'])('requires fresh New API authorization after changing %s and never reuses a typed token', async field => {
-    const view = render({ ...target(), newapi_user_id: 42, newapi_access_token_configured: true })
+    const view = render({ ...target(), supplier_id: null, newapi_user_id: 42, newapi_access_token_configured: true }, false, null)
     await flushPromises()
     await view.get('#target-newapi-token').setValue('token-for-original-recipient')
     if (field === 'endpoint') await view.get('#target-endpoint').setValue('https://different.example')
@@ -101,7 +111,7 @@ describe('upstream target credentials and form lifecycle', () => {
     expect(mocks.update).toHaveBeenCalledWith(9, expect.objectContaining({ endpoint: 'https://imported.example', source_account_id: 7, newapi_user_id: 0, newapi_access_token: undefined }))
   })
   it.each(['', '0', '-1', '1.5'])('requires a positive whole user ID before submitting New API authorization (%s)', async userId => {
-    const view = render(target())
+    const view = render({ ...target(), supplier_id: null }, false, null)
     await flushPromises()
     await view.get('#target-newapi-enabled').trigger('click')
     await view.get('#target-newapi-user').setValue(userId)
@@ -111,7 +121,7 @@ describe('upstream target credentials and form lifecycle', () => {
     expect(view.get('[role="alert"]').text()).toBe('upstreamCenter.newapi.requiredUserId')
   })
   it('clears unsaved New API tokens when the dialog closes and resets authorization for another target', async () => {
-    const view = render({ ...target(), newapi_user_id: 42, newapi_access_token_configured: true })
+    const view = render({ ...target(), supplier_id: null, newapi_user_id: 42, newapi_access_token_configured: true }, false, null)
     await flushPromises()
     await view.get('#target-newapi-token').setValue('temporary-token')
     await view.setProps({ show: false })

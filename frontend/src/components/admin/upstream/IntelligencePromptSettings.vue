@@ -9,7 +9,7 @@
       <summary class="cursor-pointer text-xs font-medium text-gray-500">{{ t('intelligenceMonitor.promptSettings.default') }}</summary>
       <p class="mt-2 whitespace-pre-wrap break-words text-xs leading-6 text-gray-600 dark:text-dark-300">{{ PELICAN_PROMPT }}</p>
     </details>
-    <div class="border-t border-gray-100 pt-4 dark:border-dark-700">
+    <div v-if="allowChannels" class="border-t border-gray-100 pt-4 dark:border-dark-700">
       <button type="button" class="flex w-full items-center justify-between gap-3 text-left text-sm font-medium text-gray-800 dark:text-gray-200" :aria-expanded="channelsExpanded" aria-controls="intelligence-channel-prompts" data-testid="toggle-channel-prompts" @click="toggleChannels">
         <span>{{ t('intelligenceMonitor.promptSettings.channels') }}<span v-if="configuredCount" class="ml-2 text-xs font-normal text-primary-600 dark:text-primary-300">{{ t('intelligenceMonitor.promptSettings.configuredCount', { count: configuredCount }) }}</span></span>
         <Icon :name="channelsExpanded ? 'chevronDown' : 'chevronRight'" size="sm" />
@@ -52,7 +52,7 @@ import { useI18n } from 'vue-i18n'
 import Icon from '@/components/icons/Icon.vue'
 import { intelligenceMonitorAPI, PELICAN_PROMPT, type IntelligenceChannelPrompt, type IntelligenceLocalChannel } from '@/api/admin/intelligenceMonitor'
 
-const props = defineProps<{ groupId?: number | null; customPrompt?: string; channelPrompts?: IntelligenceChannelPrompt[]; disabled?: boolean }>()
+const props = withDefaults(defineProps<{ groupId?: number | null; customPrompt?: string; channelPrompts?: IntelligenceChannelPrompt[]; disabled?: boolean; allowChannels?: boolean }>(), { allowChannels: true })
 const emit = defineEmits<{ 'update:customPrompt': [value: string]; 'update:channelPrompts': [value: IntelligenceChannelPrompt[]] }>()
 const { t } = useI18n()
 const channels = ref<IntelligenceLocalChannel[]>([]), loading = ref(false), loaded = ref(false), loadError = ref(''), validationError = ref('')
@@ -89,7 +89,7 @@ function toggleChannels() {
 }
 async function loadChannels() {
   controller?.abort()
-  if (!props.groupId) return
+  if (!props.allowChannels || !props.groupId) return
   const current = new AbortController(); controller = current
   const groupID = props.groupId
   loading.value = true; loadError.value = ''
@@ -102,16 +102,16 @@ async function loadChannels() {
     if (!current.signal.aborted && props.groupId === groupID) loadError.value = t('intelligenceMonitor.promptSettings.loadFailed')
   } finally { if (!current.signal.aborted) loading.value = false }
 }
-watch(() => props.groupId, () => {
+watch([() => props.groupId, () => props.allowChannels], () => {
   controller?.abort(); channels.value = []; loaded.value = false; loading.value = false; loadError.value = ''; validationError.value = ''
   if (channelsExpanded.value) void loadChannels()
 }, { immediate: true })
 function validate() {
-  const prompts = [props.customPrompt || '', ...(props.channelPrompts || []).map(item => item.prompt)].map(prompt => prompt.trim())
+  const prompts = [props.customPrompt || '', ...(props.allowChannels ? props.channelPrompts || [] : []).map(item => item.prompt)].map(prompt => prompt.trim())
   const sizes = prompts.map(prompt => Array.from(prompt).length)
   validationError.value = prompts.some(prompt => prompt.includes('\0')) ? t('intelligenceMonitor.promptSettings.invalidCharacters')
     : sizes.some(size => size > 8000) ? t('intelligenceMonitor.promptSettings.tooLong')
-    : configuredCount.value > 200 || sizes.reduce((sum, size) => sum + size, 0) > 64000 ? t('intelligenceMonitor.promptSettings.tooMany')
+    : (props.allowChannels && configuredCount.value > 200) || sizes.reduce((sum, size) => sum + size, 0) > 64000 ? t('intelligenceMonitor.promptSettings.tooMany')
       : ''
   return !validationError.value
 }

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import type { IntelligencePlan, IntelligenceRun } from '@/api/admin/intelligenceMonitor'
 import { candyAnswerResult, candyHistory, candyResult, candyResultTone, intelligenceRefreshInterval, isIntelligencePlanActive } from './intelligenceCandy'
 
-const run = (id: number, fields: Partial<IntelligenceRun> = {}) => ({ id, test_kind: 'candy', status: 'succeeded', correct: true, ...fields }) as IntelligenceRun
+const run = (id: number, fields: Partial<IntelligenceRun> = {}) => ({ id, test_kind: 'candy', status: 'succeeded', correct: true, answer: '21', ...fields }) as IntelligenceRun
 const plan = (fields: Partial<IntelligencePlan> = {}) => ({ latest_run: null, ...fields }) as IntelligencePlan
 
 describe('candy record state', () => {
@@ -10,6 +10,7 @@ describe('candy record state', () => {
     [{ correct: true }, 'correct'], [{ correct: false }, 'incorrect'], [{ correct: null }, 'unknown'],
     [{ status: 'failed', correct: true }, 'failed'], [{ status: 'pending', correct: false }, 'pending'],
     [{ status: 'running', correct: true }, 'running'], [{ http_status: 502, correct: true }, 'failed'],
+    [{ answer: '', correct: false }, 'unknown'], [{ answer: '   ', correct: true }, 'unknown'],
   ] as const)('uses the server verdict without treating HTTP success as a correct answer: %o', (fields, expected) => {
     expect(candyResult(run(1, fields))).toBe(expected)
   })
@@ -20,9 +21,19 @@ describe('candy record state', () => {
     expect(candyResultTone(legacy)).toBe('success')
     expect(candyResult({ ...legacy, correct: false })).toBe('incorrect')
     expect(candyResultTone({ ...legacy, correct: false })).toBe('error')
-    expect(candyResultTone({ ...legacy, status: 'failed' })).toBe('error')
+    expect(candyResultTone({ ...legacy, status: 'failed' })).toBe('warning')
     expect(candyResultTone({ ...legacy, correct: null })).toBe('warning')
     expect(candyAnswerResult(legacy)).toBe('correct')
+    expect(candyAnswerResult({ ...legacy, status: 'failed', correct: false })).toBe('unknown')
+  })
+
+  it('excludes failed and empty responses from the completed result slots', () => {
+    const failed = run(5, { status: 'failed', correct: false, answer: '' })
+    const empty = run(4, { correct: false, answer: ' ' })
+    const httpError = run(3, { http_status: 502, answer: '20', correct: false })
+    const incorrect = run(2, { correct: false, answer: '20' })
+    const correct = run(1)
+    expect(candyHistory(plan({ candy_latest_run: failed, candy_recent_runs: [failed, empty, httpError, incorrect, correct] }))).toEqual([incorrect, correct])
   })
 
   it('preserves newest-first server order, deduplicates and caps completed history at sixty', () => {

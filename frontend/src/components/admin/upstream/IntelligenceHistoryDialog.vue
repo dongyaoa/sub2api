@@ -46,7 +46,7 @@
             <p v-if="detail.error" class="mt-3 rounded-lg bg-rose-50 px-3 py-2 text-xs text-rose-600 dark:bg-rose-500/10 dark:text-rose-400">{{ detail.error }}</p>
             <p v-if="runNotes" class="mt-3 text-xs leading-5 text-gray-500">{{ t('intelligenceMonitor.notes') }}：{{ runNotes }}</p>
             <IntelligenceExecutionSource :run="detail" />
-            <details class="mt-4 border-t border-gray-100 pt-3 dark:border-dark-700"><summary class="cursor-pointer text-[11px] text-gray-500">{{ t(detail.source_type === 'local_group' ? 'intelligenceMonitor.promptSettings.actual' : 'intelligenceMonitor.prompt') }}</summary><p class="mt-2 whitespace-pre-wrap break-words text-xs leading-6 text-gray-600 dark:text-dark-300">{{ detail.prompt }}</p></details>
+            <details class="mt-4 border-t border-gray-100 pt-3 dark:border-dark-700"><summary class="cursor-pointer text-[11px] text-gray-500">{{ t(detail.source_type !== 'openai_oauth' ? 'intelligenceMonitor.promptSettings.actual' : 'intelligenceMonitor.prompt') }}</summary><p class="mt-2 whitespace-pre-wrap break-words text-xs leading-6 text-gray-600 dark:text-dark-300">{{ detail.prompt }}</p></details>
           </template>
         </div>
       </section>

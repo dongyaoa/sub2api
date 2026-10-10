@@ -13,6 +13,24 @@
         <p v-if="accountError" role="alert" class="mt-2 text-xs text-rose-600 dark:text-rose-400">{{ accountError }}</p>
       </div>
       <div class="grid gap-4 sm:grid-cols-2"><div><label for="supplier-name" class="input-label">{{ t('upstreamCenter.form.name') }}</label><input id="supplier-name" v-model="form.name" required maxlength="100" class="input" :disabled="saving || identityLocked" :placeholder="t('upstreamCenter.form.supplierNamePlaceholder')" /></div><div><label for="supplier-website" class="input-label">{{ t('upstreamCenter.form.website') }}</label><input id="supplier-website" v-model="form.website" type="url" required class="input" :disabled="saving || identityLocked" :placeholder="t('upstreamCenter.form.websitePlaceholder')" /></div></div>
+      <section class="rounded-xl border border-gray-200 bg-gray-50/60 p-4 dark:border-dark-700 dark:bg-dark-900/40" data-testid="supplier-newapi-authorization">
+        <div class="flex items-center justify-between gap-4">
+          <label for="supplier-newapi-enabled" class="flex flex-wrap items-center gap-2 text-sm font-medium text-gray-800 dark:text-gray-200"><span class="rounded-md border border-primary-100 bg-primary-50 px-1.5 py-0.5 text-[11px] font-semibold text-primary-700 dark:border-primary-800 dark:bg-primary-500/10 dark:text-primary-300">New API</span>{{ t('upstreamCenter.newapi.siteAuthorization') }}</label>
+          <Toggle id="supplier-newapi-enabled" v-model="newapiEnabled" :disabled="saving || identityLocked" />
+        </div>
+        <p class="mt-2 text-xs leading-5 text-gray-500 dark:text-dark-400">{{ t('upstreamCenter.newapi.siteHint') }}</p>
+        <p v-if="supplier?.newapi_legacy_conflict" class="mt-2 text-xs leading-5 text-amber-600 dark:text-amber-400">{{ t('upstreamCenter.newapi.legacyConflict') }}</p>
+        <div v-if="newapiEnabled" class="mt-4 space-y-3">
+          <div><label for="supplier-newapi-base" class="input-label">{{ t('upstreamCenter.newapi.apiBase') }}</label><input id="supplier-newapi-base" v-model="form.newapiAPIBase" type="url" class="input" :disabled="saving || identityLocked" :placeholder="form.website || t('upstreamCenter.form.websitePlaceholder')" /><p class="mt-1.5 text-xs leading-5 text-gray-500 dark:text-dark-400">{{ t('upstreamCenter.newapi.apiBaseHint') }}</p></div>
+          <div class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
+            <div><label for="supplier-newapi-user" class="input-label">{{ t('upstreamCenter.newapi.userId') }}</label><input id="supplier-newapi-user" v-model.number="form.newapiUserID" type="number" min="1" step="1" required class="input" inputmode="numeric" :disabled="saving || identityLocked" :placeholder="t('upstreamCenter.newapi.userIdPlaceholder')" /></div>
+            <div><label for="supplier-newapi-token" class="input-label">{{ t('upstreamCenter.newapi.accessToken') }}</label><input id="supplier-newapi-token" v-model="form.newapiAccessToken" type="password" autocomplete="new-password" spellcheck="false" class="input" :disabled="saving || identityLocked" :required="!canKeepNewapiToken" :placeholder="t(canKeepNewapiToken ? 'upstreamCenter.newapi.keepToken' : 'upstreamCenter.newapi.tokenPlaceholder')" /></div>
+          </div>
+          <p class="text-xs leading-5 text-gray-500 dark:text-dark-400">{{ t('upstreamCenter.newapi.siteTokenHint') }}</p>
+          <p v-if="canKeepNewapiToken" class="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400"><Icon name="check" size="xs" />{{ t('upstreamCenter.newapi.configured') }}</p>
+          <p v-else-if="supplier?.newapi_access_token_configured" class="text-xs leading-5 text-amber-600 dark:text-amber-400">{{ t('upstreamCenter.newapi.siteChangedConnectionHint') }}</p>
+        </div>
+      </section>
       <div>
         <label for="supplier-recharge-ratio" class="input-label">{{ t('upstreamCenter.recharge.label') }}</label>
         <input id="supplier-recharge-ratio" v-model="form.rechargeRatio" type="number" min="0.000001" max="1000000" step="any" class="input" :disabled="saving || identityLocked" :placeholder="t('upstreamCenter.recharge.placeholder')" aria-describedby="supplier-recharge-hint" />
@@ -40,15 +58,21 @@ import { computed, onBeforeUnmount, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Select from '@/components/common/Select.vue'
+import Toggle from '@/components/common/Toggle.vue'
 import Icon from '@/components/icons/Icon.vue'
-import { upstreamCenterAPI, type UpstreamProvider, type UpstreamSupplier } from '@/api/admin/upstreamCenter'
+import { upstreamCenterAPI, type UpstreamProvider, type UpstreamSupplier, type UpstreamSupplierInput } from '@/api/admin/upstreamCenter'
 import * as accountsAPI from '@/api/admin/accounts'
 import type { AccountListItem } from '@/types'
 import { extractApiErrorMessage } from '@/utils/apiError'
 const props = defineProps<{ show: boolean; supplier: UpstreamSupplier | null }>()
 const emit = defineEmits<{ close: []; saved: []; changed: [] }>()
 const { t } = useI18n()
-const form = reactive({ name: '', website: '', notes: '', rechargeRatio: '' as string | number })
+const form = reactive({ name: '', website: '', notes: '', rechargeRatio: '' as string | number, newapiUserID: undefined as number | undefined, newapiAccessToken: '', newapiAPIBase: '' })
+const newapiEnabled = ref(false)
+const normalizeAddress = (value: string) => value.trim().replace(/\/+$/, '')
+const canKeepNewapiToken = computed(() => Boolean(newapiEnabled.value && props.supplier?.newapi_access_token_configured && form.newapiUserID === props.supplier.newapi_user_id && normalizeAddress(form.website) === normalizeAddress(props.supplier.website) && normalizeAddress(form.newapiAPIBase || form.website) === normalizeAddress(props.supplier.newapi_api_base || props.supplier.website)))
+watch([() => form.website, () => form.newapiAPIBase, () => form.newapiUserID], () => { form.newapiAccessToken = '' }, { flush: 'sync' })
+watch(newapiEnabled, enabled => { if (!enabled) form.newapiAccessToken = '' }, { flush: 'sync' })
 const rechargeRatio = computed(() => String(form.rechargeRatio).trim() === '' ? null : Number(form.rechargeRatio))
 interface ImportAccount { id: number; name: string; targetName: string; provider: UpstreamProvider; endpoint: string; modelsText: string; intervalSeconds: number; status: 'pending' | 'saving' | 'done' | 'error'; error: string }
 const selected = ref<ImportAccount[]>([]), enabled = ref(true), saving = ref(false), error = ref(''), createdSupplierId = ref<number | null>(null)
@@ -64,9 +88,10 @@ let searchTimer: ReturnType<typeof setTimeout> | undefined
 watch(() => props.show, show => {
   generation++
   accountRequest++; clearTimeout(searchTimer); accountsLoading.value = false; preparingIds.value = new Set(); accountError.value = ''
-  if (!show) return
+  if (!show) { if (!draftPending) form.newapiAccessToken = ''; return }
   if (!props.supplier && draftPending) { void loadAccounts(1); return }
-  Object.assign(form, { name: props.supplier?.name || '', website: props.supplier?.website || '', notes: props.supplier?.notes || '', rechargeRatio: props.supplier?.recharge_ratio ?? '' })
+  Object.assign(form, { name: props.supplier?.name || '', website: props.supplier?.website || '', notes: props.supplier?.notes || '', rechargeRatio: props.supplier?.recharge_ratio ?? '', newapiUserID: props.supplier?.newapi_user_id, newapiAPIBase: props.supplier?.newapi_api_base || '', newapiAccessToken: '' })
+  newapiEnabled.value = Boolean(props.supplier?.newapi_access_token_configured)
   selected.value = []; createdSupplierId.value = null; identityLocked.value = false; enabled.value = true; error.value = ''; recoveryChoices.value = []; recoveryId.value = ''; supplierAttempted = false; draftPending = false; accountSearch.value = ''
   if (!props.supplier) void loadAccounts(1)
 }, { immediate: true })
@@ -97,6 +122,15 @@ async function toggleAccount(account: AccountListItem) {
 }
 const parsedModels = (value: string) => [...new Set(value.split(/[,，;；\n]/).map(model => model.trim()).filter(Boolean))]
 const normalizedURL = (value: string) => value.trim().replace(/\/+$/, '')
+function supplierInput(): UpstreamSupplierInput {
+  const input: UpstreamSupplierInput = { name: form.name.trim(), website: form.website.trim(), notes: form.notes.trim(), recharge_ratio: rechargeRatio.value }
+  if (newapiEnabled.value) {
+    input.newapi_user_id = form.newapiUserID
+    input.newapi_api_base = form.newapiAPIBase.trim() || form.website.trim()
+    if (form.newapiAccessToken.trim()) input.newapi_access_token = form.newapiAccessToken.trim()
+  } else if (props.supplier?.newapi_access_token_configured) input.newapi_user_id = 0
+  return input
+}
 async function resolveSupplier(): Promise<number | null> {
   if (createdSupplierId.value) return createdSupplierId.value
   if (supplierAttempted) {
@@ -111,7 +145,7 @@ async function resolveSupplier(): Promise<number | null> {
   }
   supplierAttempted = true; draftPending = true; identityLocked.value = true
   try {
-    const result = await upstreamCenterAPI.createSupplier({ name: form.name.trim(), website: form.website.trim(), notes: form.notes.trim(), recharge_ratio: rechargeRatio.value })
+    const result = await upstreamCenterAPI.createSupplier(supplierInput())
     createdSupplierId.value = result.id; emit('changed')
     return result.id
   } catch (err) {
@@ -124,13 +158,18 @@ async function save() {
   if (saving.value) return
   error.value = ''
   if (rechargeRatio.value != null && (!Number.isFinite(rechargeRatio.value) || rechargeRatio.value < 0.000001 || rechargeRatio.value > 1000000)) { error.value = t('upstreamCenter.recharge.invalid'); return }
+  if (newapiEnabled.value && !createdSupplierId.value) {
+    if (!Number.isSafeInteger(form.newapiUserID) || Number(form.newapiUserID) <= 0) { error.value = t('upstreamCenter.newapi.requiredUserId'); return }
+    if (!form.newapiAccessToken.trim() && !canKeepNewapiToken.value) { error.value = t('upstreamCenter.newapi.requiredToken'); return }
+    try { const address = new URL(form.newapiAPIBase.trim() || form.website.trim()); if (address.protocol !== 'https:' || address.username || address.password) throw new Error() } catch { error.value = t('upstreamCenter.form.validUrl'); return }
+  }
   for (const item of selected.value.filter(item => item.status !== 'done')) {
     const models = parsedModels(item.modelsText)
     if (!models.length || models.length > 8 || !item.targetName.trim()) { error.value = `${item.name}: ${t(models.length > 8 ? 'upstreamCenter.form.maxModels' : 'upstreamCenter.form.requiredModels')}`; return }
   }
   saving.value = true
   try {
-    if (props.supplier) { await upstreamCenterAPI.updateSupplier(props.supplier.id, { name: form.name.trim(), website: form.website.trim(), notes: form.notes.trim(), recharge_ratio: rechargeRatio.value }); emit('saved'); emit('close'); return }
+    if (props.supplier) { await upstreamCenterAPI.updateSupplier(props.supplier.id, supplierInput()); form.newapiAccessToken = ''; emit('saved'); emit('close'); return }
     const id = await resolveSupplier()
     if (!id) return
     const existing = selected.value.length ? (await upstreamCenterAPI.overview()).suppliers.find(item => item.id === id) : undefined
@@ -144,7 +183,7 @@ async function save() {
       } catch (err) { item.status = 'error'; item.error = extractApiErrorMessage(err, t('upstreamCenter.saveFailed')) }
     }
     if (selected.value.some(item => item.status !== 'done')) { error.value = t('upstreamCenter.import.partial'); return }
-    draftPending = false; emit('saved'); emit('close')
+    draftPending = false; form.newapiAccessToken = ''; emit('saved'); emit('close')
   } catch (err) { error.value = extractApiErrorMessage(err, t('upstreamCenter.saveFailed')) }
   finally { saving.value = false }
 }

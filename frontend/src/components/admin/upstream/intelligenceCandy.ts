@@ -13,16 +13,18 @@ export function intelligenceRefreshInterval(plans: IntelligencePlan[], now = Dat
 export function candyResult(run: IntelligenceRun) {
   if (isIntelligenceRunActive(run)) return run.status === 'pending' ? 'pending' : 'running'
   if (run.status === 'failed' || (run.http_status != null && run.http_status >= 400)) return 'failed'
-  if (run.correct === false) return 'incorrect'
+  if (!run.answer?.trim()) return 'unknown'
+  if (run.status === 'succeeded' && run.correct === false) return 'incorrect'
   return run.status === 'succeeded' && run.correct === true ? 'correct' : 'unknown'
 }
 export function candyAnswerResult(run: IntelligenceRun) {
-  return run.correct === true ? 'correct' : run.correct === false ? 'incorrect' : 'unknown'
+  const result = candyResult(run)
+  return result === 'correct' || result === 'incorrect' ? result : 'unknown'
 }
 export function candyResultTone(run: IntelligenceRun) {
   const result = candyResult(run)
   if (result === 'correct') return 'success'
-  if (['incorrect', 'failed'].includes(result)) return 'error'
+  if (result === 'incorrect') return 'error'
   return ['pending', 'running'].includes(result) ? 'neutral' : 'warning'
 }
 export function candyHistory(plan: IntelligencePlan): IntelligenceRun[] {
@@ -35,7 +37,7 @@ export function candyHistory(plan: IntelligencePlan): IntelligenceRun[] {
   }
   const seen = new Set<number>()
   const completed = recent.filter(run => {
-    if (run.test_kind === 'pelican' || isIntelligenceRunActive(run) || seen.has(run.id) || (isIntelligenceRunActive(latest) && run.id === latest?.id)) return false
+    if (run.test_kind === 'pelican' || run.status !== 'succeeded' || (run.http_status != null && run.http_status >= 400) || !run.answer?.trim() || seen.has(run.id) || (isIntelligenceRunActive(latest) && run.id === latest?.id)) return false
     seen.add(run.id)
     return true
   }).slice(0, 60)

@@ -117,7 +117,7 @@ func (s *UpstreamCenterService) Overview(ctx context.Context, window string) (*U
 	return out, nil
 }
 
-func (s *UpstreamCenterService) SaveSupplier(ctx context.Context, id int64, name, website, notes *string, rechargeRatio json.RawMessage) (*UpstreamSupplier, error) {
+func (s *UpstreamCenterService) SaveSupplier(ctx context.Context, id int64, name, website, notes *string, rechargeRatio json.RawMessage, authorization ...UpstreamSupplierNewAPIInput) (*UpstreamSupplier, error) {
 	v := &UpstreamSupplier{Targets: []*UpstreamTarget{}, Wallets: []*UpstreamBalanceSnapshot{}}
 	if id > 0 {
 		var err error
@@ -126,6 +126,7 @@ func (s *UpstreamCenterService) SaveSupplier(ctx context.Context, id int64, name
 			return nil, err
 		}
 	}
+	oldWebsite, oldBase := v.Website, v.NewAPIAPIBase
 	if name != nil {
 		v.Name = strings.TrimSpace(*name)
 	}
@@ -154,6 +155,13 @@ func (s *UpstreamCenterService) SaveSupplier(ctx context.Context, id int64, name
 		if err != nil || u.Host == "" || (u.Scheme != "https" && u.Scheme != "http") || u.User != nil {
 			return nil, ErrUpstreamInvalid
 		}
+	}
+	var auth UpstreamSupplierNewAPIInput
+	if len(authorization) > 0 {
+		auth = authorization[0]
+	}
+	if err := s.applySupplierNewAPICredentials(v, auth, oldWebsite, oldBase); err != nil {
+		return nil, err
 	}
 	if err := s.repo.SaveSupplier(ctx, v); err != nil {
 		return nil, err
@@ -301,12 +309,28 @@ func (s *UpstreamCenterService) SaveTarget(ctx context.Context, id int64, in Ups
 		return nil, err
 	}
 	t.Endpoint = normalizeEndpoint(t.Endpoint)
-	if err := s.applyNewAPICredentials(t, in, oldNewAPIUserID, oldNewAPITokenEncrypted,
-		id > 0 && (t.Endpoint != oldEndpoint || t.Provider != oldProvider)); err != nil {
-		return nil, err
-	}
+	var supplier *UpstreamSupplier
 	if t.SupplierID != nil {
-		if _, err := s.repo.GetSupplier(ctx, *t.SupplierID); err != nil {
+		var err error
+		supplier, err = s.repo.GetSupplier(ctx, *t.SupplierID)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if supplier != nil && supplier.NewAPICredentialsManaged {
+		inheritSupplierNewAPICredentials(t, supplier)
+	} else {
+		// A site's secret never follows a group moved outside its authorized scope.
+		if t.NewAPICredentialsInherited {
+			if in.NewAPIAccessToken != nil && strings.TrimSpace(*in.NewAPIAccessToken) != "" {
+				return nil, ErrUpstreamInvalid.WithMetadata(map[string]string{"field": "newapi_access_token", "detail": "save the group move first, then configure independent console authorization"})
+			}
+			t.NewAPIUserID, t.NewAPIAccessTokenEncrypted = 0, ""
+			oldNewAPIUserID, oldNewAPITokenEncrypted = 0, ""
+			t.NewAPICredentialsInherited = false
+		}
+		if err := s.applyNewAPICredentials(t, in, oldNewAPIUserID, oldNewAPITokenEncrypted,
+			id > 0 && (t.Endpoint != oldEndpoint || t.Provider != oldProvider)); err != nil {
 			return nil, err
 		}
 	}

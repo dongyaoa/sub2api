@@ -79,6 +79,24 @@ describe('OAuth intelligence plan dialog', () => {
     expect(mocks.create.mock.calls[0]![0]).not.toHaveProperty('channel_prompts')
   })
 
+  it.each(['upstream', 'external'] as const)('restores, changes and clears optional prompts for %s intelligence plans', async source_type => {
+    const plan = savedPlan({ source_type, account_id: null, upstream_target_id: source_type === 'upstream' ? 11 : null, endpoint: 'https://external.example', custom_prompt: 'Saved custom animation', channel_prompts: [] })
+    const overview = { suppliers: [{ id: 1, name: 'Upstream', website: 'https://upstream.example', targets: [{ id: 11, provider: 'openai', name: 'Key group' }] }], monitors: [] } as unknown as UpstreamOverview
+    const view = render({ oauthOnly: false, overview, plan }); await flushPromises()
+    expect((view.get('#intelligence-custom-prompt').element as HTMLTextAreaElement).value).toBe('Saved custom animation')
+    expect(view.find('[data-testid="toggle-channel-prompts"]').exists()).toBe(false)
+    expect(mocks.channels).not.toHaveBeenCalled()
+    await view.get('#intelligence-custom-prompt').setValue('  Draw a blue pelican in HTML  ')
+    await view.get('form').trigger('submit'); await flushPromises()
+    expect(mocks.update).toHaveBeenLastCalledWith(plan.id, expect.objectContaining({ custom_prompt: 'Draw a blue pelican in HTML' }))
+    expect(mocks.update.mock.calls[0]![1]).not.toHaveProperty('channel_prompts')
+    await view.setProps({ show: false }); await view.setProps({ show: true }); await flushPromises()
+    expect((view.get('#intelligence-custom-prompt').element as HTMLTextAreaElement).value).toBe('Saved custom animation')
+    await view.get('#intelligence-custom-prompt').setValue('')
+    await view.get('form').trigger('submit'); await flushPromises()
+    expect(mocks.update).toHaveBeenLastCalledWith(plan.id, expect.objectContaining({ custom_prompt: '' }))
+  })
+
   it('defaults to Astra and offers Sol using the native non-searchable model selector', async () => {
     const view = render(); await flushPromises()
     expect(view.get('#intelligence-model').text()).toContain('GPT-6 Astra')

@@ -17,7 +17,8 @@
       </div>
       <div><label for="target-endpoint" class="input-label">{{ t('upstreamCenter.form.endpoint') }}</label><input id="target-endpoint" v-model="form.endpoint" type="url" required class="input" :placeholder="t('upstreamCenter.form.websitePlaceholder')" /><p class="mt-1.5 text-xs text-gray-500 dark:text-dark-400">{{ t('upstreamCenter.form.endpointHint') }}</p></div>
       <div><label for="target-key" class="input-label">{{ t('upstreamCenter.form.apiKey') }}</label><input id="target-key" v-model="form.api_key" type="password" autocomplete="new-password" class="input" :required="!canKeepSavedKey && !sourceAccount && !(supplier && form.account_ids.length)" :placeholder="t(sourceAccount ? 'upstreamCenter.form.importedKeyPlaceholder' : canKeepSavedKey ? 'upstreamCenter.form.keepKey' : 'upstreamCenter.form.apiKeyPlaceholder')" /><p v-if="target?.api_key_masked && !sourceAccount && canKeepSavedKey" class="mt-1.5 font-mono text-xs text-gray-400">{{ t('upstreamCenter.form.existingKey', { key: target.api_key_masked }) }}</p><p v-if="sourceAccount || (supplier && form.account_ids.length)" class="mt-1.5 text-xs text-primary-600 dark:text-primary-400">{{ t(target && !sourceAccount ? 'upstreamCenter.form.accountEditHint' : 'upstreamCenter.form.useAccountKeyHint') }}</p><p v-else-if="target && !canKeepSavedKey" class="mt-1.5 text-xs text-amber-600 dark:text-amber-400">{{ t('upstreamCenter.form.changedConnectionKeyHint') }}</p></div>
-      <section class="rounded-xl border border-gray-200 bg-gray-50/60 p-4 dark:border-dark-700 dark:bg-dark-900/40" data-testid="newapi-authorization">
+      <p v-if="supplier" class="rounded-xl bg-gray-50 p-3 text-xs leading-5 text-gray-500 dark:bg-dark-900/40 dark:text-dark-400" data-testid="newapi-site-inheritance">{{ t('upstreamCenter.newapi.inheritedHint') }}</p>
+      <section v-else class="rounded-xl border border-gray-200 bg-gray-50/60 p-4 dark:border-dark-700 dark:bg-dark-900/40" data-testid="newapi-authorization">
         <div class="flex items-center justify-between gap-4">
           <label for="target-newapi-enabled" class="flex flex-wrap items-center gap-2 text-sm font-medium text-gray-800 dark:text-gray-200"><span class="rounded-md border border-primary-100 bg-primary-50 px-1.5 py-0.5 text-[11px] font-semibold text-primary-700 dark:border-primary-800 dark:bg-primary-500/10 dark:text-primary-300">New API</span>{{ t('upstreamCenter.newapi.authorization') }}</label>
           <Toggle id="target-newapi-enabled" v-model="newapiEnabled" />
@@ -46,7 +47,7 @@
         <summary class="cursor-pointer text-sm font-medium text-gray-700 dark:text-gray-200">{{ t('upstreamCenter.form.advanced') }}</summary>
         <div class="mt-4 grid gap-4 sm:grid-cols-2"><div><label for="target-timeout" class="input-label">{{ t('upstreamCenter.form.timeout') }}</label><input id="target-timeout" v-model.number="form.timeout_seconds" required type="number" min="5" max="45" class="input" /></div><div><label for="target-threshold" class="input-label">{{ t('upstreamCenter.form.degraded') }}</label><input id="target-threshold" v-model.number="form.degraded_threshold_ms" required type="number" min="100" max="45000" class="input" /></div></div>
         <p class="mt-2 text-xs text-gray-500 dark:text-dark-400">{{ t('upstreamCenter.form.degradedHint') }}</p>
-        <div v-if="supplier" class="mt-4"><label for="target-wallet" class="input-label">{{ t('upstreamCenter.wallet.ref') }}</label><input id="target-wallet" v-model="form.wallet_ref" required maxlength="100" class="input" /><p class="mt-1.5 text-xs leading-5 text-gray-500 dark:text-dark-400">{{ t('upstreamCenter.wallet.refHint') }}</p></div>
+        <div v-if="supplier && !supplier.newapi_access_token_configured" class="mt-4"><label for="target-wallet" class="input-label">{{ t('upstreamCenter.wallet.ref') }}</label><input id="target-wallet" v-model="form.wallet_ref" required maxlength="100" class="input" /><p class="mt-1.5 text-xs leading-5 text-gray-500 dark:text-dark-400">{{ t('upstreamCenter.wallet.refHint') }}</p></div>
         <div class="mt-4"><label for="target-notes" class="input-label">{{ t('upstreamCenter.form.notes') }}</label><textarea id="target-notes" v-model="form.notes" class="input min-h-[70px]" maxlength="2000" :placeholder="t('upstreamCenter.form.optional')"></textarea></div>
       </details>
       <p v-if="error" role="alert" class="rounded-xl bg-red-50 p-3 text-sm text-red-600 dark:bg-red-500/10 dark:text-red-400">{{ error }}</p>
@@ -103,7 +104,7 @@ watch(() => props.show, show => {
   Object.assign(form, defaults(), props.target ? { supplier_id: props.target.supplier_id, name: props.target.name, provider: props.target.provider, api_mode: props.target.api_mode, endpoint: props.target.endpoint, models: [...props.target.models], enabled: props.target.enabled, interval_seconds: props.target.interval_seconds, timeout_seconds: props.target.timeout_seconds, degraded_threshold_ms: props.target.degraded_threshold_ms, account_ids: [...(props.target.account_ids || [])], wallet_ref: props.target.wallet_ref, notes: props.target.notes } : {})
   if (!props.supplier) form.account_ids = []
   form.newapi_user_id = props.target?.newapi_user_id
-  newapiEnabled.value = Boolean(props.target?.newapi_access_token_configured)
+  newapiEnabled.value = !props.supplier && Boolean(props.target?.newapi_access_token_configured)
   sourceAccount.value = null; form.api_key = ''; error.value = ''; modelError.value = ''; discoveredModels.value = []; accountPicker.value = ''; accountError.value = ''
   void loadAccounts('')
 }, { immediate: true })
@@ -165,7 +166,7 @@ async function save() {
   if (newapiEnabled.value && !form.newapi_access_token?.trim() && !canKeepNewapiToken.value) { error.value = t('upstreamCenter.newapi.requiredToken'); return }
   saving.value = true
   try {
-    const input = { ...form, name: form.name.trim(), endpoint: form.endpoint.trim(), api_key: form.api_key?.trim() || undefined, newapi_user_id: newapiEnabled.value ? form.newapi_user_id : props.target?.newapi_access_token_configured ? 0 : undefined, newapi_access_token: newapiEnabled.value ? form.newapi_access_token?.trim() || undefined : undefined, source_account_id: !props.supplier ? sourceAccount.value?.id : undefined, models, account_ids: props.supplier ? [...form.account_ids] : [], notes: form.notes.trim(), wallet_ref: form.wallet_ref.trim() || 'default' }
+    const input = { ...form, name: form.name.trim(), endpoint: form.endpoint.trim(), api_key: form.api_key?.trim() || undefined, newapi_user_id: props.supplier ? undefined : newapiEnabled.value ? form.newapi_user_id : props.target?.newapi_access_token_configured ? 0 : undefined, newapi_access_token: !props.supplier && newapiEnabled.value ? form.newapi_access_token?.trim() || undefined : undefined, source_account_id: !props.supplier ? sourceAccount.value?.id : undefined, models, account_ids: props.supplier ? [...form.account_ids] : [], notes: form.notes.trim(), wallet_ref: form.wallet_ref.trim() || 'default' }
     if (props.target) await upstreamCenterAPI.updateTarget(props.target.id, input)
     else await upstreamCenterAPI.createTarget(input)
     form.newapi_access_token = ''; emit('saved'); emit('close')

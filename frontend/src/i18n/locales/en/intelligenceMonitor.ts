@@ -22,7 +22,7 @@ export default {
       loadFailed: 'Unable to load concurrency settings. Please retry.', saveFailed: 'Unable to save concurrency settings. Please retry.',
     },
     candy: {
-      title: 'Candy test', recent: 'Latest 60 runs', run: 'Run test', running: 'Testing', pending: 'Queued',
+      title: 'Candy test', recent: 'Latest 60 answers', run: 'Run test', running: 'Testing', pending: 'Queued', inspectFailure: 'View diagnostic record',
       failed: 'Request failed', correct: 'Correct answer', incorrect: 'Incorrect answer', unknown: 'Not scored', answer: 'Model answer',
       detail: 'Candy test result', response: 'Full response', noResponse: 'No response yet', enabled: 'Add candy test', queued: 'Candy test queued',
       enableHint: 'Uses this plan’s model and high reasoning effort, making separate candy requests on its own interval. Manual runs are also available.',

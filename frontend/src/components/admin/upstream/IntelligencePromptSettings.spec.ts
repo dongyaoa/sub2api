@@ -8,7 +8,7 @@ vi.mock('@/api/admin/intelligenceMonitor', () => ({ intelligenceMonitorAPI: { lo
 vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
 const channel = (account_id: number, name: string): IntelligenceLocalChannel => ({ account_id, name, platform: 'openai', type: 'apikey', status: 'active' })
 let wrapper: VueWrapper | undefined
-function render(props: { groupId?: number | null; customPrompt?: string; channelPrompts?: IntelligenceChannelPrompt[] } = {}) {
+function render(props: { groupId?: number | null; customPrompt?: string; channelPrompts?: IntelligenceChannelPrompt[]; allowChannels?: boolean } = {}) {
   wrapper = mount(IntelligencePromptSettings, {
     props: {
       customPrompt: '', channelPrompts: [], ...props,
@@ -24,6 +24,15 @@ beforeEach(() => { vi.resetAllMocks(); mocks.channels.mockResolvedValue({ items:
 afterEach(() => { wrapper?.unmount(); wrapper = undefined })
 
 describe('optional local monitoring prompts', () => {
+  it('offers a single prompt outside local monitoring without fetching channel settings', async () => {
+    const view = render({ allowChannels: false, groupId: 5, customPrompt: 'Custom pelican', channelPrompts: [{ account_id: 11, prompt: 'Old channel override' }] })
+    await flushPromises()
+    expect(view.find('[data-testid="toggle-channel-prompts"]').exists()).toBe(false)
+    expect(mocks.channels).not.toHaveBeenCalled()
+    expect(validate(view)).toBe(true)
+    await view.get('#intelligence-custom-prompt').setValue('')
+    expect(view.emitted('update:customPrompt')).toEqual([['']])
+  })
   it('keeps the default optional and only loads channels after expansion with a group selected', async () => {
     const view = render()
     expect(view.get('#intelligence-custom-prompt').attributes('placeholder')).toBe('Default pelican HTML')

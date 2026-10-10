@@ -106,7 +106,7 @@ func TestIntelligenceChannelPromptOnlyAppliesToAuthenticatedLocalArtwork(t *test
 	require.Equal(t, body, got)
 }
 
-func TestIntelligenceChannelPromptLeavesCandyAndNonLocalDefinitionsFixed(t *testing.T) {
+func TestIntelligenceChannelPromptLeavesCandyAndOAuthDefinitionsFixed(t *testing.T) {
 	for _, source := range []string{"local_group", "external", "upstream", "openai_oauth"} {
 		run := &IntelligenceMonitorRun{SourceType: source, TestKind: IntelligenceMonitorTestCandy, Prompt: "custom artwork", SourceSnapshot: map[string]any{"channel_prompts": "ignored for candy"}}
 		prompt, _, valid := intelligenceTestRequestDefinition(run)
@@ -115,7 +115,7 @@ func TestIntelligenceChannelPromptLeavesCandyAndNonLocalDefinitionsFixed(t *test
 		trace := &intelligenceExecutionTrace{}
 		require.NoError(t, trace.configurePrompts(run, prompt))
 		require.Nil(t, trace.promptConfig)
-		if source != "local_group" {
+		if source == "openai_oauth" {
 			run.TestKind = IntelligenceMonitorTestPelican
 			prompt, _, valid = intelligenceTestRequestDefinition(run)
 			require.True(t, valid)

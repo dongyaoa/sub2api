@@ -11,22 +11,25 @@ function render(value: IntelligencePlan, busy = false) {
 }
 
 describe('compact candy strip', () => {
-  it('shows correct in green, incorrect and request failures in red, with sixty slots and exact record selection', async () => {
+  it('shows only answered results, colors wrong answers red, and retains exact record selection', async () => {
     const failed = run(3, { status: 'failed', correct: null, error: 'upstream unavailable', http_status: 502 })
     const incorrect = run(2, { correct: false, answer: '20' })
     const view = render(plan({ candy_latest_run: failed, candy_recent_runs: [failed, incorrect, run(1)] }))
     expect(view.findAll('[data-candy-status]')).toHaveLength(60)
-    expect(view.findAll('[data-candy-status="empty"]')).toHaveLength(57)
+    expect(view.findAll('[data-candy-status="empty"]')).toHaveLength(58)
     expect(view.get('[data-candy-status="correct"]').classes()).toContain('candy-bar-correct')
     expect(view.get('[data-candy-status="incorrect"]').classes()).toContain('candy-bar-failed')
-    expect(view.get('[data-candy-status="failed"]').classes()).toContain('candy-bar-failed')
-    expect(view.text()).toContain('upstream unavailable')
-    expect(view.text()).toContain('HTTP 502')
+    expect(view.find('[data-candy-status="failed"]').exists()).toBe(false)
+    expect(view.text()).not.toContain('upstream unavailable')
+    expect(view.text()).not.toContain('HTTP 502')
     expect(view.text()).toContain('gpt-6-astra · high')
     expect(view.text()).toContain('20')
     expect(view.text()).toContain('intelligenceMonitor.seconds:1.2')
     await view.get('[data-candy-status="incorrect"]').trigger('click')
     expect(view.emitted('select')).toEqual([[incorrect]])
+    expect(view.get('[data-testid="candy-diagnostics"]').classes()).not.toContain('text-rose-600')
+    await view.get('[data-testid="candy-diagnostics"]').trigger('click')
+    expect(view.emitted('select')).toEqual([[incorrect], [failed]])
     await view.get('[data-testid="candy-run"]').trigger('click')
     expect(view.emitted('run')).toEqual([[]])
     view.unmount()
@@ -34,8 +37,9 @@ describe('compact candy strip', () => {
 
   it('keeps unscored answers amber and ignores obsolete fingerprint failures in historical records', () => {
     const legacy = { ...run(1), fingerprint: { status: 'failed', passed: false, error: 'obsolete probe failure' } }
-    const view = render(plan({ candy_recent_runs: [run(2, { correct: null, answer: '' }), legacy] }))
+    const view = render(plan({ candy_recent_runs: [run(3, { correct: false, answer: '' }), run(2, { correct: null, answer: 'Unscored response' }), legacy] }))
     expect(view.get('[data-candy-status="unknown"]').classes()).toContain('candy-bar-warning')
+    expect(view.findAll('[data-candy-status="empty"]')).toHaveLength(58)
     expect(view.get('[data-candy-status="correct"]').classes()).toContain('candy-bar-correct')
     expect(view.text()).not.toContain('fingerprint')
     expect(view.text()).not.toContain('obsolete probe failure')

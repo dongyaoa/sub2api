@@ -17,6 +17,14 @@ beforeEach(() => { vi.resetAllMocks(); mocks.detail.mockResolvedValue(run()) })
 afterEach(() => { wrapper?.unmount(); wrapper = undefined })
 
 describe('candy result detail', () => {
+  it('preserves request error details without presenting them as a wrong answer', async () => {
+    const value = run(1, { status: 'failed', correct: false, answer: '', raw_text: '', error: 'Upstream timed out', http_status: 504 })
+    mocks.detail.mockResolvedValue(value)
+    const view = render(value); await flushPromises()
+    expect(view.text()).toContain('Upstream timed out')
+    expect(view.get('[data-testid="candy-verdict"]').classes()).toContain('text-amber-600')
+    expect(view.text()).not.toContain('intelligenceMonitor.candy.incorrect')
+  })
   it('uses a fixed fade dialog and renders raw response as escaped text with no preview frame', async () => {
     const value = run(1, { raw_text: '<script>alert(1)</script>21', answer: '21', http_status: 200 })
     mocks.detail.mockResolvedValue(value)
@@ -95,7 +103,8 @@ describe('candy result detail', () => {
     const original = run(1, { correct: false, answer: '', raw_text: 'The answer is \\boxed{21}.', finished_at: '2026-09-27T01:00:05Z' })
     mocks.detail.mockResolvedValue(original)
     const view = render(original); await flushPromises()
-    expect(view.text()).toContain('intelligenceMonitor.candy.incorrect')
+    expect(view.text()).toContain('intelligenceMonitor.candy.unknown')
+    expect(view.text()).not.toContain('intelligenceMonitor.candy.incorrect')
     const corrected = { ...original, correct: true, answer: '21' }
     mocks.detail.mockResolvedValue(corrected)
     await view.setProps({ run: corrected }); await flushPromises()

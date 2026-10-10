@@ -17,10 +17,16 @@ var (
 )
 
 type UpstreamSupplier struct {
-	ID      int64  `json:"id"`
-	Name    string `json:"name"`
-	Website string `json:"website"`
-	Notes   string `json:"notes"`
+	ID                          int64  `json:"id"`
+	Name                        string `json:"name"`
+	Website                     string `json:"website"`
+	Notes                       string `json:"notes"`
+	NewAPIUserID                int64  `json:"newapi_user_id"`
+	NewAPIAccessTokenEncrypted  string `json:"-"`
+	NewAPIAccessTokenConfigured bool   `json:"newapi_access_token_configured"`
+	NewAPIAPIBase               string `json:"newapi_api_base"`
+	NewAPILegacyConflict        bool   `json:"newapi_legacy_conflict"`
+	NewAPICredentialsManaged    bool   `json:"-"`
 	// Credits received for one unit paid; nil leaves the upstream amount unchanged.
 	RechargeRatio *float64                   `json:"recharge_ratio"`
 	CreatedAt     time.Time                  `json:"created_at"`
@@ -28,6 +34,14 @@ type UpstreamSupplier struct {
 	Targets       []*UpstreamTarget          `json:"targets"`
 	Finance       *UpstreamFinanceSummary    `json:"finance"`
 	Wallets       []*UpstreamBalanceSnapshot `json:"wallets"`
+}
+
+// Optional site authorization; a zero user ID clears it and a blank token
+// preserves the existing secret only while the credential recipient is unchanged.
+type UpstreamSupplierNewAPIInput struct {
+	NewAPIUserID      *int64  `json:"newapi_user_id"`
+	NewAPIAccessToken *string `json:"newapi_access_token"`
+	NewAPIAPIBase     *string `json:"newapi_api_base"`
 }
 
 type UpstreamBindingCredential struct {
@@ -48,6 +62,7 @@ type UpstreamTarget struct {
 	NewAPIUserID                int64                               `json:"newapi_user_id"`
 	NewAPIAccessTokenEncrypted  string                              `json:"-"`
 	NewAPIAccessTokenConfigured bool                                `json:"newapi_access_token_configured"`
+	NewAPICredentialsInherited  bool                                `json:"newapi_credentials_inherited"`
 	Models                      []string                            `json:"models"`
 	Enabled                     bool                                `json:"enabled"`
 	IntervalSeconds             int                                 `json:"interval_seconds"`

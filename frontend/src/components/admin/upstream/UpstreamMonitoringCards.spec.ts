@@ -10,7 +10,7 @@ vi.mock('@/composables/useClipboard', () => ({ useClipboard: () => ({ copyToClip
 const stubs = { Icon: true, UpstreamHistoryBar: true, UpstreamStatusBadge: true, UpstreamRateBadge: true, teleport: true }
 function target(): UpstreamTarget {
   return {
-    id: 1, name: 'Test upstream', models: ['model-a', 'model-b'], endpoint: 'https://example.com', enabled: true,
+    id: 1, name: 'Test upstream', provider: 'openai', models: ['model-a', 'model-b'], endpoint: 'https://example.com', enabled: true,
     degraded_threshold_ms: 6000, timeout_seconds: 45, interval_seconds: 300,
     statistics: [
       { model: 'model-a', status: 'operational', availability: 12, availability_7d: 98.25, avg_latency_ms: 8888, latest_latency_ms: 1234, last_checked_at: '2026-09-24T00:00:00Z', timeline: [] },
@@ -22,6 +22,12 @@ function target(): UpstreamTarget {
 }
 
 describe('upstream card headline measurements', () => {
+  it.each([['openai', 'OpenAI', 'bg-emerald-50'], ['anthropic', 'Anthropic', 'bg-orange-50'], ['gemini', 'Gemini', 'bg-sky-50']] as const)('labels %s key groups before their names with the protocol color', (provider, label, color) => {
+    const wrapper = mount(UpstreamGroupRow, { props: { target: { ...target(), provider }, busy: false, running: false }, global: { stubs } })
+    expect(wrapper.get('[data-testid="upstream-provider"]').text()).toBe(label)
+    expect(wrapper.get('[data-testid="upstream-provider"]').classes()).toContain(color)
+    wrapper.unmount()
+  })
   beforeEach(() => { vi.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-09-24T00:00:02Z')) })
   afterEach(() => { vi.restoreAllMocks() })
 

@@ -22,7 +22,7 @@ export default {
       loadFailed: '读取并发设置失败，请重试', saveFailed: '保存并发设置失败，请重试',
     },
     candy: {
-      title: '糖果测试', recent: '最近 60 次', run: '立即测试', running: '测试中', pending: '排队中',
+      title: '糖果测试', recent: '最近 60 个回答', run: '立即测试', running: '测试中', pending: '排队中', inspectFailure: '查看异常记录',
       failed: '请求失败', correct: '回答正确', incorrect: '回答错误', unknown: '尚未评分', answer: '模型答案',
       detail: '糖果测试记录', response: '完整回复', noResponse: '暂无回复内容', enabled: '添加糖果测试', queued: '糖果测试已加入队列',
       enableHint: '沿用本计划的模型和 high 思考强度，按独立周期发起糖果测试请求，也可手动执行。',

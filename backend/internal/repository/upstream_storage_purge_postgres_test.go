@@ -36,7 +36,7 @@ func TestUpstreamStoragePurgePostgres(t *testing.T) {
 CREATE TABLE api_keys(id BIGINT PRIMARY KEY,user_id BIGINT NOT NULL,key TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'active',updated_at TIMESTAMPTZ,deleted_at TIMESTAMPTZ);
 CREATE TABLE usage_logs(id BIGSERIAL PRIMARY KEY,created_at TIMESTAMPTZ NOT NULL,account_id BIGINT NOT NULL,group_id BIGINT,user_id BIGINT NOT NULL DEFAULT 1,api_key_id BIGINT NOT NULL DEFAULT 1,requested_model TEXT,model TEXT NOT NULL DEFAULT 'model',request_id TEXT,actual_cost NUMERIC NOT NULL DEFAULT 0,total_cost NUMERIC NOT NULL DEFAULT 0,account_stats_cost NUMERIC,account_rate_multiplier NUMERIC,billing_type SMALLINT NOT NULL DEFAULT 0);`)
 	require.NoError(t, err)
-	for _, file := range []string{"242_upstream_center.sql", "243_upstream_finance.sql", "244_upstream_remote_billing.sql", "245_intelligence_monitor.sql", "246_intelligence_monitor_oauth.sql", "251_upstream_manual_order.sql", "253_upstream_newapi_credentials.sql", "254_upstream_storage_retention.sql", "257_intelligence_candy_monitor.sql", "258_intelligence_candy_schedule.sql", "259_intelligence_local_key_ownership.sql"} {
+	for _, file := range []string{"242_upstream_center.sql", "243_upstream_finance.sql", "244_upstream_remote_billing.sql", "245_intelligence_monitor.sql", "246_intelligence_monitor_oauth.sql", "251_upstream_manual_order.sql", "253_upstream_newapi_credentials.sql", "254_upstream_storage_retention.sql", "257_intelligence_candy_monitor.sql", "258_intelligence_candy_schedule.sql", "259_intelligence_local_key_ownership.sql", "269_upstream_supplier_newapi.sql"} {
 		body, err := migrations.FS.ReadFile(file)
 		require.NoError(t, err)
 		_, err = db.ExecContext(ctx, string(body))
@@ -150,7 +150,7 @@ func TestUpstreamStoragePurgeOAuthCurrentAccountNamePostgres(t *testing.T) {
 	db, ctx, otherDB := upstreamStorageTestDB(t)
 	_, err := db.ExecContext(ctx, `ALTER TABLE accounts ADD COLUMN name VARCHAR(100) NOT NULL DEFAULT 'Account'`)
 	require.NoError(t, err)
-	for _, file := range []string{"245_intelligence_monitor.sql", "246_intelligence_monitor_oauth.sql", "257_intelligence_candy_monitor.sql", "258_intelligence_candy_schedule.sql", "259_intelligence_local_key_ownership.sql"} {
+	for _, file := range []string{"245_intelligence_monitor.sql", "246_intelligence_monitor_oauth.sql", "257_intelligence_candy_monitor.sql", "258_intelligence_candy_schedule.sql", "259_intelligence_local_key_ownership.sql", "269_upstream_supplier_newapi.sql"} {
 		body, err := migrations.FS.ReadFile(file)
 		require.NoError(t, err)
 		_, err = db.ExecContext(ctx, string(body))

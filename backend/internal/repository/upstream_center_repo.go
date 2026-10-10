@@ -33,26 +33,34 @@ func upstreamPersistenceError(err error) error {
 	return err
 }
 
+const upstreamSupplierColumns = `id,name,website,notes,created_at,updated_at,recharge_ratio,newapi_user_id,newapi_access_token_encrypted,newapi_api_base,newapi_credentials_managed,newapi_legacy_conflict`
+
+func scanUpstreamSupplier(row upstreamScanner) (*service.UpstreamSupplier, error) {
+	s := new(service.UpstreamSupplier)
+	err := row.Scan(&s.ID, &s.Name, &s.Website, &s.Notes, &s.CreatedAt, &s.UpdatedAt, &s.RechargeRatio,
+		&s.NewAPIUserID, &s.NewAPIAccessTokenEncrypted, &s.NewAPIAPIBase, &s.NewAPICredentialsManaged, &s.NewAPILegacyConflict)
+	s.NewAPIAccessTokenConfigured = s.NewAPIUserID > 0 && s.NewAPIAccessTokenEncrypted != ""
+	return s, upstreamPersistenceError(err)
+}
+
 func (r *upstreamCenterRepository) ListSuppliers(ctx context.Context) ([]*service.UpstreamSupplier, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT id,name,website,notes,created_at,updated_at,recharge_ratio FROM upstream_suppliers WHERE deleted_at IS NULL ORDER BY sort_order ASC NULLS LAST,id`)
+	rows, err := r.db.QueryContext(ctx, `SELECT `+upstreamSupplierColumns+` FROM upstream_suppliers WHERE deleted_at IS NULL ORDER BY sort_order ASC NULLS LAST,id`)
 	if err != nil {
 		return nil, err
 	}
 	defer func() { _ = rows.Close() }()
 	out := make([]*service.UpstreamSupplier, 0)
 	for rows.Next() {
-		s := new(service.UpstreamSupplier)
-		if err = rows.Scan(&s.ID, &s.Name, &s.Website, &s.Notes, &s.CreatedAt, &s.UpdatedAt, &s.RechargeRatio); err != nil {
-			return nil, err
+		s, scanErr := scanUpstreamSupplier(rows)
+		if scanErr != nil {
+			return nil, scanErr
 		}
 		out = append(out, s)
 	}
 	return out, rows.Err()
 }
 func (r *upstreamCenterRepository) GetSupplier(ctx context.Context, id int64) (*service.UpstreamSupplier, error) {
-	s := new(service.UpstreamSupplier)
-	err := r.db.QueryRowContext(ctx, `SELECT id,name,website,notes,created_at,updated_at,recharge_ratio FROM upstream_suppliers WHERE id=$1 AND deleted_at IS NULL`, id).Scan(&s.ID, &s.Name, &s.Website, &s.Notes, &s.CreatedAt, &s.UpdatedAt, &s.RechargeRatio)
-	return s, upstreamPersistenceError(err)
+	return scanUpstreamSupplier(r.db.QueryRowContext(ctx, `SELECT `+upstreamSupplierColumns+` FROM upstream_suppliers WHERE id=$1 AND deleted_at IS NULL`, id))
 }
 func (r *upstreamCenterRepository) SaveSupplier(ctx context.Context, s *service.UpstreamSupplier) error {
 	if s.ID == 0 {
@@ -66,14 +74,14 @@ func (r *upstreamCenterRepository) SaveSupplier(ctx context.Context, s *service.
 		}
 		// The membership lock serializes creation with other inserts and manual
 		// reordering. Prepend without changing existing suppliers' relative order.
-		if err = tx.QueryRowContext(ctx, `INSERT INTO upstream_suppliers(name,website,notes,recharge_ratio,sort_order)
- SELECT $1,$2,$3,$4,COALESCE(MIN(sort_order),0)-1 FROM upstream_suppliers WHERE deleted_at IS NULL
- RETURNING id,created_at,updated_at`, s.Name, s.Website, s.Notes, s.RechargeRatio).Scan(&s.ID, &s.CreatedAt, &s.UpdatedAt); err != nil {
+		if err = tx.QueryRowContext(ctx, `INSERT INTO upstream_suppliers(name,website,notes,recharge_ratio,newapi_user_id,newapi_access_token_encrypted,newapi_api_base,newapi_credentials_managed,newapi_legacy_conflict,sort_order)
+ SELECT $1,$2,$3,$4,$5,$6,$7,$8,$9,COALESCE(MIN(sort_order),0)-1 FROM upstream_suppliers WHERE deleted_at IS NULL
+ RETURNING id,created_at,updated_at`, s.Name, s.Website, s.Notes, s.RechargeRatio, s.NewAPIUserID, s.NewAPIAccessTokenEncrypted, s.NewAPIAPIBase, s.NewAPICredentialsManaged, s.NewAPILegacyConflict).Scan(&s.ID, &s.CreatedAt, &s.UpdatedAt); err != nil {
 			return err
 		}
 		return tx.Commit()
 	}
-	return upstreamPersistenceError(r.db.QueryRowContext(ctx, `UPDATE upstream_suppliers SET name=$2,website=$3,notes=$4,recharge_ratio=$5,updated_at=NOW() WHERE id=$1 AND deleted_at IS NULL RETURNING updated_at`, s.ID, s.Name, s.Website, s.Notes, s.RechargeRatio).Scan(&s.UpdatedAt))
+	return upstreamPersistenceError(r.db.QueryRowContext(ctx, `UPDATE upstream_suppliers SET name=$2,website=$3,notes=$4,recharge_ratio=$5,newapi_user_id=$6,newapi_access_token_encrypted=$7,newapi_api_base=$8,newapi_credentials_managed=$9,newapi_legacy_conflict=$10,updated_at=clock_timestamp() WHERE id=$1 AND updated_at=$11 AND deleted_at IS NULL RETURNING updated_at`, s.ID, s.Name, s.Website, s.Notes, s.RechargeRatio, s.NewAPIUserID, s.NewAPIAccessTokenEncrypted, s.NewAPIAPIBase, s.NewAPICredentialsManaged, s.NewAPILegacyConflict, s.UpdatedAt).Scan(&s.UpdatedAt))
 }
 func (r *upstreamCenterRepository) ArchiveSupplier(ctx context.Context, id int64) error {
 	tx, err := r.db.BeginTx(ctx, nil)
@@ -122,14 +130,14 @@ func (r *upstreamCenterRepository) ArchiveSupplier(ctx context.Context, id int64
 	return tx.Commit()
 }
 
-const upstreamTargetColumns = `id,supplier_id,name,provider,api_mode,endpoint,api_key_encrypted,models,enabled,interval_seconds,timeout_seconds,degraded_threshold_ms,wallet_ref,notes,last_checked_at,next_check_at,created_at,updated_at,newapi_user_id,newapi_access_token_encrypted`
+const upstreamTargetColumns = `id,supplier_id,name,provider,api_mode,endpoint,api_key_encrypted,models,enabled,interval_seconds,timeout_seconds,degraded_threshold_ms,wallet_ref,notes,last_checked_at,next_check_at,created_at,updated_at,newapi_user_id,newapi_access_token_encrypted,newapi_credentials_inherited`
 
 type upstreamScanner interface{ Scan(...any) error }
 
 func scanUpstreamTarget(row upstreamScanner) (*service.UpstreamTarget, error) {
 	t := new(service.UpstreamTarget)
 	var models []byte
-	err := row.Scan(&t.ID, &t.SupplierID, &t.Name, &t.Provider, &t.APIMode, &t.Endpoint, &t.APIKeyEncrypted, &models, &t.Enabled, &t.IntervalSeconds, &t.TimeoutSeconds, &t.DegradedThresholdMs, &t.WalletRef, &t.Notes, &t.LastCheckedAt, &t.NextCheckAt, &t.CreatedAt, &t.UpdatedAt, &t.NewAPIUserID, &t.NewAPIAccessTokenEncrypted)
+	err := row.Scan(&t.ID, &t.SupplierID, &t.Name, &t.Provider, &t.APIMode, &t.Endpoint, &t.APIKeyEncrypted, &models, &t.Enabled, &t.IntervalSeconds, &t.TimeoutSeconds, &t.DegradedThresholdMs, &t.WalletRef, &t.Notes, &t.LastCheckedAt, &t.NextCheckAt, &t.CreatedAt, &t.UpdatedAt, &t.NewAPIUserID, &t.NewAPIAccessTokenEncrypted, &t.NewAPICredentialsInherited)
 	if err != nil {
 		return nil, upstreamPersistenceError(err)
 	}

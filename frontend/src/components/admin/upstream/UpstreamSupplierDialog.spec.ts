@@ -26,6 +26,48 @@ afterEach(() => { wrapper?.unmount(); wrapper = undefined; document.body.innerHT
 async function choose(view: VueWrapper, id: number) { await view.get(`input[aria-label="Account ${id}"]`).setValue(true); await flushPromises() }
 
 describe('upstream account batch import', () => {
+  it('saves authorization once on the site while importing multiple key groups', async () => {
+    const view = render(); await flushPromises()
+    await choose(view, 1); await choose(view, 2)
+    await view.get('#supplier-newapi-enabled').trigger('click')
+    await view.get('#supplier-newapi-user').setValue('42')
+    await view.get('#supplier-newapi-base').setValue('https://upstream.example/prefix')
+    await view.get('#supplier-newapi-token').setValue(' personal-access-token ')
+    await view.get('form').trigger('submit'); await flushPromises()
+    expect(mocks.createSupplier).toHaveBeenCalledWith(expect.objectContaining({ newapi_user_id: 42, newapi_api_base: 'https://upstream.example/prefix', newapi_access_token: 'personal-access-token' }))
+    expect(mocks.createTarget).toHaveBeenCalledTimes(2)
+    expect(mocks.createTarget.mock.calls.every(([input]) => !('newapi_access_token' in input) && !('newapi_user_id' in input))).toBe(true)
+    expect((view.get('#supplier-newapi-token').element as HTMLInputElement).value).toBe('')
+  })
+  it('keeps an existing site token blank and clears authorization only when disabled', async () => {
+    const view = render({ ...supplier, newapi_user_id: 42, newapi_api_base: 'https://upstream.example', newapi_access_token_configured: true } as unknown as UpstreamSupplier)
+    expect(view.get('#supplier-newapi-enabled').attributes('aria-checked')).toBe('true')
+    expect(view.get('#supplier-newapi-token').attributes('required')).toBeUndefined()
+    await view.get('form').trigger('submit'); await flushPromises()
+    expect(mocks.updateSupplier).toHaveBeenCalledWith(10, expect.objectContaining({ newapi_user_id: 42 }))
+    expect(mocks.updateSupplier.mock.calls[0]![1]).not.toHaveProperty('newapi_access_token')
+    await view.get('#supplier-newapi-enabled').trigger('click')
+    await view.get('form').trigger('submit'); await flushPromises()
+    expect(mocks.updateSupplier).toHaveBeenLastCalledWith(10, expect.objectContaining({ newapi_user_id: 0 }))
+  })
+  it.each(['website', 'base', 'user'])('requires new authorization after changing the site %s', async field => {
+    const view = render({ ...supplier, newapi_user_id: 42, newapi_api_base: 'https://upstream.example', newapi_access_token_configured: true } as unknown as UpstreamSupplier)
+    await view.get('#supplier-newapi-token').setValue('old-recipient-token')
+    if (field === 'website') await view.get('#supplier-website').setValue('https://different.example')
+    if (field === 'base') await view.get('#supplier-newapi-base').setValue('https://different.example')
+    if (field === 'user') await view.get('#supplier-newapi-user').setValue('43')
+    expect((view.get('#supplier-newapi-token').element as HTMLInputElement).value).toBe('')
+    expect(view.get('#supplier-newapi-token').attributes('required')).toBeDefined()
+    await view.get('form').trigger('submit'); await flushPromises()
+    expect(mocks.updateSupplier).not.toHaveBeenCalled()
+    expect(view.text()).toContain('upstreamCenter.newapi.requiredToken')
+  })
+  it('shows unresolved legacy accounts without silently clearing them on an unrelated edit', async () => {
+    const view = render({ ...supplier, newapi_legacy_conflict: true } as unknown as UpstreamSupplier)
+    expect(view.text()).toContain('upstreamCenter.newapi.legacyConflict')
+    await view.get('form').trigger('submit'); await flushPromises()
+    expect(mocks.updateSupplier.mock.calls[0]![1]).not.toHaveProperty('newapi_user_id')
+  })
   it('creates a supplier with an optional recharge ratio and leaves conversion disabled by default', async () => {
     const view = render(); await flushPromises()
     expect((view.get('#supplier-recharge-ratio').element as HTMLInputElement).value).toBe('')

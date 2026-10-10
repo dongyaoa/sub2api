@@ -36,7 +36,7 @@ func TestUpstreamFinancePostgresLedger(t *testing.T) {
 	_, err = db.ExecContext(ctx, `CREATE TABLE accounts (id BIGINT PRIMARY KEY, credentials JSONB NOT NULL DEFAULT '{}', platform TEXT NOT NULL DEFAULT 'openai', type TEXT NOT NULL DEFAULT 'apikey', deleted_at TIMESTAMPTZ);
 CREATE TABLE usage_logs (id BIGSERIAL PRIMARY KEY, created_at TIMESTAMPTZ NOT NULL, account_id BIGINT NOT NULL, group_id BIGINT, user_id BIGINT NOT NULL DEFAULT 1, api_key_id BIGINT NOT NULL DEFAULT 1, requested_model TEXT, model TEXT NOT NULL DEFAULT 'gpt-test', request_id TEXT, actual_cost NUMERIC NOT NULL DEFAULT 0, total_cost NUMERIC NOT NULL DEFAULT 0, account_stats_cost NUMERIC, account_rate_multiplier NUMERIC, billing_type SMALLINT NOT NULL DEFAULT 0, input_tokens INT NOT NULL DEFAULT 0, output_tokens INT NOT NULL DEFAULT 0, cache_creation_tokens INT NOT NULL DEFAULT 0, cache_read_tokens INT NOT NULL DEFAULT 0);`)
 	require.NoError(t, err)
-	for _, name := range []string{"242_upstream_center.sql", "243_upstream_finance.sql", "243_upstream_finance.sql", "244_upstream_remote_billing.sql", "244_upstream_remote_billing.sql", "247_upstream_finance_usage_totals.sql", "247_upstream_finance_usage_totals.sql", "253_upstream_newapi_credentials.sql", "253_upstream_newapi_credentials.sql", "254_upstream_storage_retention.sql", "254_upstream_storage_retention.sql", "265_upstream_finance_reported_day.sql", "265_upstream_finance_reported_day.sql", "266_upstream_finance_reported_30_days.sql", "266_upstream_finance_reported_30_days.sql", "267_upstream_supplier_recharge_ratio.sql", "267_upstream_supplier_recharge_ratio.sql"} {
+	for _, name := range []string{"242_upstream_center.sql", "243_upstream_finance.sql", "243_upstream_finance.sql", "244_upstream_remote_billing.sql", "244_upstream_remote_billing.sql", "247_upstream_finance_usage_totals.sql", "247_upstream_finance_usage_totals.sql", "253_upstream_newapi_credentials.sql", "253_upstream_newapi_credentials.sql", "254_upstream_storage_retention.sql", "254_upstream_storage_retention.sql", "265_upstream_finance_reported_day.sql", "265_upstream_finance_reported_day.sql", "266_upstream_finance_reported_30_days.sql", "266_upstream_finance_reported_30_days.sql", "267_upstream_supplier_recharge_ratio.sql", "267_upstream_supplier_recharge_ratio.sql", "269_upstream_supplier_newapi.sql"} {
 		migration, err := migrations.FS.ReadFile(name)
 		require.NoError(t, err)
 		_, err = db.ExecContext(ctx, string(migration))
@@ -158,6 +158,11 @@ DELETE FROM usage_logs; DELETE FROM accounts WHERE id=1;`)
 	require.ErrorIs(t, err, service.ErrUpstreamFinanceIdentityChanged)
 	target, err = repo.GetTarget(ctx, 1)
 	require.NoError(t, err)
+	// Credential rotation now also revokes the in-flight lease. A new sync
+	// must claim again even after reloading the latest credential identity.
+	claimed, err = repo.ClaimBalance(ctx, 1, "first-token", now, now.Add(time.Minute))
+	require.NoError(t, err)
+	require.True(t, claimed)
 	balance := 12.5
 	rate := .3
 	billing := &service.UpstreamRemoteBillingSnapshot{Status: "ok", Source: "sub2api_billing", BillingScope: "token", GroupRateMultiplier: &rate, ResolvedRateMultiplier: &rate, EffectiveRateMultiplier: &rate, SyncedAt: &now, LastAttemptAt: &now, ObservedAt: &now}
