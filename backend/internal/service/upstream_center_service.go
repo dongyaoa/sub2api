@@ -737,6 +737,10 @@ func (s *UpstreamCenterService) Start() {
 		if s.finance != nil {
 			s.wg.Add(1)
 			go s.balanceLoop()
+			if repo, ok := s.finance.repo.(UpstreamAccountHistoryRepository); ok {
+				s.wg.Add(1)
+				go s.accountHistoryLoop(repo)
+			}
 		}
 	})
 }

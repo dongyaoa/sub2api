@@ -128,6 +128,7 @@ VALUES(93001,93001,30,25,'COMPLETED',NOW(),'CUSTOM-UPGRADE',$1::jsonb)`, promoti
 		"260_intelligence_candy_grading_version.sql", "261_intelligence_candy_fingerprint.sql", "262_intelligence_monitor_models.sql",
 		"263_intelligence_deleted_oauth_cleanup.sql", "264_upstream_account_monitor_lookup.sql",
 		"268_intelligence_monitor_prompts.sql",
+		"271_upstream_account_history_queue.sql",
 	} {
 		require.Contains(t, after, name, "all upstream-center migrations must be recorded")
 	}
@@ -153,7 +154,7 @@ VALUES(93001,93001,30,25,'COMPLETED',NOW(),'CUSTOM-UPGRADE',$1::jsonb)`, promoti
 		require.JSONEq(t, promotionSnapshot, snapshot)
 	}
 	assertCustomData()
-	for _, table := range []string{"upstream_suppliers", "upstream_targets", "upstream_account_bindings", "upstream_monitor_history", "upstream_finance_ledger", "upstream_balance_snapshots", "upstream_billing_snapshots", "upstream_monitor_cost_rollups", "intelligence_monitor_plans", "intelligence_monitor_runs"} {
+	for _, table := range []string{"upstream_suppliers", "upstream_targets", "upstream_account_bindings", "upstream_account_history_jobs", "upstream_monitor_history", "upstream_finance_ledger", "upstream_balance_snapshots", "upstream_billing_snapshots", "upstream_monitor_cost_rollups", "intelligence_monitor_plans", "intelligence_monitor_runs"} {
 		var exists bool
 		require.NoError(t, db.QueryRowContext(ctx, `SELECT to_regclass($1) IS NOT NULL`, "public."+table).Scan(&exists))
 		require.True(t, exists, "upgraded table must exist: %s", table)
@@ -164,7 +165,10 @@ VALUES(93001,93001,30,25,'COMPLETED',NOW(),'CUSTOM-UPGRADE',$1::jsonb)`, promoti
 	_, err = db.ExecContext(ctx, `
 INSERT INTO upstream_suppliers(id,name) VALUES(93001,'Imported supplier');
 INSERT INTO upstream_targets(id,supplier_id,name,provider,endpoint,api_key_encrypted,api_key_fingerprint,enabled,interval_seconds)
- VALUES(93001,93001,'Imported key','openai','https://example.test','cipher:fixture','fixture-fingerprint',FALSE,30);
+ VALUES(93001,93001,'Imported key','openai','https://example.test','cipher:fixture',
+ encode(sha256(convert_to('https://example.test','UTF8') || decode('00','hex') || convert_to('fixture-key','UTF8')),'hex'),FALSE,30);
+INSERT INTO usage_logs(user_id,api_key_id,account_id,group_id,model,actual_cost,total_cost,account_rate_multiplier,input_tokens,output_tokens,created_at)
+ VALUES(93001,93001,93001,93001,'fixture-history',5,3,0.5,100,40,NOW()-INTERVAL '1 day');
 INSERT INTO upstream_account_bindings(target_id,account_id,supplier_id,target_name,supplier_name,valid_from)
  VALUES(93001,93001,93001,'Imported key','Imported supplier',NOW()-INTERVAL '1 minute');
 INSERT INTO usage_logs(user_id,api_key_id,account_id,group_id,model,actual_cost,total_cost,account_rate_multiplier,input_tokens,output_tokens)
@@ -178,6 +182,16 @@ INSERT INTO intelligence_monitor_plans(id,name,source_type,group_id,local_api_ke
 	require.Equal(t, 3.0, revenue)
 	require.Equal(t, 1.0, cost)
 	require.Equal(t, int64(120), tokens)
+	var pending, historyRows int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT COUNT(*) FROM upstream_account_history_jobs WHERE completed_at IS NULL`).Scan(&pending))
+	require.Equal(t, 1, pending, "saving the verified binding enqueues its history")
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT COUNT(*) FROM upstream_finance_ledger WHERE model='fixture-history'`).Scan(&historyRows))
+	require.Zero(t, historyRows, "saving does not synchronously copy old usage")
+	drainUpstreamHistoryQueue(t, db, ctx)
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT revenue,business_cost,total_tokens FROM upstream_finance_ledger WHERE target_id=93001 AND model='fixture-history'`).Scan(&revenue, &cost, &tokens))
+	require.Equal(t, 5.0, revenue)
+	require.Equal(t, 1.5, cost)
+	require.Equal(t, int64(140), tokens)
 	require.NoError(t, ApplyMigrations(ctx, db), "startup replay must remain idempotent")
 	require.Equal(t, after, readStamps(), "startup replay must not rewrite any migration history")
 	assertCustomData()

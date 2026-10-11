@@ -1,5 +1,5 @@
 <template>
-  <div ref="container" class="relative isolate overflow-hidden bg-slate-50 dark:bg-dark-900" :class="large ? 'aspect-[16/10]' : 'min-h-[144px] flex-1'" :aria-busy="active || loading">
+  <div ref="container" class="relative isolate overflow-hidden bg-slate-50 dark:bg-dark-900" :class="large ? 'aspect-[16/10]' : 'min-h-[144px] flex-1'" :aria-busy="active || loading" @mouseenter="hovered = true" @mouseleave="hovered = false" @focusin="focused = true" @focusout="onFocusOut">
     <iframe v-if="preview && !active" ref="frame" :key="`${run?.id}-${replay}`" :srcdoc="preview" sandbox="allow-scripts" credentialless referrerpolicy="no-referrer" scrolling="no" :title="t('pelicanMonitor.preview')" class="absolute origin-top-left border-0 bg-white" :style="canvasStyle" :class="!large && 'pointer-events-none'" @load="syncPreview" />
     <PelicanWaitingScene v-else-if="active" :label="t(`pelicanMonitor.status.${run?.status}`)" :queued="run?.status === 'pending'" />
     <div v-if="loading || (preview && !previewReady)" class="absolute inset-0 flex flex-col items-center justify-center gap-3 px-6" role="status">
@@ -8,7 +8,7 @@
     </div>
     <div v-else-if="!preview && !active" class="absolute inset-0 flex flex-col items-center justify-center gap-2 px-4 text-center">
       <svg class="text-slate-300 dark:text-dark-600" :class="large ? 'h-16 w-20' : 'h-9 w-12'" viewBox="0 0 96 72" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="24" cy="52" r="14"/><circle cx="74" cy="52" r="14"/><path d="M24 52l17-26 15 26H24l11-17h31l8 17M39 25h10M65 35l-5-13h10"/><path d="M42 32c-13-5-14-19-5-25 8-5 18 0 20 9l23 4-26 7-9-3-3 8Z"/><circle cx="48" cy="13" r="1.2" fill="currentColor"/><path d="m39 31 6 12-8 8M44 44l8 7"/></svg>
-      <p class="line-clamp-2 font-medium" :class="[large ? 'text-xs' : 'text-[10px]', run?.status === 'failed' || error ? 'text-rose-600 dark:text-rose-400' : 'text-slate-500 dark:text-dark-400']">{{ error || (run?.status === 'failed' ? t('pelicanMonitor.status.failed') : run ? t('pelicanMonitor.noHTML') : t('pelicanMonitor.waiting')) }}</p>
+      <p class="line-clamp-2 font-medium" :class="[large ? 'text-xs' : 'text-[10px]', run?.status === 'failed' || error ? 'text-rose-600 dark:text-rose-400' : 'text-slate-500 dark:text-dark-400']">{{ error || (run?.status === 'failed' ? t('pelicanMonitor.status.failed') : run?.status === 'succeeded' && !large && !autoplay ? t('pelicanMonitor.hoverPreview') : run ? t('pelicanMonitor.noHTML') : t('pelicanMonitor.waiting')) }}</p>
 
       <button v-if="error" type="button" class="relative z-20 text-xs text-primary-600" @click="retryLoad">{{ t('pelicanMonitor.refresh') }}</button>
     </div>
@@ -25,7 +25,7 @@ import { intelligencePreviewContent } from '@/components/admin/upstream/intellig
 import PelicanWaitingScene from './PelicanWaitingScene.vue'
 import { pelicanPageActiveKey, pelicanPreviewRefreshKey } from './pelicanContext'
 import { loadPelicanArtwork } from './pelicanArtworkLoader'
-const props = withDefaults(defineProps<{ run: PelicanRun | null; large?: boolean }>(), { large: false })
+const props = withDefaults(defineProps<{ run: PelicanRun | null; large?: boolean; autoplay?: boolean }>(), { large: false, autoplay: true })
 const emit = defineEmits<{ open: [] }>()
 const { t } = useI18n()
 const container = ref<HTMLElement | null>(null), loading = ref(false), error = ref(''), html = ref(''), replay = ref(0)
@@ -34,7 +34,9 @@ const previewReady = ref(false)
 const panelActive = inject(pelicanPageActiveKey, ref(true))
 const pageVisible = ref(!document.hidden)
 const refreshRevision = inject(pelicanPreviewRefreshKey, ref(0))
-const playing = computed(() => panelActive.value && pageVisible.value)
+const intersecting = ref(typeof IntersectionObserver === 'undefined')
+const hovered = ref(false), focused = ref(false)
+const playing = computed(() => panelActive.value && pageVisible.value && (props.large || (intersecting.value && (props.autoplay || hovered.value || focused.value))))
 const canvasWidth = 960
 const canvasHeight = 600
 const viewport = ref({ width: 0, height: 0 })
@@ -57,7 +59,9 @@ const canvasStyle = computed(() => {
   }
 })
 const active = computed(() => Boolean(props.run && ['pending', 'running'].includes(props.run.status)))
-const prepared = computed(() => html.value ? intelligencePreviewContent(html.value, { autoplay: true, fit: props.large ? 'contain' : 'cover' }) : null)
+// The parent owns playback; keep srcdoc stable when visibility or hover changes
+// and relay the current state after the frame loads.
+const prepared = computed(() => html.value ? intelligencePreviewContent(html.value, { autoplay: false, fit: props.large ? 'contain' : 'cover' }) : null)
 const preview = computed(() => prepared.value?.document || '')
 const fittedViewport = computed(() => {
   if (props.large) return { width: canvasWidth, height: canvasHeight }
@@ -88,6 +92,9 @@ function syncViewport() {
 }
 function syncPreview() { syncViewport(); syncPlayback() }
 function updatePageVisibility() { pageVisible.value = !document.hidden }
+function onFocusOut(event: FocusEvent) {
+  focused.value = event.relatedTarget instanceof Node && Boolean(container.value?.contains(event.relatedTarget))
+}
 watch(playing, syncPlayback)
 watch(fittedViewport, (current, previous) => {
   if (current && previous && (Math.abs(current.width - previous.width) > 0.01 || Math.abs(current.height - previous.height) > 0.01)) previewReady.value = false
@@ -100,7 +107,7 @@ watch(panelActive, async active => {
   measureViewport()
   syncPreview()
 })
-let controller: AbortController | undefined, resizeObserver: ResizeObserver | undefined
+let controller: AbortController | undefined, resizeObserver: ResizeObserver | undefined, intersectionObserver: IntersectionObserver | undefined
 let mounted = false, retryCount = 0
 let retryTimer: ReturnType<typeof setTimeout> | undefined
 let loadedIdentity = ''
@@ -139,7 +146,7 @@ function cancelLoad() {
   loading.value = false
 }
 async function load() {
-  if (!mounted || !panelActive.value || !pageVisible.value || !props.run || props.run.status !== 'succeeded') return
+  if (!mounted || !playing.value || !props.run || props.run.status !== 'succeeded') return
   const identity = runIdentity.value
   if ((loadedIdentity === identity && html.value) || loadingIdentity === identity) return
   cancelLoad()
@@ -175,7 +182,7 @@ async function load() {
       error.value = t('pelicanMonitor.loadFailed')
       // A just-completed record can briefly precede its readable HTML. Retry
       // transient failures independently of polling without an unbounded loop.
-      if (retryCount < 3 && mounted && panelActive.value && pageVisible.value) {
+      if (retryCount < 3 && mounted && playing.value) {
         const delay = 1000 * 2 ** retryCount++
         retryTimer = setTimeout(() => {
           retryTimer = undefined
@@ -201,10 +208,10 @@ watch(runIdentity, identity => {
   previewReady.value = false
   void load()
 })
-watch([panelActive, pageVisible], ([activePanel, activePage]) => {
-  // Keep every artwork mounted and playing throughout the visible page,
-  // including cards outside the horizontal scroll viewport.
-  if (!activePanel || !activePage) cancelLoad()
+watch(playing, enabled => {
+  // Offscreen or hover-only cards do not compete with visible artwork for the
+  // shared request queue. Keep a loaded frame paused for a seamless return.
+  if (!enabled) cancelLoad()
   else void load()
 })
 function retryLoad() { cancelLoad(); retryCount = 0; void load() }
@@ -218,6 +225,18 @@ onMounted(() => {
   window.addEventListener('message', onPreviewMessage)
   document.addEventListener('visibilitychange', updatePageVisibility)
   measureViewport()
+  if (!props.large && typeof IntersectionObserver !== 'undefined') {
+    intersectionObserver = new IntersectionObserver(entries => {
+      const entry = entries.find(item => item.target === container.value)
+      if (entry) {
+        intersecting.value = entry.isIntersecting && entry.intersectionRatio >= 0.01
+        // Scrolling a hovered card out from under the pointer must not leave it
+        // playing when it later re-enters from the other side of the gallery.
+        if (!intersecting.value) hovered.value = false
+      }
+    }, { threshold: 0.01 })
+    if (container.value) intersectionObserver.observe(container.value)
+  }
   if (typeof ResizeObserver !== 'undefined') {
     resizeObserver = new ResizeObserver(entries => {
       const entry = entries.find(item => item.target === container.value)
@@ -227,7 +246,7 @@ onMounted(() => {
   } else window.addEventListener('resize', measureViewport)
   void load()
 })
-onBeforeUnmount(() => { mounted = false; cancelLoad(); resizeObserver?.disconnect(); window.removeEventListener('resize', measureViewport); window.removeEventListener('message', onPreviewMessage); document.removeEventListener('visibilitychange', updatePageVisibility) })
+onBeforeUnmount(() => { mounted = false; cancelLoad(); resizeObserver?.disconnect(); intersectionObserver?.disconnect(); window.removeEventListener('resize', measureViewport); window.removeEventListener('message', onPreviewMessage); document.removeEventListener('visibilitychange', updatePageVisibility) })
 </script>
 <style scoped>
 .preview-open-label { opacity: 0; transform: translateY(3px); transition: opacity .18s ease, transform .18s ease; }

@@ -69,6 +69,7 @@ export function formatCurrency(amount: number | null | undefined, currency: stri
   return new Intl.NumberFormat(locale, {
     style: 'currency',
     currency: currency,
+    currencyDisplay: currency.toUpperCase() === 'USD' ? 'narrowSymbol' : 'symbol',
     minimumFractionDigits: fractionDigits,
     maximumFractionDigits: fractionDigits
   }).format(amount)

@@ -57,6 +57,7 @@ func TestUpstreamBalancePostgresPreservesUsageAcrossPartialSuccess(t *testing.T)
 
 func TestUpstreamOverviewFinancePostgresMatchesIndividualReads(t *testing.T) {
 	db, ctx, _ := upstreamStorageTestDB(t)
+	applyUpstreamHistoryQueueMigration(t, db, ctx)
 	_, err := db.ExecContext(ctx, `UPDATE upstream_targets SET supplier_id=2 WHERE id=1;
 INSERT INTO upstream_suppliers(id,name) VALUES(4,'No transactions');
 INSERT INTO upstream_targets(id,supplier_id,name,provider,endpoint,api_key_encrypted,api_key_fingerprint,newapi_user_id,newapi_access_token_encrypted) VALUES

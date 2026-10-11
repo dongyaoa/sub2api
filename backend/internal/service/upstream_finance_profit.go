@@ -15,6 +15,7 @@ type UpstreamProfitSources struct {
 	Targets        map[int64]*UpstreamFinanceTarget
 	Balances       map[int64]*UpstreamBalanceSnapshot
 	LastBusinessAt map[int64]time.Time
+	PendingHistory []UpstreamAccountHistoryWindow
 }
 
 type UpstreamProfitSourcesRepository interface {
@@ -28,7 +29,20 @@ func (s *UpstreamFinanceService) profitSources(ctx context.Context, from, to tim
 	if !ok {
 		return nil, nil
 	}
-	return repo.LoadProfitSources(ctx, from, to)
+	var pending []UpstreamAccountHistoryWindow
+	if history, ok := s.repo.(UpstreamAccountHistoryRepository); ok {
+		var err error
+		pending, err = history.PendingAccountHistory(ctx, from, to)
+		if err != nil {
+			return nil, err
+		}
+	}
+	sources, err := repo.LoadProfitSources(ctx, from, to)
+	if err != nil || sources == nil {
+		return sources, err
+	}
+	sources.PendingHistory = pending
+	return sources, err
 }
 
 func applyUpstreamDailyProfit(summary *UpstreamFinanceSummary, q UpstreamFinanceQuery, sources *UpstreamProfitSources, now time.Time) {
@@ -60,6 +74,14 @@ func applyUpstreamPeriodProfit(summary *UpstreamFinanceSummary, q UpstreamFinanc
 	}
 	keys := make(map[string]*keyObservation)
 	missing, archived, inactive := 0, 0, 0
+	summary.HistorySyncPending = 0
+	pendingHistory := make(map[int64]int)
+	for _, window := range sources.PendingHistory {
+		if window.From.Before(q.To) && window.Until.After(q.From) &&
+			(window.CursorAt == nil || !window.CursorAt.Before(q.From)) {
+			pendingHistory[window.TargetID]++
+		}
+	}
 	for id, target := range sources.Targets {
 		if target == nil {
 			continue
@@ -74,6 +96,7 @@ func applyUpstreamPeriodProfit(summary *UpstreamFinanceSummary, q UpstreamFinanc
 			archived++
 			continue
 		}
+		summary.HistorySyncPending += pendingHistory[id]
 		lastBusiness := sources.LastBusinessAt[id]
 		participates := q.TargetID != nil || !lastBusiness.Before(periodStart) && lastBusiness.Before(dayEnd)
 		if !participates {
@@ -185,7 +208,7 @@ func applyUpstreamPeriodProfit(summary *UpstreamFinanceSummary, q UpstreamFinanc
 	if !oldest.IsZero() {
 		summary.RemoteSyncedAt = &oldest
 	}
-	if !summary.CostPartial {
+	if !summary.CostPartial && summary.HistorySyncPending == 0 {
 		profit := summary.Revenue - used
 		summary.Profit = &profit
 	}

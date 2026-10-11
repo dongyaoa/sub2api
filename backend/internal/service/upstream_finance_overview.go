@@ -26,11 +26,23 @@ type UpstreamFinanceOverviewRepository interface {
 }
 
 func (s *UpstreamFinanceService) OverviewFinance(ctx context.Context, suppliers []*UpstreamSupplier, targets []*UpstreamTarget, from, to time.Time) (*UpstreamFinanceOverviewData, error) {
+	return withUpstreamFinanceReadSnapshot(ctx, s.repo, func(ctx context.Context) (*UpstreamFinanceOverviewData, error) {
+		return s.overviewFinance(ctx, suppliers, targets, from, to)
+	})
+}
+
+func (s *UpstreamFinanceService) overviewFinance(ctx context.Context, suppliers []*UpstreamSupplier, targets []*UpstreamTarget, from, to time.Time) (*UpstreamFinanceOverviewData, error) {
 	q, err := normalizeUpstreamFinanceQuery(UpstreamFinanceQuery{From: from, To: to}, s.now())
 	if err != nil {
 		return nil, err
 	}
 	if repo, ok := s.repo.(UpstreamFinanceOverviewRepository); ok {
+		// Pending must be observed before the income aggregate so finishing a
+		// background batch cannot expose a partially read income as complete.
+		sources, err := s.profitSources(ctx, q.From, q.To)
+		if err != nil {
+			return nil, err
+		}
 		supplierIDs := make([]int64, 0, len(suppliers))
 		for _, supplier := range suppliers {
 			supplierIDs = append(supplierIDs, supplier.ID)
@@ -46,10 +58,6 @@ func (s *UpstreamFinanceService) OverviewFinance(ctx context.Context, suppliers 
 		now := s.now()
 		for id, target := range data.BalanceTargets {
 			data.Balances[id] = completeUpstreamBalanceSnapshot(data.Balances[id], target, now)
-		}
-		sources, err := s.profitSources(ctx, q.From, q.To)
-		if err != nil {
-			return nil, err
 		}
 		applyUpstreamDailyProfit(data.Summary, q, sources, now)
 		for id, summary := range data.Suppliers {

@@ -6,8 +6,8 @@ import Select from '@/components/common/Select.vue'
 import ModelTagInput from '@/components/admin/channel/ModelTagInput.vue'
 import type { UpstreamSupplier, UpstreamTarget } from '@/api/admin/upstreamCenter'
 
-const mocks = vi.hoisted(() => ({ create: vi.fn(), update: vi.fn(), models: vi.fn(), accounts: vi.fn(), account: vi.fn() }))
-vi.mock('@/api/admin/upstreamCenter', () => ({ upstreamCenterAPI: { createTarget: mocks.create, updateTarget: mocks.update, models: mocks.models } }))
+const mocks = vi.hoisted(() => ({ create: vi.fn(), update: vi.fn(), models: vi.fn(), accounts: vi.fn(), supplierAccounts: vi.fn(), account: vi.fn() }))
+vi.mock('@/api/admin/upstreamCenter', () => ({ upstreamCenterAPI: { createTarget: mocks.create, updateTarget: mocks.update, models: mocks.models, supplierAccounts: mocks.supplierAccounts } }))
 vi.mock('@/api/admin/accounts', () => ({ list: mocks.accounts, getById: mocks.account }))
 vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
 const dialog = defineComponent({ props: ['show'], template: '<div v-if="show"><slot /><slot name="footer" /></div>' })
@@ -32,8 +32,84 @@ async function chooseOption(view: VueWrapper, selector: string, text: string) {
   expect(view.get(selector).attributes('aria-expanded')).toBe('false')
   expect(document.body.querySelector('[role="listbox"]')).toBeNull()
 }
-beforeEach(() => { vi.resetAllMocks(); mocks.accounts.mockResolvedValue({ items: [{ id: 7, name: 'Imported account', platform: 'openai' }] }); mocks.account.mockResolvedValue({ id: 7, name: 'Imported account', platform: 'openai', credentials: { base_url: 'https://example.com' } }); mocks.models.mockResolvedValue(['gpt-test']); mocks.create.mockResolvedValue({}); mocks.update.mockResolvedValue({}) })
-afterEach(() => { wrapper?.unmount(); wrapper = undefined; document.body.innerHTML = '' })
+beforeEach(() => { vi.resetAllMocks(); mocks.accounts.mockResolvedValue({ items: [{ id: 7, name: 'Imported account', platform: 'openai' }] }); mocks.supplierAccounts.mockResolvedValue({ items: [{ id: 7, name: 'Imported account', platform: 'openai', endpoint: 'https://example.com' }], total: 1, page: 1, page_size: 100 }); mocks.account.mockResolvedValue({ id: 7, name: 'Imported account', platform: 'openai', credentials: { base_url: 'https://example.com' } }); mocks.models.mockResolvedValue(['gpt-test']); mocks.create.mockResolvedValue({}); mocks.update.mockResolvedValue({}) })
+afterEach(() => { wrapper?.unmount(); wrapper = undefined; document.body.innerHTML = ''; vi.useRealTimers() })
+
+describe('upstream site account selection', () => {
+  it('requests only this supplier’s accounts even before its first key group exists', async () => {
+    const view = render()
+    await flushPromises()
+    expect(supplier.targets).toEqual([])
+    expect(mocks.supplierAccounts).toHaveBeenCalledWith(2, { page: 1, page_size: 100, search: '' }, expect.any(AbortSignal))
+    expect(mocks.accounts).not.toHaveBeenCalled()
+    expect(view.get('[data-testid="account-site-hint"]').text()).toBe('upstreamCenter.accountSelection.siteHint')
+    expect(view.get('.test-accounts').text()).toContain('Imported account')
+  })
+  it('searches and loads more within the same site without dropping earlier matches', async () => {
+    vi.useFakeTimers()
+    const view = render(null, false, supplier, true)
+    await flushPromises()
+    mocks.supplierAccounts.mockResolvedValueOnce({ items: [{ id: 8, name: 'Match one', platform: 'openai' }], total: 2 })
+      .mockResolvedValueOnce({ items: [{ id: 9, name: 'Match two', platform: 'anthropic' }], total: 2 })
+    view.findAllComponents(Select).find(item => item.props('remote'))!.vm.$emit('search', ' Match ')
+    await vi.advanceTimersByTimeAsync(250); await flushPromises()
+    expect(mocks.supplierAccounts).toHaveBeenLastCalledWith(2, { page: 1, page_size: 100, search: 'Match' }, expect.any(AbortSignal))
+    await view.get('[data-testid="account-load-more"]').trigger('click'); await flushPromises()
+    expect(mocks.supplierAccounts).toHaveBeenLastCalledWith(2, { page: 2, page_size: 100, search: 'Match' }, expect.any(AbortSignal))
+    expect(view.findAllComponents(Select).find(item => item.props('remote'))!.props('options').map((item: { value: string }) => item.value)).toEqual(['8', '9'])
+    expect(view.find('[data-testid="account-load-more"]').exists()).toBe(false)
+  })
+  it('discards the previous site’s delayed response when the supplier changes', async () => {
+    let resolveOld: (value: unknown) => void = () => undefined
+    mocks.supplierAccounts.mockReturnValueOnce(new Promise(resolve => { resolveOld = resolve }))
+      .mockResolvedValueOnce({ items: [{ id: 8, name: 'Current site account', platform: 'openai' }], total: 1 })
+    const view = render()
+    await view.setProps({ supplier: { ...supplier, id: 3, website: 'https://current.example' } })
+    await flushPromises()
+    expect(mocks.supplierAccounts.mock.calls[0]![2].aborted).toBe(true)
+    resolveOld({ items: [{ id: 7, name: 'Old site account', platform: 'openai' }], total: 1 })
+    await flushPromises()
+    expect(view.get('.test-accounts').text()).toContain('Current site account')
+    expect(view.get('.test-accounts').text()).not.toContain('Old site account')
+    expect(mocks.accounts).not.toHaveBeenCalled()
+  })
+  it('shows an empty state and never falls back to the global list', async () => {
+    mocks.supplierAccounts.mockResolvedValue({ items: [], total: 0 })
+    const view = render()
+    await flushPromises()
+    expect(view.get('[data-testid="account-site-empty"]').text()).toBe('upstreamCenter.accountSelection.empty')
+    expect(mocks.accounts).not.toHaveBeenCalled()
+  })
+  it('does not offer global accounts if the site query fails', async () => {
+    mocks.supplierAccounts.mockRejectedValue(new Error('Site list failed'))
+    const view = render()
+    await flushPromises()
+    expect(view.get('.test-accounts').findAll('option')).toHaveLength(1)
+    expect(view.find('[data-testid="account-site-empty"]').exists()).toBe(false)
+    expect(mocks.accounts).not.toHaveBeenCalled()
+  })
+  it('rejects an account whose URL changed to another site after listing', async () => {
+    mocks.account.mockResolvedValue({ id: 7, name: 'Changed account', platform: 'openai', credentials: { base_url: 'https://example.com.other.test/v1' } })
+    const view = render()
+    await flushPromises()
+    await view.get('.test-accounts').setValue('7')
+    await view.findAll('button').find(button => button.text() === 'upstreamCenter.form.importAccount')!.trigger('click')
+    await flushPromises()
+    expect(view.text()).toContain('upstreamCenter.accountSelection.changedSite')
+    expect((view.get('#target-endpoint').element as HTMLInputElement).value).toBe(supplier.website)
+    expect(view.get('#target-key').attributes('required')).toBeDefined()
+  })
+  it.each(['https://EXAMPLE.com:443/v1/', 'https://api.example.com/v1'])('imports an account at the site or its configured API base (%s)', async endpoint => {
+    mocks.account.mockResolvedValue({ id: 7, name: 'Imported account', platform: 'openai', credentials: { base_url: endpoint } })
+    const view = render(null, false, { ...supplier, newapi_api_base: 'https://api.example.com' })
+    await flushPromises()
+    await view.get('.test-accounts').setValue('7')
+    await view.findAll('button').find(button => button.text() === 'upstreamCenter.form.importAccount')!.trigger('click')
+    await flushPromises()
+    expect((view.get('#target-endpoint').element as HTMLInputElement).value).toBe(endpoint)
+    expect(view.get('#target-key').attributes('required')).toBeUndefined()
+  })
+})
 
 describe('upstream target credentials and form lifecycle', () => {
   it('inherits site authorization without exposing, clearing or resubmitting group credentials', async () => {
@@ -389,10 +465,10 @@ describe('upstream target credentials and form lifecycle', () => {
     expect(view.text()).not.toContain('Old account request failed')
     expect(importButton().attributes('disabled')).toBeDefined()
 
-    resolveNewImport({ id: 7, name: 'Current account', platform: 'openai', credentials: { base_url: 'https://current.example' } })
+    resolveNewImport({ id: 7, name: 'Current account', platform: 'openai', credentials: { base_url: 'https://example.com/v1' } })
     await flushPromises()
     expect((view.get('#target-name').element as HTMLInputElement).value).toBe('Current account')
-    expect((view.get('#target-endpoint').element as HTMLInputElement).value).toBe('https://current.example')
+    expect((view.get('#target-endpoint').element as HTMLInputElement).value).toBe('https://example.com/v1')
   })
   it('lets a reopened editor discover models without an older request clearing its loading state', async () => {
     let resolveOldModels: (models: string[]) => void = () => undefined

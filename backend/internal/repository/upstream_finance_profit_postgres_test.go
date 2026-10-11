@@ -12,6 +12,7 @@ import (
 
 func TestUpstreamProfitPostgresArchivePreservesRemainingTotals(t *testing.T) {
 	db, ctx, _ := upstreamStorageTestDB(t)
+	applyUpstreamHistoryQueueMigration(t, db, ctx)
 	repo := &upstreamFinanceRepository{db: db}
 	now := time.Now().UTC().Truncate(time.Microsecond)
 	start := timezone.StartOfDay(now)
@@ -142,6 +143,7 @@ func TestUpstreamProfitIdentityAndArchivedSourcesPostgres(t *testing.T) {
 
 func TestUpstreamProfitPostgresParticipationMatchesBusinessPeriodAndOwnership(t *testing.T) {
 	db, ctx, _ := upstreamStorageTestDB(t)
+	applyUpstreamHistoryQueueMigration(t, db, ctx)
 	repo := &upstreamFinanceRepository{db: db}
 	now := time.Now().UTC().Truncate(time.Microsecond)
 	start := timezone.StartOfDay(now)

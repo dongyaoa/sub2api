@@ -6,7 +6,10 @@
       <section class="rounded-xl border border-gray-200 p-4 dark:border-dark-700">
         <h3 class="text-sm font-medium text-gray-800 dark:text-gray-200">{{ t(supplier ? 'upstreamCenter.form.bindAccounts' : 'upstreamCenter.import.title') }}<span v-if="supplier && form.account_ids.length" class="ml-2 text-primary-600 dark:text-primary-400">{{ form.account_ids.length }}</span></h3>
         <p class="mb-3 mt-2 text-xs leading-5 text-gray-500 dark:text-dark-400">{{ t(supplier ? 'upstreamCenter.form.bindHint' : 'upstreamCenter.form.importCredentialHint') }}</p>
-        <div class="flex gap-2"><Select v-model="accountPicker" class="min-w-0 flex-1" :options="accountOptions" :placeholder="t('upstreamCenter.form.selectAccount')" remote :loading="accountsLoading" @search="searchAccounts" /><button type="button" class="btn btn-secondary shrink-0" :disabled="!accountPicker || importing" @click="importAccount">{{ t('upstreamCenter.form.importAccount') }}</button></div>
+        <p v-if="supplier" class="mb-2 text-xs text-primary-600 dark:text-primary-400" data-testid="account-site-hint">{{ t('upstreamCenter.accountSelection.siteHint') }}</p>
+        <div class="flex gap-2"><Select v-model="accountPicker" class="min-w-0 flex-1" :options="accountOptions" :placeholder="t('upstreamCenter.form.selectAccount')" :empty-text="t(supplier ? 'upstreamCenter.accountSelection.empty' : 'upstreamCenter.form.noAccounts')" remote :loading="accountsLoading" @search="searchAccounts" /><button type="button" class="btn btn-secondary shrink-0" :disabled="!accountPicker || importing || accountsLoading" @click="importAccount">{{ t('upstreamCenter.form.importAccount') }}</button></div>
+        <p v-if="supplier && !accountsLoading && !accountError && !accounts.length" class="mt-2 text-xs text-gray-500 dark:text-dark-400" data-testid="account-site-empty">{{ t('upstreamCenter.accountSelection.empty') }}</p>
+        <button v-if="supplier && accounts.length < accountTotal" type="button" class="mt-2 text-xs text-primary-600 disabled:opacity-50 dark:text-primary-400" :disabled="accountsLoading" data-testid="account-load-more" @click="loadAccounts(accountSearch, true)">{{ t(accountsLoading ? 'common.loading' : 'upstreamCenter.accountSelection.loadMore') }}</button>
         <p v-if="accountError" class="mt-2 text-xs text-red-500">{{ accountError }}</p>
         <div v-if="supplier" class="mt-3 flex flex-wrap gap-2"><span v-for="id in form.account_ids" :key="id" class="inline-flex items-center gap-2 rounded-lg bg-primary-50 px-2 py-1 text-xs text-primary-700 dark:bg-primary-500/10 dark:text-primary-300">{{ accountNames[id] || t('upstreamCenter.form.accountId', { id }) }}<button type="button" :aria-label="`${t('upstreamCenter.remove')} ${accountNames[id] || id}`" @click="form.account_ids = form.account_ids.filter(value => value !== id)"><Icon name="x" size="xs" /></button></span></div>
         <div v-else-if="sourceAccount" class="mt-3"><span class="inline-flex items-center gap-2 rounded-lg bg-primary-50 px-2 py-1 text-xs text-primary-700 dark:bg-primary-500/10 dark:text-primary-300">{{ sourceAccount.name }}<button type="button" :aria-label="`${t('upstreamCenter.remove')} ${sourceAccount.name}`" @click="clearSourceAccount"><Icon name="x" size="xs" /></button></span></div>
@@ -82,7 +85,8 @@ const form = reactive<UpstreamTargetInput>(defaults())
 const newapiEnabled = ref(false)
 const saving = ref(false), error = ref(''), modelsLoading = ref(false), modelError = ref(''), importing = ref(false)
 const discoveredModels = ref<string[]>([])
-const accounts = ref<AccountListItem[]>([]), accountNames = ref<Record<number, string>>({}), accountsLoading = ref(false), accountError = ref(''), accountPicker = ref('')
+const accounts = ref<Pick<AccountListItem, 'id' | 'name' | 'platform'>[]>([]), accountNames = ref<Record<number, string>>({}), accountsLoading = ref(false), accountError = ref(''), accountPicker = ref('')
+const accountSearch = ref(''), accountPage = ref(0), accountTotal = ref(0)
 const sourceAccount = ref<{ id: number; name: string } | null>(null)
 const normalizedEndpoint = (value: string) => value.trim().replace(/\/+$/, '')
 const canKeepSavedKey = computed(() => Boolean(props.target && normalizedEndpoint(form.endpoint) === normalizedEndpoint(props.target.endpoint) && form.provider === props.target.provider))
@@ -95,10 +99,12 @@ watch(sourceAccount, invalidateModels, { flush: 'sync' })
 watch([() => form.endpoint, () => form.provider, () => form.newapi_user_id], () => { form.newapi_access_token = '' }, { flush: 'sync' })
 watch(newapiEnabled, enabled => { if (!enabled) form.newapi_access_token = '' }, { flush: 'sync' })
 let accountRequest = 0, dialogGeneration = 0, modelRequest = 0
+let accountController: AbortController | undefined
 let searchTimer: ReturnType<typeof setTimeout> | undefined
-watch(() => props.show, show => {
+watch([() => props.show, () => props.supplier?.id, () => props.supplier?.website, () => props.supplier?.newapi_api_base, () => props.target?.id], ([show]) => {
   dialogGeneration++
-  accountRequest++; clearTimeout(searchTimer); accountsLoading.value = false; importing.value = false; modelsLoading.value = false
+  accountRequest++; accountController?.abort(); clearTimeout(searchTimer); accountsLoading.value = false; importing.value = false; modelsLoading.value = false
+  accounts.value = []; accountPicker.value = ''; accountPage.value = 0; accountTotal.value = 0; accountSearch.value = ''
   form.newapi_access_token = ''
   if (!show) return
   Object.assign(form, defaults(), props.target ? { supplier_id: props.target.supplier_id, name: props.target.name, provider: props.target.provider, api_mode: props.target.api_mode, endpoint: props.target.endpoint, models: [...props.target.models], enabled: props.target.enabled, interval_seconds: props.target.interval_seconds, timeout_seconds: props.target.timeout_seconds, degraded_threshold_ms: props.target.degraded_threshold_ms, account_ids: [...(props.target.account_ids || [])], wallet_ref: props.target.wallet_ref, notes: props.target.notes } : {})
@@ -108,29 +114,59 @@ watch(() => props.show, show => {
   sourceAccount.value = null; form.api_key = ''; error.value = ''; modelError.value = ''; discoveredModels.value = []; accountPicker.value = ''; accountError.value = ''
   void loadAccounts('')
 }, { immediate: true })
-async function loadAccounts(search: string) {
+async function loadAccounts(search: string, append = false) {
+  if (!props.show || (append && accountsLoading.value)) return
   const request = ++accountRequest
+  accountController?.abort()
+  const controller = new AbortController(); accountController = controller
+  const page = append ? accountPage.value + 1 : 1
+  accountSearch.value = search
+  if (!append) { accounts.value = []; accountPicker.value = ''; accountPage.value = 0; accountTotal.value = 0 }
   accountsLoading.value = true
-  try { const result = await accountsAPI.list(1, 100, { type: 'apikey', search, lite: '1' }); if (request !== accountRequest) return; accounts.value = result.items; result.items.forEach(account => { accountNames.value[account.id] = account.name }); accountError.value = '' }
+  accountError.value = ''
+  try {
+    const result = props.supplier
+      ? await upstreamCenterAPI.supplierAccounts(props.supplier.id, { page, page_size: 100, search: search.trim() }, controller.signal)
+      : await accountsAPI.list(1, 100, { type: 'apikey', search, lite: '1' }, { signal: controller.signal })
+    if (request !== accountRequest) return
+    accounts.value = append ? [...new Map([...accounts.value, ...result.items].map(account => [account.id, account])).values()] : result.items
+    accountPage.value = page; accountTotal.value = result.total ?? result.items.length
+    result.items.forEach(account => { accountNames.value[account.id] = account.name })
+  }
   catch (err) { if (request === accountRequest) accountError.value = extractApiErrorMessage(err, t('upstreamCenter.form.accountLoadFailed')) }
   finally { if (request === accountRequest) accountsLoading.value = false }
 }
-function searchAccounts(search: string) { clearTimeout(searchTimer); searchTimer = setTimeout(() => void loadAccounts(search), 250) }
+function searchAccounts(search: string) {
+  accountRequest++; accountController?.abort(); clearTimeout(searchTimer)
+  accounts.value = []; accountPicker.value = ''; accountTotal.value = 0; accountsLoading.value = true
+  searchTimer = setTimeout(() => void loadAccounts(search), 250)
+}
+function belongsToSupplier(endpoint: string): boolean {
+  const origin = (value: string) => {
+    try { const url = new URL(value.trim()); return ['https:', 'http:'].includes(url.protocol) && !url.username && !url.password ? url.origin : '' } catch { return '' }
+  }
+  const accountOrigin = origin(endpoint)
+  return Boolean(accountOrigin && [props.supplier?.website, props.supplier?.newapi_api_base].some(value => value && origin(value) === accountOrigin))
+}
 async function importAccount() {
-  if (!accountPicker.value || importing.value) return
+  if (!accountPicker.value || importing.value || accountsLoading.value) return
   const id = Number(accountPicker.value), generation = dialogGeneration
   importing.value = true
   try {
     const account = await accountsAPI.getById(id)
     if (generation !== dialogGeneration) return
+    const defaultEndpoints = { openai: 'https://api.openai.com', anthropic: 'https://api.anthropic.com', gemini: 'https://generativelanguage.googleapis.com' }
+    const provider = account.platform as UpstreamTargetInput['provider']
+    const baseURL = account.credentials?.base_url
+    const endpoint = typeof baseURL === 'string' && baseURL.trim() ? baseURL.trim() : defaultEndpoints[provider]
+    if (props.supplier && (!endpoint || !belongsToSupplier(endpoint))) {
+      accountPicker.value = ''; accountError.value = t('upstreamCenter.accountSelection.changedSite'); return
+    }
     if (!props.supplier || !form.account_ids.length) {
-      const endpoint = account.credentials?.base_url
-      const defaultEndpoints = { openai: 'https://api.openai.com', anthropic: 'https://api.anthropic.com', gemini: 'https://generativelanguage.googleapis.com' }
       if (['openai', 'anthropic', 'gemini'].includes(account.platform)) {
-        const provider = account.platform as UpstreamTargetInput['provider']
         if (form.provider !== provider) form.api_mode = 'chat_completions'
         form.provider = provider
-        form.endpoint = typeof endpoint === 'string' && endpoint.trim() ? endpoint.trim() : defaultEndpoints[provider]
+        form.endpoint = endpoint
       }
       if (!form.name) form.name = account.name
     }
@@ -173,5 +209,5 @@ async function save() {
   } catch (err) { error.value = extractApiErrorMessage(err, t('upstreamCenter.saveFailed')) }
   finally { saving.value = false }
 }
-onBeforeUnmount(() => { clearTimeout(searchTimer); accountRequest++; dialogGeneration++ })
+onBeforeUnmount(() => { clearTimeout(searchTimer); accountController?.abort(); accountRequest++; dialogGeneration++ })
 </script>

@@ -1,7 +1,23 @@
-import type { UpstreamBillingSnapshot } from '@/api/admin/upstreamCenter'
+import type { UpstreamBalanceSnapshot, UpstreamBillingSnapshot } from '@/api/admin/upstreamCenter'
 
 export function isNewapiBilling(billing?: UpstreamBillingSnapshot | null): boolean {
   return billing?.provider === 'newapi' || Boolean(billing?.source?.startsWith('newapi_'))
+}
+
+const usageOnlyErrors = new Set(['newapi_usage_incomplete', 'newapi_usage_unavailable'])
+
+// Usage history can be incomplete even when the current wallet balance synced successfully.
+export function walletSyncError(wallet: UpstreamBalanceSnapshot, error = wallet.error): string {
+  const amount = wallet.kind === 'wallet' ? wallet.balance : wallet.quota_remaining ?? wallet.balance
+  const knownBalance = (typeof amount === 'number' && Number.isFinite(amount)) || (wallet.kind === 'key_quota' && wallet.unlimited_quota)
+  if (!isNewapiBilling(wallet.billing) || wallet.status !== 'ok' || !knownBalance) return error || ''
+  return (error || '').split(';').map(part => part.trim()).filter(part => part && !usageOnlyErrors.has(part)).join('; ')
+}
+
+export function walletUsageError(wallet?: UpstreamBalanceSnapshot): string {
+  if (!wallet || !isNewapiBilling(wallet.billing)) return ''
+  const errors = [wallet.error, wallet.billing?.error].flatMap(error => (error || '').split(';').map(part => part.trim()))
+  return [...new Set(errors.filter(error => usageOnlyErrors.has(error)))].join('; ')
 }
 
 const errorKeys: Record<string, string> = {

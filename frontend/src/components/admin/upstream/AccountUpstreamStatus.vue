@@ -51,7 +51,7 @@
         </div>
         <div>
           <dt>{{ t('upstreamCenter.finance.todayProfit') }}</dt>
-          <dd :class="profit == null ? 'text-amber-600 dark:text-amber-400' : profit < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-primary-700 dark:text-primary-400'" :title="profit == null ? t('upstreamCenter.finance.pending') : `${t('upstreamCenter.finance.note')} ${money(profit, target.finance.currency)}`" data-testid="account-status-profit">{{ amount(profit) }}</dd>
+          <dd :class="profit == null ? 'text-amber-600 dark:text-amber-400' : profit < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-primary-700 dark:text-primary-400'" :title="profit == null ? t(profitPendingKey(target.finance)) : `${t('upstreamCenter.finance.note')} ${money(profit, target.finance.currency)}`" data-testid="account-status-profit">{{ amount(profit) }}</dd>
         </div>
         <div>
           <dt>{{ t('upstreamCenter.availability7d') }}</dt>
@@ -80,7 +80,7 @@ import UpstreamHistoryBar from './UpstreamHistoryBar.vue'
 import UpstreamRateBadge from './UpstreamRateBadge.vue'
 import UpstreamFinanceNotice from './UpstreamFinanceNotice.vue'
 import UpstreamStatusBadge from './UpstreamStatusBadge.vue'
-import { actualProfit, actualUpstreamUsed, amount, money, availability, availabilityColor, dateTime, latency, latencyColor, targetStatus } from './format'
+import { actualProfit, actualUpstreamUsed, profitPendingKey, amount, money, availability, availabilityColor, dateTime, latency, latencyColor, targetStatus } from './format'
 import { upstreamSyncError } from './newapi'
 
 const props = withDefaults(defineProps<{ target: UpstreamTarget; supplierName?: string; busy?: boolean }>(), { supplierName: '', busy: false })

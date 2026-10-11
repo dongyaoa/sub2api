@@ -86,6 +86,6 @@ function barWidth(currency: string, amount: number): number {
 }
 
 function formatMoney(currency: string, amount: number): string {
-  return new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(amount)
+  return new Intl.NumberFormat(undefined, { style: 'currency', currency, currencyDisplay: currency.toUpperCase() === 'USD' ? 'narrowSymbol' : 'symbol' }).format(amount)
 }
 </script>

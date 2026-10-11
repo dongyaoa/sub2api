@@ -77,7 +77,7 @@ func (r *upstreamFinanceRepository) Summary(ctx context.Context, q service.Upstr
  b.tokens,b.unknown_tokens,
  EXISTS(SELECT 1 FROM archived WHERE first_sample_at < $1 OR last_sample_at >= $2)
  FROM business b CROSS JOIN monitoring m`
-	return scanUpstreamFinanceSummary(r.db.QueryRowContext(ctx, query, upstreamFinanceArgs(q)...), q)
+	return scanUpstreamFinanceSummary(r.financeReader(ctx).QueryRowContext(ctx, query, upstreamFinanceArgs(q)...), q)
 }
 
 // Batch overview and the individual detail endpoint share all money/unknown
@@ -111,14 +111,14 @@ func scanUpstreamFinanceSummary(row upstreamScanner, q service.UpstreamFinanceQu
 func (r *upstreamFinanceRepository) Details(ctx context.Context, q service.UpstreamFinanceQuery) ([]service.UpstreamFinanceRow, int64, error) {
 	args := upstreamFinanceArgs(q)
 	var total int64
-	if err := r.db.QueryRowContext(ctx, `SELECT COUNT(*) `+upstreamFinanceLedgerSQL, args...).Scan(&total); err != nil {
+	if err := r.financeReader(ctx).QueryRowContext(ctx, `SELECT COUNT(*) `+upstreamFinanceLedgerSQL, args...).Scan(&total); err != nil {
 		return nil, 0, fmt.Errorf("count upstream financial records: %w", err)
 	}
 	query := `SELECT l.id,l.created_at,l.target_id,l.target_name,l.supplier_id,l.supplier_name,
 	 l.account_id,l.group_id,l.model,l.request_id,l.revenue,l.business_cost,l.billing_type,l.total_tokens
  ` + upstreamFinanceLedgerSQL + ` ORDER BY l.created_at DESC,l.id DESC LIMIT $5 OFFSET $6`
 	args = append(args, q.PageSize, (q.Page-1)*q.PageSize)
-	rows, err := r.db.QueryContext(ctx, query, args...)
+	rows, err := r.financeReader(ctx).QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, 0, fmt.Errorf("list upstream financial records: %w", err)
 	}
@@ -136,7 +136,7 @@ func (r *upstreamFinanceRepository) Details(ctx context.Context, q service.Upstr
 
 func (r *upstreamFinanceRepository) GetTarget(ctx context.Context, id int64) (*service.UpstreamFinanceTarget, error) {
 	t := &service.UpstreamFinanceTarget{}
-	err := r.db.QueryRowContext(ctx, `SELECT t.id,t.supplier_id,t.provider,t.endpoint,t.api_key_encrypted,t.api_key_fingerprint,t.wallet_ref,t.newapi_user_id,t.newapi_access_token_encrypted,t.profit_identity_since,s.recharge_ratio
+	err := r.financeReader(ctx).QueryRowContext(ctx, `SELECT t.id,t.supplier_id,t.provider,t.endpoint,t.api_key_encrypted,t.api_key_fingerprint,t.wallet_ref,t.newapi_user_id,t.newapi_access_token_encrypted,t.profit_identity_since,s.recharge_ratio
  FROM upstream_targets t LEFT JOIN upstream_suppliers s ON s.id=t.supplier_id
  WHERE t.id=$1 AND t.deleted_at IS NULL AND (t.supplier_id IS NULL OR s.deleted_at IS NULL)`, id).Scan(&t.ID, &t.SupplierID, &t.Provider, &t.Endpoint, &t.APIKeyEncrypted, &t.APIKeyFingerprint, &t.WalletRef, &t.NewAPIUserID, &t.NewAPIAccessTokenEncrypted, &t.ProfitIdentitySince, &t.RechargeRatio)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -149,7 +149,7 @@ func (r *upstreamFinanceRepository) GetTarget(ctx context.Context, id int64) (*s
 }
 
 func (r *upstreamFinanceRepository) LatestBalance(ctx context.Context, id int64, identity string) (*service.UpstreamBalanceSnapshot, error) {
-	s, err := scanUpstreamBalanceSnapshot(r.db.QueryRowContext(ctx, `WITH latest AS (
+	s, err := scanUpstreamBalanceSnapshot(r.financeReader(ctx).QueryRowContext(ctx, `WITH latest AS (
  SELECT * FROM upstream_balance_snapshots WHERE target_id=$1 AND identity_hash=$2 ORDER BY synced_at DESC,id DESC LIMIT 1
 ), good AS (
  SELECT * FROM upstream_balance_snapshots WHERE target_id=$1 AND identity_hash=$2 AND status='ok' ORDER BY synced_at DESC,id DESC LIMIT 1
@@ -195,7 +195,7 @@ func scanUpstreamBalanceSnapshot(row upstreamScanner) (*service.UpstreamBalanceS
 }
 
 func (r *upstreamFinanceRepository) latestRemoteBilling(ctx context.Context, id int64, identity string) (*service.UpstreamRemoteBillingSnapshot, error) {
-	return scanUpstreamRemoteBilling(r.db.QueryRowContext(ctx, `WITH latest AS (
+	return scanUpstreamRemoteBilling(r.financeReader(ctx).QueryRowContext(ctx, `WITH latest AS (
  SELECT * FROM upstream_billing_snapshots WHERE target_id=$1 AND identity_hash=$2 ORDER BY attempted_at DESC,id DESC LIMIT 1
 ), good AS (
  SELECT * FROM upstream_billing_snapshots WHERE target_id=$1 AND identity_hash=$2 AND status='ok' ORDER BY attempted_at DESC,id DESC LIMIT 1
@@ -290,7 +290,7 @@ func (r *upstreamFinanceRepository) ReleaseBalance(ctx context.Context, id int64
 }
 
 func (r *upstreamFinanceRepository) DueBalanceTargetIDs(ctx context.Context, now time.Time, limit int) ([]int64, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT t.id FROM upstream_targets t LEFT JOIN upstream_suppliers s ON s.id=t.supplier_id
+	rows, err := r.financeReader(ctx).QueryContext(ctx, `SELECT t.id FROM upstream_targets t LEFT JOIN upstream_suppliers s ON s.id=t.supplier_id
  WHERE t.deleted_at IS NULL AND (t.supplier_id IS NULL OR s.deleted_at IS NULL) AND t.balance_next_sync_at <= $1
  AND (t.balance_lease_until IS NULL OR t.balance_lease_until <= $1)
  ORDER BY t.balance_next_sync_at,t.id LIMIT $2`, now, limit)
@@ -310,7 +310,7 @@ func (r *upstreamFinanceRepository) DueBalanceTargetIDs(ctx context.Context, now
 }
 
 func (r *upstreamFinanceRepository) ActiveAccountIDs(ctx context.Context, targetID int64) ([]int64, error) {
-	rows, err := r.db.QueryContext(ctx, `SELECT b.account_id FROM upstream_account_bindings b JOIN accounts a ON a.id=b.account_id
+	rows, err := r.financeReader(ctx).QueryContext(ctx, `SELECT b.account_id FROM upstream_account_bindings b JOIN accounts a ON a.id=b.account_id
  WHERE b.target_id=$1 AND b.valid_until IS NULL AND a.deleted_at IS NULL ORDER BY b.account_id`, targetID)
 	if err != nil {
 		return nil, err

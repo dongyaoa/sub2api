@@ -82,6 +82,6 @@ function sortedAmounts(amounts: CurrencyAmounts): [string, number][] {
 }
 
 function formatMoney(currency: string, amount: number): string {
-  return new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(amount)
+  return new Intl.NumberFormat(undefined, { style: 'currency', currency, currencyDisplay: currency.toUpperCase() === 'USD' ? 'narrowSymbol' : 'symbol' }).format(amount)
 }
 </script>

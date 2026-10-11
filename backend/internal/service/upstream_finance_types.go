@@ -13,6 +13,8 @@ type UpstreamFinanceSummary struct {
 	MonitorCost  *float64 `json:"monitor_cost"`
 	Profit       *float64 `json:"profit"`
 	RequestCount int64    `json:"request_count"`
+	// Pending account imports make local revenue incomplete until the worker finishes.
+	HistorySyncPending int `json:"history_sync_pending"`
 	// Includes input, output, cache creation and cache read tokens. An expired
 	// source usage log without a token snapshot makes the aggregate unknown.
 	TotalTokens          *int64 `json:"total_tokens"`

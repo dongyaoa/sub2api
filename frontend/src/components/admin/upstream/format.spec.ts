@@ -80,4 +80,18 @@ describe('upstream monitoring display invariants', () => {
     expect(amount(0.000123)).toBe('0.000123')
     expect(amount(null)).toBe('—')
   })
+  it('shows USD as $ in a Chinese locale without changing other currency symbols', () => {
+    const NumberFormat = Intl.NumberFormat
+    const formatter = vi.spyOn(Intl, 'NumberFormat').mockImplementation(function (_locale, options) {
+      return new NumberFormat('zh-CN', options)
+    } as typeof Intl.NumberFormat)
+    try {
+      expect(money(360.78)).toBe('$360.78')
+      expect(money(-1.25)).toBe('-$1.25')
+      expect(money(0.000123)).toBe('$0.000123')
+      expect(money(1.25, 'CAD')).toBe(new NumberFormat('zh-CN', { style: 'currency', currency: 'CAD' }).format(1.25))
+    } finally {
+      formatter.mockRestore()
+    }
+  })
 })

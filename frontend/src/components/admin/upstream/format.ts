@@ -2,7 +2,11 @@ import type { UpstreamFinanceSummary, UpstreamHistoryRecord, UpstreamTarget } fr
 export { hslForPct as availabilityColor } from '@/composables/useChannelMonitorFormat'
 
 export function actualProfit(summary: UpstreamFinanceSummary | null | undefined): number | null {
-  return summary?.cost_source === 'reported' && summary.remote_used != null && !summary.cost_partial ? summary.profit : null
+  return summary?.cost_source === 'reported' && summary.remote_used != null && !summary.cost_partial && !summary.history_sync_pending ? summary.profit : null
+}
+
+export function profitPendingKey(summary: UpstreamFinanceSummary | null | undefined): string {
+  return summary?.history_sync_pending ? 'upstreamCenter.finance.historySyncPending' : 'upstreamCenter.finance.pending'
 }
 
 export function actualUpstreamUsed(summary: UpstreamFinanceSummary | null | undefined): number | null {
@@ -18,7 +22,7 @@ export function financeSource(summary: UpstreamFinanceSummary | null | undefined
 export function money(value: number | null | undefined, currency = 'USD'): string {
   if (value == null || !Number.isFinite(value)) return '—'
   if (currency === 'QUOTA') return `${value.toLocaleString(undefined, { maximumFractionDigits: 6 })} QUOTA`
-  try { return new Intl.NumberFormat(undefined, { style: 'currency', currency: currency || 'USD', minimumFractionDigits: 2, maximumFractionDigits: Math.abs(value) > 0 && Math.abs(value) < 0.01 ? 6 : 2 }).format(value) }
+  try { return new Intl.NumberFormat(undefined, { style: 'currency', currency: currency || 'USD', currencyDisplay: (currency || 'USD').toUpperCase() === 'USD' ? 'narrowSymbol' : 'symbol', minimumFractionDigits: 2, maximumFractionDigits: Math.abs(value) > 0 && Math.abs(value) < 0.01 ? 6 : 2 }).format(value) }
   catch { return `${value.toFixed(2)} ${currency}` }
 }
 export function amount(value: number | null | undefined): string {

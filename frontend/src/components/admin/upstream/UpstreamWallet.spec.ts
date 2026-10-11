@@ -40,6 +40,28 @@ describe('upstream wallet sync failure', () => {
     expect(wrapper.text()).toContain('upstreamCenter.newapi.rawUsageHint')
     wrapper.unmount()
   })
+  it('keeps a successful wallet clear of usage-history warnings and shows them with key consumption instead', async () => {
+    const wallet: UpstreamBalanceSnapshot = { target_id: 7, wallet_ref: 'default', kind: 'wallet', balance: 360.78, quota_remaining: null, today_used: 428.84, total_used: 1250, currency: 'USD', status: 'ok', synced_at: null, error: 'newapi_usage_incomplete', billing: { source: 'newapi_account', error: 'newapi_usage_incomplete' } as UpstreamBillingSnapshot }
+    const wrapper = mount(UpstreamWallet, { props: { wallets: [wallet] }, global: { stubs: { Icon: true } } })
+    expect(wrapper.get('[data-testid="wallet-balance"]').text()).toContain('360.78')
+    expect(wrapper.text()).not.toContain('upstreamCenter.newapi.errors.usageIncomplete')
+    await wrapper.setProps({ showKeyUsage: true })
+    expect(wrapper.get('[data-testid="key-upstream-usage-notice"]').text()).toBe('upstreamCenter.newapi.errors.usageIncomplete')
+    expect(wrapper.text().match(/upstreamCenter\.newapi\.errors\.usageIncomplete/g)).toHaveLength(1)
+    wrapper.unmount()
+  })
+  it('preserves unknown balances, failed syncs and authorization errors beside otherwise valid wallets', async () => {
+    const wallet: UpstreamBalanceSnapshot = { target_id: 7, wallet_ref: 'default', kind: 'wallet', balance: null, quota_remaining: null, today_used: null, total_used: null, currency: 'USD', status: 'ok', synced_at: null, error: 'newapi_usage_incomplete', billing: { source: 'newapi_account', error: '' } as UpstreamBillingSnapshot }
+    const wrapper = mount(UpstreamWallet, { props: { wallets: [wallet] }, global: { stubs: { Icon: true } } })
+    expect(wrapper.text()).toContain('upstreamCenter.newapi.errors.usageIncomplete')
+    await wrapper.setProps({ wallets: [{ ...wallet, balance: 42, status: 'error' }] })
+    expect(wrapper.text()).toContain('upstreamCenter.newapi.errors.usageIncomplete')
+    expect(wrapper.text()).toContain('upstreamCenter.wallet.error')
+    await wrapper.setProps({ wallets: [{ ...wallet, balance: 42, error: 'newapi_usage_incomplete; newapi_account_auth_failed' }] })
+    expect(wrapper.text()).toContain('upstreamCenter.newapi.errors.authorizationFailed')
+    expect(wrapper.text()).not.toContain('upstreamCenter.newapi.errors.usageIncomplete')
+    wrapper.unmount()
+  })
   it.each([
     { balance: 4.99, low: true },
     { balance: 0, low: true },

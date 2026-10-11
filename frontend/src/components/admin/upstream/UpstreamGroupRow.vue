@@ -58,7 +58,7 @@
         </div>
         <div class="min-w-0">
           <dt class="metric-label">{{ t('upstreamCenter.billing.profitTodayShort') }}</dt>
-          <dd class="metric-value" :class="profit == null ? '!text-amber-600 dark:!text-amber-400' : profit < 0 ? '!text-rose-600 dark:!text-rose-400' : '!text-primary-700 dark:!text-primary-400'" :title="profit == null ? t('upstreamCenter.finance.pending') : `${t('upstreamCenter.finance.note')} ${money(profit, target.finance.currency)}`" data-testid="upstream-profit">{{ amount(profit) }}</dd>
+          <dd class="metric-value" :class="profit == null ? '!text-amber-600 dark:!text-amber-400' : profit < 0 ? '!text-rose-600 dark:!text-rose-400' : '!text-primary-700 dark:!text-primary-400'" :title="profit == null ? t(profitPendingKey(target.finance)) : `${t('upstreamCenter.finance.note')} ${money(profit, target.finance.currency)}`" data-testid="upstream-profit">{{ amount(profit) }}</dd>
         </div>
         <div class="min-w-0">
           <dt class="metric-label">{{ t('upstreamCenter.finance.todayRequests') }}</dt>
@@ -92,7 +92,7 @@ import UpstreamProviderBadge from './UpstreamProviderBadge.vue'
 import UpstreamRateBadge from './UpstreamRateBadge.vue'
 import UpstreamFinanceNotice from './UpstreamFinanceNotice.vue'
 import { upstreamSyncError } from './newapi'
-import { actualProfit, actualUpstreamUsed, amount, availability, availabilityColor, compactTokens, dateTime, latency, latencyColor, money, targetStatus } from './format'
+import { actualProfit, actualUpstreamUsed, profitPendingKey, amount, availability, availabilityColor, compactTokens, dateTime, latency, latencyColor, money, targetStatus } from './format'
 
 const props = defineProps<{ target: UpstreamTarget; busy: boolean; running: boolean }>()
 const emit = defineEmits<{ details: [target: UpstreamTarget, model: string, record?: UpstreamHistoryRecord]; intelligence: [target: UpstreamTarget]; run: [target: UpstreamTarget]; toggle: [target: UpstreamTarget]; edit: [target: UpstreamTarget]; delete: [target: UpstreamTarget] }>()

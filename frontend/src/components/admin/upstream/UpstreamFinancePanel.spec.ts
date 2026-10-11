@@ -65,6 +65,26 @@ describe('upstream consumption and profit totals', () => {
     expect(wrapper.text()).not.toContain('upstreamCenter.finance.pending')
     wrapper.unmount()
   })
+  it('waits for local history imports before showing profit without blaming already synced upstream costs', async () => {
+    const pending = summary({ revenue: 1, remote_used: 4, profit: -3, history_sync_pending: 2 })
+    financeSummary.mockResolvedValueOnce({ today: pending, last_30_days: pending })
+    const wrapper = mountPanel()
+    await flushPromises()
+    for (const period of wrapper.findAll('[data-period]')) {
+      expect(period.text()).toContain('upstreamCenter.finance.historySyncPending')
+      expect(period.get('[data-testid="finance-history-pending"]').text()).toBe('upstreamCenter.finance.historySyncPendingHint 2')
+      expect(period.text()).toContain(money(4))
+      expect(period.text()).not.toContain(money(-3))
+      expect(period.text()).not.toContain('upstreamCenter.finance.pending')
+      expect(period.text()).not.toContain('upstreamCenter.financeUnavailable')
+    }
+    financeSummary.mockResolvedValueOnce({ today: summary(), last_30_days: summary() })
+    await wrapper.get('form').trigger('submit')
+    await flushPromises()
+    expect(wrapper.text()).toContain(money(8))
+    expect(wrapper.find('[data-testid="finance-history-pending"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
   it('shows zero business totals when all keys were only monitored in the period', async () => {
     const inactive = summary({ revenue: 0, remote_used: 0, profit: 0, request_count: 0, inactive_key_count: 2 })
     financeSummary.mockResolvedValue({ today: inactive, last_30_days: inactive })

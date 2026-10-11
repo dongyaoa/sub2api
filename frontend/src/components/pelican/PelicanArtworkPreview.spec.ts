@@ -13,7 +13,18 @@ let wrapper: VueWrapper | undefined
 let host: HTMLElement | undefined
 beforeEach(() => { vi.resetAllMocks(); resetPelicanArtworkAccess(); localStorage.setItem('auth_token', 'user-session'); vi.stubGlobal('IntersectionObserver', undefined) })
 afterEach(() => { wrapper?.unmount(); wrapper = undefined; host?.remove(); host = undefined; vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
-function render(active = ref(true)) { host = document.createElement('div'); document.body.append(host); wrapper = mount(PelicanArtworkPreview, { attachTo: host, props: { run: run() }, global: { stubs: { Icon: true }, provide: { [pelicanPageActiveKey as symbol]: active } } }); return wrapper }
+function render(active = ref(true), props: { autoplay?: boolean; large?: boolean } = {}) { host = document.createElement('div'); document.body.append(host); wrapper = mount(PelicanArtworkPreview, { attachTo: host, props: { run: run(), ...props }, global: { stubs: { Icon: true }, provide: { [pelicanPageActiveKey as symbol]: active } } }); return wrapper }
+function observeVisibility() {
+  let update!: (visible: boolean) => void
+  vi.stubGlobal('IntersectionObserver', class {
+    constructor(callback: IntersectionObserverCallback) {
+      update = visible => callback([{ target: wrapper!.element, isIntersecting: visible, intersectionRatio: visible ? 1 : 0 } as IntersectionObserverEntry], this as unknown as IntersectionObserver)
+    }
+    observe() {}
+    disconnect() {}
+  })
+  return (visible: boolean) => update(visible)
+}
 describe('safe user artwork previews', () => {
   it('opens a completed artwork before its thumbnail detail has loaded', async () => {
     let finish!: (value: PelicanRun) => void
@@ -82,14 +93,14 @@ describe('safe user artwork previews', () => {
     expect(detail).not.toHaveBeenCalled()
   })
 
-  it('plays all artworks without hover or intersection and resumes the same frame after the page is hidden', async () => {
-    vi.stubGlobal('IntersectionObserver', class {
-      observe() {}
-      disconnect() {}
-    })
+  it('loads autoplay artwork only when visible, then pauses and resumes the same frame', async () => {
+    const setVisible = observeVisibility()
     detail.mockResolvedValue(run({ html: '<svg>Autoplay artwork</svg>' }))
     const view = render()
     await flushPromises()
+    expect(detail).not.toHaveBeenCalled()
+    expect(view.find('iframe').exists()).toBe(false)
+    setVisible(true); await flushPromises()
     const frame = view.get<HTMLIFrameElement>('iframe')
     const playback = vi.spyOn(frame.element.contentWindow!, 'postMessage')
     await frame.trigger('load')
@@ -98,6 +109,10 @@ describe('safe user artwork previews', () => {
     expect(playback.mock.calls.some(([message]) => message.playing === false)).toBe(false)
     await view.setProps({ run: run({ duration_ms: 1234 }) }); await flushPromises()
     expect(view.get('iframe').element).toBe(frame.element)
+    setVisible(false); await flushPromises()
+    expect(playback).toHaveBeenLastCalledWith({ type: 'intelligence-preview-playback', playing: false }, '*')
+    setVisible(true); await flushPromises()
+    expect(playback).toHaveBeenLastCalledWith({ type: 'intelligence-preview-playback', playing: true }, '*')
     const hidden = vi.spyOn(document, 'hidden', 'get').mockReturnValue(true)
     document.dispatchEvent(new Event('visibilitychange')); await flushPromises()
     expect(playback).toHaveBeenLastCalledWith({ type: 'intelligence-preview-playback', playing: false }, '*')
@@ -105,6 +120,54 @@ describe('safe user artwork previews', () => {
     document.dispatchEvent(new Event('visibilitychange')); await flushPromises()
     expect(playback).toHaveBeenLastCalledWith({ type: 'intelligence-preview-playback', playing: true }, '*')
     expect(view.get('iframe').element).toBe(frame.element)
+    expect(detail).toHaveBeenCalledTimes(1)
+  })
+
+  it('leaves later artwork unloaded until hovered or focused and pauses after leaving', async () => {
+    detail.mockResolvedValue(run({ html: '<svg>On demand</svg>' }))
+    const view = render(ref(true), { autoplay: false }); await flushPromises()
+    expect(detail).not.toHaveBeenCalled()
+    expect(view.find('iframe').exists()).toBe(false)
+    expect(view.text()).toContain('pelicanMonitor.hoverPreview')
+    await view.trigger('mouseenter'); await flushPromises()
+    const frame = view.get<HTMLIFrameElement>('iframe')
+    const playback = vi.spyOn(frame.element.contentWindow!, 'postMessage')
+    await frame.trigger('load')
+    expect(playback).toHaveBeenLastCalledWith({ type: 'intelligence-preview-playback', playing: true }, '*')
+    await view.trigger('mouseleave')
+    expect(playback).toHaveBeenLastCalledWith({ type: 'intelligence-preview-playback', playing: false }, '*')
+    const open = view.get('button[aria-label="pelicanMonitor.open"]')
+    await open.trigger('focusin')
+    expect(playback).toHaveBeenLastCalledWith({ type: 'intelligence-preview-playback', playing: true }, '*')
+    await open.trigger('focusout')
+    expect(playback).toHaveBeenLastCalledWith({ type: 'intelligence-preview-playback', playing: false }, '*')
+    await open.trigger('click')
+    expect(view.emitted('open')).toEqual([[]])
+    expect(view.get('iframe').element).toBe(frame.element)
+    expect(detail).toHaveBeenCalledTimes(1)
+  })
+
+  it('cancels an unfinished hover request when the pointer leaves', async () => {
+    detail.mockImplementationOnce((_id: number, signal: AbortSignal) => new Promise((_, reject) => signal.addEventListener('abort', () => reject(new DOMException('Aborted', 'AbortError')))))
+      .mockResolvedValueOnce(run({ html: '<svg>Retried hover</svg>' }))
+    const view = render(ref(true), { autoplay: false }); await flushPromises()
+    await view.trigger('mouseenter'); await flushPromises()
+    expect(detail).toHaveBeenCalledTimes(1)
+    await view.trigger('mouseleave'); await flushPromises()
+    expect((detail.mock.calls[0]![1] as AbortSignal).aborted).toBe(true)
+    expect(view.find('iframe').exists()).toBe(false)
+    await view.trigger('focusin'); await flushPromises()
+    expect(view.get('iframe').attributes('srcdoc')).toContain('Retried hover')
+  })
+
+  it('loads the enlarged artwork immediately even when thumbnails require hovering', async () => {
+    observeVisibility()
+    detail.mockResolvedValue(run({ html: '<svg>Enlarged artwork</svg>' }))
+    const view = render(ref(true), { autoplay: false, large: true }); await flushPromises()
+    const frame = view.get<HTMLIFrameElement>('iframe')
+    const playback = vi.spyOn(frame.element.contentWindow!, 'postMessage')
+    await frame.trigger('load')
+    expect(playback).toHaveBeenLastCalledWith({ type: 'intelligence-preview-playback', playing: true }, '*')
     expect(detail).toHaveBeenCalledTimes(1)
   })
 

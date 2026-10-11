@@ -110,6 +110,9 @@ describe('API key account shared upstream status', () => {
     expect(wrapper.get('[data-testid="account-status-profit"]').text()).toBe('—')
     expect(wrapper.get('[data-testid="account-status-profit"]').attributes('title')).toBe('upstreamCenter.finance.pending')
     expect(wrapper.get('[data-testid="account-status-profit"]').classes()).toContain('text-amber-600')
+    await wrapper.setProps({ target: target({ finance: { revenue: 0, remote_used: 5, profit: -5, cost_source: 'reported', history_sync_pending: 1 } as UpstreamTarget['finance'] }) })
+    expect(wrapper.get('[data-testid="account-status-profit"]').text()).toBe('—')
+    expect(wrapper.get('[data-testid="account-status-profit"]').attributes('title')).toBe('upstreamCenter.finance.historySyncPending')
     wrapper.unmount()
   })
 

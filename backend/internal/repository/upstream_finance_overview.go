@@ -98,7 +98,7 @@ func (r *upstreamFinanceRepository) LoadOverviewFinance(ctx context.Context, q s
 		}
 		suppliers = append(suppliers, supplier)
 	}
-	rows, err := r.db.QueryContext(ctx, upstreamOverviewSummarySQL, q.From, q.To, pq.Array(supplierIDs), pq.Array(ids), pq.Array(suppliers))
+	rows, err := r.financeReader(ctx).QueryContext(ctx, upstreamOverviewSummarySQL, q.From, q.To, pq.Array(supplierIDs), pq.Array(ids), pq.Array(suppliers))
 	if err != nil {
 		return nil, err
 	}
@@ -126,7 +126,7 @@ func (r *upstreamFinanceRepository) LoadOverviewFinance(ctx context.Context, q s
 	}
 	// Resolve credentials in one current read, using the same Go identity as
 	// single-item balance reads; no copied SQL hashing rules or secret logging.
-	rows, err = r.db.QueryContext(ctx, `SELECT t.id,t.supplier_id,t.provider,t.endpoint,t.api_key_encrypted,t.api_key_fingerprint,t.wallet_ref,t.newapi_user_id,t.newapi_access_token_encrypted,t.profit_identity_since,s.recharge_ratio
+	rows, err = r.financeReader(ctx).QueryContext(ctx, `SELECT t.id,t.supplier_id,t.provider,t.endpoint,t.api_key_encrypted,t.api_key_fingerprint,t.wallet_ref,t.newapi_user_id,t.newapi_access_token_encrypted,t.profit_identity_since,s.recharge_ratio
  FROM upstream_targets t LEFT JOIN upstream_suppliers s ON s.id=t.supplier_id
  WHERE t.id=ANY($1) AND t.deleted_at IS NULL AND (t.supplier_id IS NULL OR s.deleted_at IS NULL) ORDER BY t.id`, pq.Array(ids))
 	if err != nil {
@@ -153,7 +153,7 @@ func (r *upstreamFinanceRepository) LoadOverviewFinance(ctx context.Context, q s
 			return nil, service.ErrUpstreamFinanceTargetNotFound
 		}
 	}
-	rows, err = r.db.QueryContext(ctx, upstreamOverviewBalanceSQL, pq.Array(currentIDs), pq.Array(identities))
+	rows, err = r.financeReader(ctx).QueryContext(ctx, upstreamOverviewBalanceSQL, pq.Array(currentIDs), pq.Array(identities))
 	if err != nil {
 		return nil, err
 	}
@@ -178,7 +178,7 @@ func (r *upstreamFinanceRepository) LoadOverviewFinance(ctx context.Context, q s
 			balanceIDs, balanceIdentities = append(balanceIDs, id), append(balanceIdentities, identities[i])
 		}
 	}
-	rows, err = r.db.QueryContext(ctx, upstreamOverviewBillingSQL, pq.Array(balanceIDs), pq.Array(balanceIdentities))
+	rows, err = r.financeReader(ctx).QueryContext(ctx, upstreamOverviewBillingSQL, pq.Array(balanceIDs), pq.Array(balanceIdentities))
 	if err != nil {
 		return nil, err
 	}
@@ -199,7 +199,7 @@ func (r *upstreamFinanceRepository) LoadOverviewFinance(ctx context.Context, q s
 // current supplier just as it does in the revenue aggregate.
 func (r *upstreamFinanceRepository) LoadProfitSources(ctx context.Context, start, end time.Time) (*service.UpstreamProfitSources, error) {
 	out := &service.UpstreamProfitSources{Targets: map[int64]*service.UpstreamFinanceTarget{}, Balances: map[int64]*service.UpstreamBalanceSnapshot{}, LastBusinessAt: map[int64]time.Time{}}
-	rows, err := r.db.QueryContext(ctx, `WITH business AS (
+	rows, err := r.financeReader(ctx).QueryContext(ctx, `WITH business AS (
  SELECT target_id,supplier_id,MAX(created_at) AS last_business_at
  FROM upstream_finance_ledger WHERE created_at >= $1 AND created_at < $2
  GROUP BY target_id,supplier_id
@@ -234,7 +234,7 @@ func (r *upstreamFinanceRepository) LoadProfitSources(ctx context.Context, start
 	if err != nil || len(ids) == 0 {
 		return out, err
 	}
-	rows, err = r.db.QueryContext(ctx, upstreamOverviewBalanceSQL, pq.Array(ids), pq.Array(identities))
+	rows, err = r.financeReader(ctx).QueryContext(ctx, upstreamOverviewBalanceSQL, pq.Array(ids), pq.Array(identities))
 	if err != nil {
 		return nil, err
 	}

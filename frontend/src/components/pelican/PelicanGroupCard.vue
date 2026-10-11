@@ -30,7 +30,7 @@
       <div class="mb-2 flex flex-wrap items-center justify-between gap-2"><div class="flex items-center gap-2"><h3 class="text-xs font-semibold text-gray-800 dark:text-gray-100">{{ t('pelicanMonitor.recentWorks') }}</h3><span class="text-[10px] text-gray-400">{{ t('pelicanMonitor.newestFirst') }}</span></div><span class="text-[10px] tabular-nums text-gray-400">{{ works.filter(run => !pelicanActive(run)).length }}/20</span></div>
       <div v-if="works.length" ref="gallery" class="pelican-gallery" data-testid="pelican-gallery">
         <div v-for="(run, index) in works" :key="run.id" class="pelican-work" :class="index === 0 && 'pelican-work-latest'" :data-run-id="run.id">
-          <PelicanArtworkPreview :run="run" class="!min-h-0 !flex-none h-[148px]" @open="emit('open', run)" />
+          <PelicanArtworkPreview :run="run" :autoplay="autoplayWorks.has(run.id)" class="!min-h-0 !flex-none h-[148px]" @open="emit('open', run)" />
           <button type="button" class="block w-full space-y-1 px-2.5 py-2 text-left transition-colors enabled:cursor-zoom-in enabled:hover:bg-primary-50/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-500 disabled:cursor-default dark:enabled:hover:bg-primary-500/5" :disabled="run.status !== 'succeeded'" :aria-label="`${t('pelicanMonitor.open')} · ${pelicanDate(run.started_at || run.created_at, locale)}`" :aria-haspopup="run.status === 'succeeded' ? 'dialog' : undefined" @click="emit('open', run)">
             <div class="flex items-center justify-between gap-2">
               <span class="text-[11px] font-semibold" :class="index === 0 ? 'text-primary-600 dark:text-primary-300' : 'text-gray-400'">{{ index === 0 ? t('pelicanMonitor.latest') : `#${run.id}` }}</span>
@@ -61,6 +61,7 @@ const emit = defineEmits<{ open: [run: PelicanRun] }>()
 const { t, locale } = useI18n()
 const gallery = ref<HTMLElement | null>(null)
 const works = computed(() => pelicanWorks(props.group))
+const autoplayWorks = computed(() => new Set(works.value.filter(run => !pelicanActive(run)).slice(0, 10).map(run => run.id)))
 watch(() => works.value[0]?.id, async (id, previous) => {
   if (!id || !previous || id === previous) return
   await nextTick()

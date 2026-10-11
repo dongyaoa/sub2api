@@ -128,6 +128,7 @@ const cardModelLabel = computed(() => {
   switch (props.item.primary_model) {
     case 'gpt-5.6-sol': return 'GPT-5.6 Sol'
     case 'gpt-6-astra': return 'GPT-6 Astra'
+    case 'gpt-6.1-sol': return 'GPT-6.1 Sol'
     case 'grok-4.5': return 'Grok 4.5'
     case 'claude-opus-4-6': return 'Claude Opus 4.6'
     case 'gemini-3.7-flash-high': return 'Gemini 3.7 Flash (high)'

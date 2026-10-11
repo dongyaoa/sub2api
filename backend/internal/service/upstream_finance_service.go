@@ -78,15 +78,23 @@ func normalizeUpstreamFinanceQuery(q UpstreamFinanceQuery, now time.Time) (Upstr
 }
 
 func (s *UpstreamFinanceService) Summary(ctx context.Context, supplierID, targetID *int64, from, to time.Time) (*UpstreamFinanceSummary, error) {
+	return withUpstreamFinanceReadSnapshot(ctx, s.repo, func(ctx context.Context) (*UpstreamFinanceSummary, error) {
+		return s.summary(ctx, supplierID, targetID, from, to)
+	})
+}
+
+func (s *UpstreamFinanceService) summary(ctx context.Context, supplierID, targetID *int64, from, to time.Time) (*UpstreamFinanceSummary, error) {
 	q, err := normalizeUpstreamFinanceQuery(UpstreamFinanceQuery{SupplierID: supplierID, TargetID: targetID, From: from, To: to}, s.now())
 	if err != nil {
 		return nil, err
 	}
-	summary, err := s.repo.Summary(ctx, q)
+	// Read pending history before revenue. A job completing during this request
+	// may keep the status pending for one response, never expose partial profit.
+	sources, err := s.profitSources(ctx, q.From, q.To)
 	if err != nil {
 		return nil, err
 	}
-	sources, err := s.profitSources(ctx, q.From, q.To)
+	summary, err := s.repo.Summary(ctx, q)
 	if err != nil {
 		return nil, err
 	}
@@ -97,6 +105,12 @@ func (s *UpstreamFinanceService) Summary(ctx context.Context, supplierID, target
 // PeriodSummaries reads aggregates only. It does not load the request ledger
 // detail page or infer upstream charges from local account prices.
 func (s *UpstreamFinanceService) PeriodSummaries(ctx context.Context, supplierID, targetID *int64) (*UpstreamFinancePeriods, error) {
+	return withUpstreamFinanceReadSnapshot(ctx, s.repo, func(ctx context.Context) (*UpstreamFinancePeriods, error) {
+		return s.periodSummaries(ctx, supplierID, targetID)
+	})
+}
+
+func (s *UpstreamFinanceService) periodSummaries(ctx context.Context, supplierID, targetID *int64) (*UpstreamFinancePeriods, error) {
 	now := s.now()
 	dayStart := timezone.StartOfDay(now)
 	dayEnd := dayStart.AddDate(0, 0, 1)
@@ -104,17 +118,17 @@ func (s *UpstreamFinanceService) PeriodSummaries(ctx context.Context, supplierID
 	if err != nil {
 		return nil, err
 	}
+	monthQuery := q
+	monthQuery.From = dayStart.AddDate(0, 0, -29)
+	sources, err := s.profitSources(ctx, monthQuery.From, monthQuery.To)
+	if err != nil {
+		return nil, err
+	}
 	today, err := s.repo.Summary(ctx, q)
 	if err != nil {
 		return nil, err
 	}
-	monthQuery := q
-	monthQuery.From = dayStart.AddDate(0, 0, -29)
 	month, err := s.repo.Summary(ctx, monthQuery)
-	if err != nil {
-		return nil, err
-	}
-	sources, err := s.profitSources(ctx, monthQuery.From, monthQuery.To)
 	if err != nil {
 		return nil, err
 	}

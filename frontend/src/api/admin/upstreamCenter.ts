@@ -3,6 +3,7 @@ import { apiClient } from '../client'
 export type UpstreamWindow = '24h' | '7d' | '30d'
 export type UpstreamStatus = 'operational' | 'degraded' | 'failed' | 'error' | 'unknown'
 export type UpstreamProvider = 'openai' | 'anthropic' | 'gemini'
+export interface UpstreamAccountCandidate { id: number; name: string; platform: UpstreamProvider; endpoint: string }
 export type UpstreamOrderInput =
   | { scope: 'suppliers' | 'monitors'; ids: number[] }
   | { scope: 'groups'; supplier_id: number; ids: number[] }
@@ -90,6 +91,7 @@ export interface UpstreamFinanceSummary {
   remote_raw_used?: number | null
   conversion_applied?: boolean
   cost_partial?: boolean
+  history_sync_pending?: number
   known_key_count?: number
   missing_key_count?: number
   archived_key_count?: number
@@ -210,6 +212,9 @@ export interface UpstreamRestoreResult { suppliers_restored: number; targets_res
 const base = '/admin/upstream-center'
 
 export const upstreamCenterAPI = {
+  async supplierAccounts(id: number, query: { page?: number; page_size?: number; search?: string } = {}, signal?: AbortSignal): Promise<UpstreamPage<UpstreamAccountCandidate>> {
+    return (await apiClient.get<UpstreamPage<UpstreamAccountCandidate>>(`${base}/suppliers/${id}/accounts`, { params: query, signal })).data
+  },
   async accountMonitor(id: number, signal?: AbortSignal): Promise<AccountUpstreamMonitor> {
     return (await apiClient.get<AccountUpstreamMonitor>(`${base}/accounts/${id}/monitor`, { signal })).data
   },

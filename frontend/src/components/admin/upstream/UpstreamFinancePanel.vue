@@ -15,7 +15,7 @@
         <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
           <div v-for="metric in metrics(period.summary)" :key="metric.key" class="rounded-xl border border-gray-100 bg-gray-50/70 p-3.5 dark:border-dark-700 dark:bg-dark-900/40">
             <p class="text-xs text-gray-500 dark:text-dark-400">{{ t(`upstreamCenter.finance.${metric.key}`) }}</p>
-            <p class="mt-2 text-lg font-semibold tabular-nums" :class="metric.key === 'profit' ? metric.value == null ? 'text-amber-600 dark:text-amber-400' : metric.value < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-primary-700 dark:text-primary-300' : 'text-gray-900 dark:text-gray-100'">{{ metric.value == null && metric.key === 'profit' ? t('upstreamCenter.finance.pending') : money(metric.value, period.summary.currency) }}</p>
+            <p class="mt-2 text-lg font-semibold tabular-nums" :class="metric.key === 'profit' ? metric.value == null ? 'text-amber-600 dark:text-amber-400' : metric.value < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-primary-700 dark:text-primary-300' : 'text-gray-900 dark:text-gray-100'">{{ metric.value == null && metric.key === 'profit' ? t(profitPendingKey(period.summary)) : money(metric.value, period.summary.currency) }}</p>
           </div>
         </div>
         <div class="flex flex-wrap justify-between gap-2 text-[11px] text-gray-500 dark:text-dark-400">
@@ -43,7 +43,7 @@ import Icon from '@/components/icons/Icon.vue'
 import Select from '@/components/common/Select.vue'
 import UpstreamFinanceNotice from './UpstreamFinanceNotice.vue'
 import { extractApiErrorMessage } from '@/utils/apiError'
-import { actualProfit, actualUpstreamUsed, dateTime, money } from './format'
+import { actualProfit, actualUpstreamUsed, profitPendingKey, dateTime, money } from './format'
 
 const props = defineProps<{ supplier: UpstreamSupplier | null; target: UpstreamTarget | null }>()
 const { t } = useI18n()

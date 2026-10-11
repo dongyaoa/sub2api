@@ -120,7 +120,7 @@ function hasTopUsers(usersByCurrency: Record<string, TopUserPaymentStats[]>): bo
 }
 
 function formatMoney(currency: string, amount: number): string {
-  return new Intl.NumberFormat(undefined, { style: 'currency', currency }).format(amount)
+  return new Intl.NumberFormat(undefined, { style: 'currency', currency, currencyDisplay: currency.toUpperCase() === 'USD' ? 'narrowSymbol' : 'symbol' }).format(amount)
 }
 
 async function loadDashboard() {

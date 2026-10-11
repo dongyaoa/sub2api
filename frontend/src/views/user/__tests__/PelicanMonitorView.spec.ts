@@ -34,6 +34,21 @@ function renderWithRealArtwork() {
   return wrapper
 }
 describe('read-only user pelican page', () => {
+  it('autoplays the first ten completed artworks per group and loads the rest on demand', async () => {
+    const recent = Array.from({ length: 20 }, (_, index) => ({ ...run, id: 40 - index }))
+    state.list.mockResolvedValue(snapshot([{ ...group, latest_run: { ...run, id: 41, status: 'running' }, recent_runs: recent }]))
+    state.artwork.mockImplementation(async (item: PelicanRun) => `<svg>Artwork ${item.id}</svg>`)
+    const view = renderWithRealArtwork(); await flushPromises()
+    expect(view.findAll('.pelican-work')).toHaveLength(21)
+    expect(state.artwork.mock.calls.map(([item]) => item.id)).toEqual(recent.slice(0, 10).map(item => item.id))
+    expect(view.findAll('.pelican-work iframe')).toHaveLength(10)
+    const older = view.get('[data-run-id="30"]')
+    expect(older.find('iframe').exists()).toBe(false)
+    await older.get('[aria-busy]').trigger('mouseenter'); await flushPromises()
+    expect(older.get('iframe').attributes('srcdoc')).toContain('Artwork 30')
+    expect(state.artwork).toHaveBeenCalledTimes(11)
+  })
+
   it('shows separate live rows for both models of a group and filters by the display model name', async () => {
     const solRun = { ...run, id: 9, plan_id: 3, model: 'gpt-6.1-sol' }
     state.list.mockResolvedValue(snapshot([{ ...group, model: 'gpt-6-astra' }, { ...group, id: 3, model: 'gpt-6.1-sol', latest_run: solRun, recent_runs: [solRun] }]))
