@@ -90,6 +90,7 @@ describe('ModelPriceCard image pricing', () => {
   it('keeps the per-request image price fixed when multiplier display is enabled', () => {
     const wrapper = mountCard(0.1, true)
 
+    expect(wrapper.classes()).not.toContain('premium-model-card--adjusted')
     expect(wrapper.get('.price').text()).toBe('$0.1')
     expect(wrapper.find('.base-price').exists()).toBe(false)
     expect(wrapper.text()).not.toContain('$0.06')
@@ -299,6 +300,7 @@ describe('ModelPriceCard group multiplier prices', () => {
     const wrapper = mountAdjustedCard(tokenVariant())
     const rows = wrapper.findAll('.metric-box')
 
+    expect(wrapper.classes()).toContain('premium-model-card--adjusted')
     expect(rows.map((row) => row.get('.price').text())).toEqual(['$0.1125', '$0.675', '$0', '—'])
     expect(rows.map((row) => row.get('.unit').text())).toEqual(['/ 1M', '/ 1M', '/ 1M', '/ 1M'])
     expect(rows[0].get('.base-price').text()).toBe('$0.75 / 1M')
@@ -313,6 +315,7 @@ describe('ModelPriceCard group multiplier prices', () => {
 
     await wrapper.setProps({ showMultiplier: false })
 
+    expect(wrapper.classes()).not.toContain('premium-model-card--adjusted')
     expect(wrapper.findAll('.price').map((price) => price.text())).toEqual(['$0.75', '$4.5', '$0', '—'])
     expect(wrapper.find('.base-price').exists()).toBe(false)
     expect(wrapper.find('.multiplier-pill').exists()).toBe(false)
@@ -320,6 +323,7 @@ describe('ModelPriceCard group multiplier prices', () => {
 
     await wrapper.setProps({ showMultiplier: true })
 
+    expect(wrapper.classes()).toContain('premium-model-card--adjusted')
     expect(wrapper.get('.price').text()).toBe('$0.1125')
     expect(wrapper.get('.base-price').text()).toBe('$0.75 / 1M')
     expect(wrapper.get('.multiplier-pill').text()).toBe('×0.15')
@@ -337,6 +341,7 @@ describe('ModelPriceCard group multiplier prices', () => {
   it('preserves per-second units for both the adjusted and original video price', () => {
     const wrapper = mountAdjustedCard(videoVariant(0.3))
 
+    expect(wrapper.classes()).toContain('premium-model-card--adjusted')
     expect(wrapper.get('.price').text()).toBe('$0.045')
     expect(wrapper.get('.unit').text()).toBe('modelSquare.perSecond')
     expect(wrapper.get('.base-price').text()).toBe('$0.3 modelSquare.perSecond')

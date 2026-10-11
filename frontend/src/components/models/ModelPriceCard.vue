@@ -1,6 +1,7 @@
 <template>
   <article
     class="premium-model-card"
+    :class="{ 'premium-model-card--adjusted': showAdjustedPrice }"
     :style="platformStyle"
   >
     <div class="card-glow"></div>
@@ -492,7 +493,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleEscape))
 .card-header {
   position: relative;
   z-index: 1;
-  padding: 20px 20px 15px;
+  padding: 14px 16px 12px;
   border-bottom: 1px solid #f0f0f0;
 }
 
@@ -516,7 +517,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleEscape))
 .badge-row {
   flex-wrap: wrap;
   gap: 8px;
-  margin-bottom: 14px;
+  margin-bottom: 10px;
 }
 
 .brand-badge,
@@ -599,22 +600,27 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleEscape))
   z-index: 1;
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-  padding: 16px 20px 20px;
+  gap: 8px;
+  padding: 12px 16px 14px;
 }
 
 .metric-box {
   display: flex;
   min-width: 0;
-  min-height: 96px;
+  min-height: 76px;
   box-sizing: border-box;
   flex-direction: column;
   justify-content: flex-start;
-  padding: 11px 13px;
+  padding: 10px;
   border: 1px solid #f0f0f0;
   border-radius: 14px;
   background: #fafafa;
   transition: background-color 0.25s ease, border-color 0.25s ease;
+}
+
+/* Base prices are compact; adjusted prices retain room for the original and rate. */
+.premium-model-card--adjusted .metric-box {
+  min-height: 96px;
 }
 
 .metric-box:only-child {
@@ -627,7 +633,8 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleEscape))
 
 .metric-header {
   min-width: 0;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 4px 8px;
 }
 
 .metric-icon {
@@ -647,6 +654,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleEscape))
 
 .metric-tier {
   flex-shrink: 0;
+  max-width: 100%;
   margin-left: auto;
   padding: 2px 6px;
   border-radius: 4px;
@@ -655,6 +663,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleEscape))
   font-size: 11px;
   font-weight: 600;
   line-height: 1.2;
+  overflow-wrap: anywhere;
 }
 
 .metric-value {
@@ -662,7 +671,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleEscape))
   flex-wrap: wrap;
   align-items: baseline;
   margin-top: auto;
-  padding-top: 12px;
+  padding-top: 8px;
   gap: 4px;
 }
 
@@ -748,7 +757,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleEscape))
   position: relative;
   z-index: 1;
   display: flex;
-  min-height: 228px;
+  min-height: 186px;
   flex-direction: column;
   align-items: center;
   justify-content: center;
@@ -764,7 +773,7 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleEscape))
   margin-top: auto;
   min-width: 0;
   gap: 10px;
-  padding: 13px 20px;
+  padding: 10px 16px;
   border-top: 1px solid #eaeaea;
   background: #fbfbfb;
 }
@@ -921,28 +930,11 @@ onBeforeUnmount(() => window.removeEventListener('keydown', handleEscape))
 :global(.dark .premium-model-card .box-cache-read:hover) { border-color: rgba(139, 92, 246, 0.45); background: rgba(139, 92, 246, 0.1); }
 :global(.dark .premium-model-card .box-image:hover) { border-color: rgba(236, 72, 153, 0.45); background: rgba(236, 72, 153, 0.1); }
 
-@container model-card (max-width: 332px) {
+/* Narrower outer padding preserves the price area at the smaller card width. */
+@container model-card (max-width: 316px) {
   .metrics-grid {
     grid-template-columns: minmax(0, 1fr);
   }
 }
 
-@media (max-width: 640px) {
-  .card-header {
-    padding: 18px 18px 15px;
-  }
-
-  .metrics-grid {
-    gap: 10px;
-    padding: 14px 18px 18px;
-  }
-
-  .metric-box {
-    padding: 12px;
-  }
-
-  .card-footer {
-    padding: 12px 18px;
-  }
-}
 </style>

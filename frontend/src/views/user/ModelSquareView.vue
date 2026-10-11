@@ -445,7 +445,7 @@ onMounted(loadData)
 .model-card-grid {
   display: grid;
   /* Use the space left by the sidebar, including at browser zoom levels. */
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 352px), 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 336px), 1fr));
   gap: 12px;
 }
 
