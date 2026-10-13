@@ -477,9 +477,10 @@ INSERT INTO upstream_monitor_history(target_id,target_name,model,status,latency_
 		insert(nil, "Leased independent billing", &future, nil)
 		insert(&archivedSupplier, "Archived supplier billing", nil, nil)
 		insert(nil, "Archived independent billing", nil, &now)
-		// PostgreSQL timestamps have microsecond precision. Keep the poll time
-		// at that precision before asserting a one-microsecond due boundary.
-		firstPoll := time.Now().UTC().Truncate(time.Microsecond)
+		// Use the database clock after the inserts, avoiding host clock precision
+		// differences while retaining the one-microsecond due boundary assertion.
+		var firstPoll time.Time
+		require.NoError(t, db.QueryRowContext(ctx, `SELECT clock_timestamp()`).Scan(&firstPoll))
 		ids, err := repo.DueBalanceTargetIDs(ctx, firstPoll, 32)
 		require.NoError(t, err)
 		require.ElementsMatch(t, []int64{independent, group}, ids)

@@ -32,7 +32,7 @@ func TestImageStudioPricing_ChannelModelPriceMatchesActualCharge(t *testing.T) {
 				actual = svc.calculateRecordUsageCost(ctx, &ForwardResult{ImageCount: 2, ImageSize: "1K"}, apiKey, model, 0.5, 0.5, time.Time{})
 			} else {
 				svc := &OpenAIGatewayService{billingService: billing, resolver: resolver}
-				actual, err = svc.calculateOpenAIRecordUsageCost(ctx, &OpenAIForwardResult{ImageCount: 2, ImageSize: "1K"}, apiKey, []string{model}, 0.5, 0.5, 1, 1, UsageTokens{}, "", nil, time.Time{})
+				actual, err = svc.calculateOpenAIRecordUsageCost(ctx, &OpenAIForwardResult{ImageCount: 2, ImageSize: "1K"}, apiKey, []string{model}, 0.5, 0.5, 1, 1, UsageTokens{}, "", nil, false, time.Time{})
 				require.NoError(t, err)
 			}
 			require.InDelta(t, quote.Tiers["1K"].BasePrice*2, actual.TotalCost, 1e-12)
@@ -94,7 +94,7 @@ func TestImageStudioPricing_TokenModelHasNoPerImageEstimate(t *testing.T) {
 	apiKey.Group.SearchPricePer1k = &searchPrice
 	svc := &OpenAIGatewayService{billingService: resolver.billingService, resolver: resolver}
 	cost, err := svc.calculateOpenAIRecordUsageCost(ctx, &OpenAIForwardResult{ImageCount: 1, SearchCount: 1}, apiKey, []string{model},
-		0.5, 0.5, 1, 0.25, UsageTokens{InputTokens: 100, OutputTokens: 200}, "", nil, time.Time{})
+		0.5, 0.5, 1, 0.25, UsageTokens{InputTokens: 100, OutputTokens: 200}, "", nil, false, time.Time{})
 	require.NoError(t, err)
 	require.Equal(t, string(BillingModeToken), cost.BillingMode)
 	require.InDelta(t, 1.0033, cost.TotalCost, 1e-12)
