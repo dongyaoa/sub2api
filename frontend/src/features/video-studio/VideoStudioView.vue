@@ -243,28 +243,33 @@
                 :disabled="!canGenerate"
               >
                 <Icon :name="isWorking ? 'refresh' : 'play'" size="md" :class="isWorking ? 'animate-spin' : ''" />
-                <span>{{ isWorking ? t('videoStudio.generating') : t('videoStudio.generate') }}</span>
+                <span>{{ submitting ? t('videoStudio.submitting') : t('videoStudio.generate') }}</span>
                 <span v-if="!isWorking && selectedGroup" class="text-white/75">{{ formatUSD(estimatedCost) }}</span>
               </button>
+              <p class="text-center text-[11px] leading-5 text-gray-400">{{ t('videoStudio.multitaskHint') }}</p>
             </form>
           </section>
         </aside>
 
         <main class="flex min-w-0 flex-col">
           <div class="mb-2 flex min-h-8 flex-wrap items-center justify-between gap-3">
-            <div class="flex min-w-0 items-center gap-3">
-              <h2 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('videoStudio.canvas') }}</h2>
-              <p v-if="requestId" class="max-w-[440px] truncate text-xs text-gray-400" :title="requestId">{{ requestId }}</p>
+            <div class="flex min-w-0 flex-wrap items-center gap-2">
+              <h2 class="shrink-0 text-sm font-semibold text-gray-900 dark:text-white">{{ t('videoStudio.canvas') }}</h2>
+              <span v-if="runningCount" class="rounded-md bg-amber-50 px-2 py-1 text-[11px] font-medium text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">{{ t('videoStudio.runningTasks', { count: runningCount }) }}</span>
             </div>
-            <div v-if="viewState !== 'idle'" class="flex items-center gap-2 text-sm">
-              <span class="h-2 w-2 rounded-full" :class="statusDotClass" />
-              <span class="font-medium text-gray-700 dark:text-gray-300">{{ statusLabel }}</span>
-              <span v-if="isWorking" class="tabular-nums text-gray-400">{{ formatElapsed(elapsedSeconds) }}</span>
-            </div>
+            <button type="button" data-testid="new-task" class="ml-auto inline-flex h-7 shrink-0 items-center gap-1 rounded-md border border-emerald-200 bg-emerald-50 px-2.5 text-xs font-semibold text-emerald-700 transition-colors hover:border-emerald-300 hover:bg-emerald-100 focus:outline-none focus:ring-2 focus:ring-emerald-500/25 disabled:cursor-not-allowed disabled:opacity-40 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-900/50" :disabled="isWorking" @click="newTask">
+              <Icon name="plus" size="xs" />{{ t('videoStudio.newTask') }}
+            </button>
           </div>
 
-          <section class="video-canvas relative min-h-[600px] flex-1 overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-dark-700 dark:bg-dark-900">
-            <div v-if="viewState === 'idle'" class="flex min-h-[600px] flex-col items-center justify-center px-6 text-center">
+          <section class="video-canvas relative flex min-h-0 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-dark-700 dark:bg-dark-900">
+            <div v-if="viewState !== 'idle'" data-testid="task-status" class="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-gray-100 px-4 py-2.5 text-xs dark:border-dark-700">
+              <span class="flex min-w-0 items-center gap-1.5 font-medium text-gray-700 dark:text-gray-300"><span class="h-1.5 w-1.5 shrink-0 rounded-full" :class="statusDotClass" />{{ statusLabel }}</span>
+              <span class="whitespace-nowrap tabular-nums text-gray-400">{{ t('videoStudio.elapsedTime') }} {{ formatElapsed(elapsedSeconds) }}</span>
+              <span v-if="viewState === 'processing' && taskProgress != null" class="tabular-nums text-gray-400">{{ taskProgress }}%</span>
+              <span v-if="requestId" class="ml-auto min-w-0 max-w-[180px] truncate text-[11px] text-gray-400" :title="requestId">{{ requestId }}</span>
+            </div>
+            <div v-if="viewState === 'idle'" class="flex min-h-0 flex-1 flex-col items-center justify-center overflow-y-auto px-6 py-4 text-center">
               <div class="mb-4 flex h-14 w-14 items-center justify-center rounded-lg border border-gray-200 bg-gray-50 dark:border-dark-700 dark:bg-dark-800">
                 <Icon name="play" size="xl" class="text-gray-400 dark:text-gray-500" />
               </div>
@@ -272,7 +277,7 @@
               <p class="mt-1 text-sm text-gray-400">{{ t('videoStudio.emptyHint') }}</p>
             </div>
 
-            <div v-else-if="isWorking" class="flex min-h-[600px] flex-col items-center justify-center px-6 text-center">
+            <div v-else-if="viewState === 'processing'" class="flex min-h-0 flex-1 flex-col items-center justify-center overflow-y-auto px-6 py-4 text-center">
               <span class="mb-5 flex h-14 w-14 items-center justify-center rounded-lg border border-primary-200 bg-primary-50 text-primary-600 dark:border-primary-900 dark:bg-primary-950/30 dark:text-primary-400">
                 <Icon name="play" size="xl" class="animate-pulse" />
               </span>
@@ -294,20 +299,20 @@
               </p>
             </div>
 
-            <div v-else-if="viewState === 'failed'" class="flex min-h-[600px] flex-col items-center justify-center px-6 text-center">
+            <div v-else-if="viewState === 'failed'" class="flex min-h-0 flex-1 flex-col items-center justify-center overflow-y-auto px-6 py-4 text-center">
               <div class="mb-4 flex h-14 w-14 items-center justify-center rounded-lg bg-red-50 text-red-600 dark:bg-red-950/30 dark:text-red-400">
                 <Icon name="exclamationCircle" size="xl" />
               </div>
               <p class="text-base font-semibold text-gray-900 dark:text-white">{{ t('videoStudio.failed') }}</p>
               <p class="mt-2 max-w-xl break-words text-sm leading-6 text-gray-500 dark:text-gray-400">{{ errorMessage }}</p>
-              <button type="button" class="mt-5 inline-flex items-center gap-2 rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-dark-600 dark:text-gray-200 dark:hover:bg-dark-800" :disabled="!canGenerate" @click="generateVideo">
+              <button type="button" class="mt-5 inline-flex items-center gap-2 rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-dark-600 dark:text-gray-200 dark:hover:bg-dark-800" :disabled="isWorking || loadingModels" @click="reuseParameters">
                 <Icon name="refresh" size="sm" />
-                {{ t('videoStudio.retry') }}
+                {{ t('videoStudio.reuseParameters') }}
               </button>
             </div>
 
-            <div v-else class="flex min-h-[600px] flex-col p-3">
-              <div class="relative flex min-h-[520px] flex-1 items-center justify-center overflow-hidden rounded-lg bg-black">
+            <div v-else class="flex min-h-0 flex-1 flex-col p-3">
+              <div class="video-player-frame relative flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-hidden rounded-lg bg-black">
                 <div v-if="loadingContent" class="flex flex-col items-center text-white/80">
                   <Icon name="refresh" size="xl" class="mb-3 animate-spin" />
                   <span class="text-sm">{{ t('videoStudio.loadingVideo') }}</span>
@@ -316,7 +321,7 @@
                   <video
                     ref="videoPlayer"
                     :src="videoObjectUrl"
-                    class="max-h-[70vh] max-w-full object-contain"
+                    class="absolute inset-0 h-full w-full object-contain"
                     controls
                     playsinline
                     preload="auto"
@@ -352,20 +357,24 @@
                 <div v-else class="flex max-w-lg flex-col items-center px-6 text-center text-white/80">
                   <Icon name="exclamationCircle" size="xl" class="mb-3" />
                   <p class="text-sm leading-6">{{ contentError || t('videoStudio.contentUnavailable') }}</p>
-                  <button type="button" class="mt-4 inline-flex items-center gap-2 rounded-md border border-white/25 px-3 py-2 text-sm font-medium text-white hover:bg-white/10" @click="reloadVideoContent">
+                  <button type="button" class="mt-4 inline-flex items-center gap-2 rounded-md border border-white/25 px-3 py-2 text-sm font-medium text-white hover:bg-white/10" :disabled="clearingHistory" @click="reloadVideoContent">
                     <Icon name="refresh" size="sm" />
                     {{ t('videoStudio.reloadContent') }}
                   </button>
                 </div>
               </div>
-              <div class="flex min-h-14 flex-wrap items-center justify-between gap-3 px-2 pt-3">
+              <div class="flex min-h-14 shrink-0 flex-wrap items-center justify-between gap-3 px-2 pt-3">
                 <div class="text-xs text-gray-400">
                   {{ displayModel }} · {{ displayResolution }}<template v-if="displayAspectRatio"> · {{ displayAspectRatio }}</template> · {{ t('videoStudio.seconds', { count: displayDuration }) }}
                 </div>
-                <button type="button" class="inline-flex h-9 items-center gap-2 rounded-md border border-gray-200 px-3 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 dark:border-dark-600 dark:text-gray-200 dark:hover:bg-dark-800" :disabled="loadingContent" @click="downloadVideo">
-                  <Icon name="download" size="sm" />
-                  {{ t('videoStudio.download') }}
-                </button>
+                <div class="flex flex-wrap items-center gap-2">
+                  <button type="button" class="inline-flex h-8 items-center gap-1.5 rounded-md border border-gray-200 px-2.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 dark:border-dark-600 dark:text-gray-200 dark:hover:bg-dark-800" :disabled="isWorking || loadingModels" @click="reuseParameters">
+                    <Icon name="refresh" size="xs" />{{ t('videoStudio.reuseParameters') }}
+                  </button>
+                  <button type="button" class="inline-flex h-8 items-center gap-1.5 rounded-md border border-gray-200 px-2.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 dark:border-dark-600 dark:text-gray-200 dark:hover:bg-dark-800" :disabled="loadingContent || clearingHistory" @click="downloadVideo">
+                    <Icon name="download" size="xs" />{{ t('videoStudio.download') }}
+                  </button>
+                </div>
               </div>
             </div>
           </section>
@@ -373,7 +382,7 @@
 
         <aside class="video-history flex min-w-0 flex-col xl:col-span-2 2xl:col-span-1">
           <div class="mb-2 flex min-h-8 items-center justify-between gap-2">
-            <div class="flex items-center gap-2">
+            <div class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
               <h2 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('videoStudio.history') }}</h2>
               <span class="text-xs tabular-nums text-gray-400">{{ history.length }}</span>
               <span class="text-[11px] text-gray-400">{{ persistentHistory ? t('videoStudio.historyPermanent') : t('videoStudio.historyRetention', { count: retentionDays }) }}</span>
@@ -381,8 +390,8 @@
             <button
               type="button"
               class="flex h-8 w-8 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-30 dark:hover:bg-dark-800 dark:hover:text-gray-200"
-              :disabled="history.length === 0 || isWorking"
-              :title="t('videoStudio.clearHistory')"
+              :disabled="history.length === 0 || isWorking || loadingHistory || runningCount > 0 || deliveringCount > 0"
+              :title="runningCount || deliveringCount ? t('videoStudio.clearHistoryBusy') : t('videoStudio.clearHistory')"
               :aria-label="t('videoStudio.clearHistory')"
               @click="clearHistory"
             >
@@ -393,7 +402,7 @@
           <section class="video-history-panel flex-1 overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-dark-700 dark:bg-dark-900">
             <div v-if="history.length === 0" class="flex min-h-40 flex-col items-center justify-center px-4 text-center text-gray-400">
               <Icon name="clock" size="lg" class="mb-2" />
-              <p class="text-xs font-medium">{{ t('videoStudio.historyEmpty') }}</p>
+              <p class="text-xs font-medium">{{ loadingHistory ? t('videoStudio.loading') : t('videoStudio.historyEmpty') }}</p>
               <p class="mt-1 text-[11px]">{{ t('videoStudio.historyHint') }}</p>
             </div>
 
@@ -402,26 +411,30 @@
                 v-for="item in history"
                 :key="item.requestId"
                 type="button"
-                class="flex w-full items-center gap-2.5 border-l-2 px-3 py-3 text-left transition-colors"
+                class="grid w-full min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-2.5 gap-y-2 overflow-hidden border-l-2 px-3 py-3 text-left transition-colors"
                 :class="activeHistoryId === item.requestId ? 'border-l-primary-500 bg-primary-50/60 dark:bg-primary-950/20' : 'border-l-transparent hover:bg-gray-50 dark:hover:bg-dark-800'"
-                :disabled="isWorking"
                 :title="item.request.prompt"
+                :disabled="clearingHistory"
                 @click="selectHistoryItem(item)"
               >
+                <div data-testid="history-meta" class="col-span-2 grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-x-1 text-[10px] leading-4">
+                  <div data-testid="history-status" class="flex min-w-0 items-center gap-1" :class="historyStatusClass(item.status)">
+                    <span class="h-1.5 w-1.5 shrink-0 rounded-full" :class="historyDotClass(item.status)" />
+                    <span class="truncate">{{ historyStatusLabel(item.status) }}</span>
+                    <span class="shrink-0 whitespace-nowrap tabular-nums text-gray-400" :title="t('videoStudio.elapsedTime')">· {{ formatElapsed(videoElapsedSeconds(item, now)) }}</span>
+                  </div>
+                  <time class="justify-self-end whitespace-nowrap tabular-nums text-gray-400" :datetime="new Date(item.startedAt).toISOString()">{{ formatVideoHistoryTime(item.startedAt) }}</time>
+                </div>
                 <div class="flex h-12 w-12 shrink-0 items-center justify-center rounded-md bg-gray-100 dark:bg-dark-800">
                   <Icon v-if="item.status === 'failed'" name="exclamationCircle" size="md" class="text-red-500" />
                   <Icon v-else name="play" size="md" :class="item.status === 'processing' ? 'animate-pulse text-primary-500' : 'text-emerald-500'" />
                 </div>
                 <div class="min-w-0 flex-1">
                   <p class="truncate text-xs font-medium text-gray-800 dark:text-gray-200">{{ item.request.prompt }}</p>
-                  <div class="mt-1 flex items-center justify-between gap-2 text-[11px] text-gray-400">
-                    <span>{{ operationLabel(item.operation) }} · {{ item.request.resolution }}<template v-if="item.request.aspect_ratio"> · {{ item.request.aspect_ratio }}</template> · {{ item.request.duration }}s</span>
-                    <span>{{ formatHistoryTime(item.startedAt) }}</span>
-                  </div>
-                  <div class="mt-1 flex items-center gap-1.5 text-[11px]" :class="historyStatusClass(item.status)">
-                    <span class="h-1.5 w-1.5 rounded-full" :class="historyDotClass(item.status)" />
-                    <span>{{ historyStatusLabel(item.status) }}</span>
-                  </div>
+                  <p class="mt-1 truncate text-[11px] text-gray-400">{{ operationLabel(item.operation) }} · {{ item.request.resolution }}<template v-if="item.request.aspect_ratio"> · {{ item.request.aspect_ratio }}</template> · {{ item.request.duration }}s</p>
+                  <p class="mt-1 truncate text-[10px] text-gray-400" :title="item.request.model + ' · ' + item.groupName">{{ item.request.model }} · {{ item.groupName }}</p>
+                  <p v-if="item.delivering" class="mt-1 text-[10px] text-gray-400">{{ t('videoStudio.savingVideo') }}</p>
+                  <p v-else-if="item.deliveryError" class="mt-1 truncate text-[10px] text-amber-600" :title="item.deliveryError">{{ t('videoStudio.saveVideoFailed') }}</p>
                 </div>
               </button>
             </div>
@@ -433,7 +446,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { userGroupsAPI } from '@/api/groups'
 import Select from '@/components/common/Select.vue'
@@ -443,15 +456,7 @@ import MediaStudioHeader from '@/features/media-studio/MediaStudioHeader.vue'
 import { useAppStore } from '@/stores/app'
 import type { ApiKey } from '@/types'
 import { listEligibleVideoKeys } from './access'
-import {
-  clearVideoTasks,
-  downloadVideoContent,
-  getVideoRequestId,
-  getVideoTask,
-  listVideoModels,
-  listVideoTasks,
-  submitVideoTask,
-} from './api'
+import { listVideoModels } from './api'
 import {
   buildGenerateVideoRequest,
   DEFAULT_VIDEO_ASPECT_RATIO,
@@ -464,32 +469,17 @@ import {
 } from './capabilities'
 import { consumeVideoStudioImageDraft } from './draft'
 import { estimateVideoCost, formatUSD, getVideoPriceTiers } from './pricing'
-import {
-  LONG_VIDEO_TASK_THRESHOLD_MS,
-  normalizeVideoTaskState,
-  shouldRetryVideoPollError,
-  VIDEO_POLL_INTERVAL_MS,
-  videoTaskPollDelay,
-} from './polling'
+import { LONG_VIDEO_TASK_THRESHOLD_MS } from './polling'
+import { formatVideoHistoryTime, useVideoTasks, videoElapsedSeconds, type VideoHistoryItem } from './useVideoTasks'
 import type {
-  GenerateVideoRequest,
-  StoredVideoHistoryItem,
-  StoredVideoTask,
-  VideoAspectRatio,
-  VideoModel,
-  VideoResolution,
-  VideoStudioError,
-  VideoStudioOperation,
-  VideoTask,
-  VideoViewState,
+  StoredVideoHistoryItem, VideoAspectRatio, VideoModel, VideoResolution,
+  VideoStudioError, VideoStudioOperation,
 } from './types'
 
-const ACTIVE_TASK_KEY = 'video_studio_active_task_v1'
-const MAX_HISTORY_ITEMS = 10
 const MAX_SOURCE_IMAGE_BYTES = 20 * 1024 * 1024
 const SOURCE_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp'])
 
-const { t, locale } = useI18n()
+const { t } = useI18n()
 const appStore = useAppStore()
 
 const operation = ref<VideoStudioOperation>('text')
@@ -509,12 +499,18 @@ const aspectRatio = ref<VideoAspectRatio>(DEFAULT_VIDEO_ASPECT_RATIO)
 const duration = ref(4)
 const loadingKeys = ref(true)
 const loadingModels = ref(false)
-const submitting = ref(false)
-const task = ref<VideoTask | null>(null)
-const requestId = ref('')
-const viewState = ref<VideoViewState>('idle')
-const errorMessage = ref('')
-const pollWarning = ref('')
+const tasks = useVideoTasks(apiKeys, {
+  error: message => appStore.showError(message || t('videoStudio.historyLoadFailed')),
+  missingId: () => t('videoStudio.missingTaskId'),
+  failed: () => t('videoStudio.generateFailed'),
+})
+const { history, activeHistoryId, activeHistoryItem, runningCount, submitting,
+  loadingHistory, clearingHistory, deliveringCount, retentionDays, persistentHistory } = tasks
+const task = computed(() => activeHistoryItem.value?.task || null)
+const requestId = computed(() => activeHistoryItem.value?.requestId || '')
+const viewState = computed(() => activeHistoryItem.value?.status || 'idle')
+const errorMessage = computed(() => activeHistoryItem.value?.errorMessage || '')
+const pollWarning = computed(() => activeHistoryItem.value?.pollWarning || '')
 const contentError = ref('')
 const loadingContent = ref(false)
 const videoObjectUrl = ref('')
@@ -523,16 +519,10 @@ const videoReady = ref(false)
 const videoStarted = ref(false)
 const videoBuffering = ref(false)
 const videoPlayPending = ref(false)
-const startedAt = ref(0)
 const now = ref(Date.now())
-const history = ref<StoredVideoHistoryItem[]>([])
-const retentionDays = ref(7)
-const persistentHistory = ref(false)
-const activeHistoryId = ref('')
-
+let disposed = false
 let modelController: AbortController | null = null
-let taskController: AbortController | null = null
-let pollTimer: ReturnType<typeof setTimeout> | null = null
+let contentController: AbortController | null = null
 let elapsedTimer: ReturnType<typeof setInterval> | null = null
 
 const selectedKey = computed(() => apiKeys.value.find((key) => key.id === selectedKeyId.value) || null)
@@ -567,23 +557,27 @@ const estimatedCost = computed(() => {
     userRates.value[selectedGroup.value.id],
   )
 })
-const isWorking = computed(() => submitting.value || viewState.value === 'processing')
+// Only lock the draft during submission; accepted jobs run independently.
+const isWorking = computed(() => submitting.value || clearingHistory.value)
 const hasSourceImage = computed(() => Boolean(sourceImageFile.value || sourceImageUrl.value.trim()))
 const canGenerate = computed(() => (
   !isWorking.value
+  && !loadingModels.value
   && Boolean(selectedKey.value)
   && Boolean(model.value.trim())
   && Boolean(prompt.value.trim())
   && (operation.value === 'text' || hasSourceImage.value)
 ))
-const elapsedSeconds = computed(() => startedAt.value > 0 ? Math.max(0, Math.floor((now.value - startedAt.value) / 1000)) : 0)
-const isLongRunning = computed(() => viewState.value === 'processing' && elapsedSeconds.value * 1000 >= LONG_VIDEO_TASK_THRESHOLD_MS)
+const elapsedSeconds = computed(() => activeHistoryItem.value ? videoElapsedSeconds(activeHistoryItem.value, now.value) : null)
+const isLongRunning = computed(() => viewState.value === 'processing' && (elapsedSeconds.value || 0) * 1000 >= LONG_VIDEO_TASK_THRESHOLD_MS)
 const taskProgress = computed(() => {
-  const value = Number(task.value?.progress)
+  const progress = task.value?.progress
+  if (progress == null) return null
+  const value = Number(progress)
   return Number.isFinite(value) ? Math.min(100, Math.max(0, Math.round(value))) : null
 })
 const statusLabel = computed(() => {
-  if (submitting.value) return t('videoStudio.submitting')
+  if (viewState.value === 'processing' && !task.value) return t('videoStudio.submitting')
   if (viewState.value === 'processing') return t(isLongRunning.value ? 'videoStudio.backgroundProcessing' : 'videoStudio.processing')
   if (viewState.value === 'completed') return t('videoStudio.completed')
   return t('videoStudio.failed')
@@ -593,7 +587,6 @@ const statusDotClass = computed(() => {
   if (viewState.value === 'failed') return 'bg-red-500'
   return 'animate-pulse bg-amber-500'
 })
-const activeHistoryItem = computed(() => history.value.find((item) => item.requestId === activeHistoryId.value) || null)
 const displayModel = computed(() => activeHistoryItem.value?.request.model || model.value)
 const displayResolution = computed(() => activeHistoryItem.value?.request.resolution || resolution.value)
 const displayAspectRatio = computed(() => activeHistoryItem.value
@@ -606,16 +599,19 @@ function switchOperation(nextOperation: VideoStudioOperation) {
   operation.value = nextOperation
   model.value = selectPreferredVideoModel(models.value, nextOperation, model.value)
   resolution.value = normalizeVideoResolution(model.value, resolution.value)
-  resetResult()
 }
 
 function handleModelSelection() {
   resolution.value = normalizeVideoResolution(model.value, resolution.value)
 }
 
+function lastKeyStorageKey() {
+  return 'video_studio_last_key_v1:' + (apiKeys.value[0]?.user_id || 'local')
+}
+
 async function handleKeySelection() {
-  resetResult()
-  await Promise.all([loadModels(), loadHistory()])
+  try { localStorage.setItem(lastKeyStorageKey(), String(selectedKeyId.value || '')) } catch { /* Optional preference. */ }
+  await loadModels()
 }
 
 function openSourcePicker() {
@@ -639,7 +635,7 @@ function releaseSourcePreview() {
 }
 
 function setSourceImage(file: File) {
-  if (!isSupportedSourceImage(file)) return
+  if (isWorking.value || !isSupportedSourceImage(file)) return
   releaseSourcePreview()
   sourceImageFile.value = file
   sourceImageUrl.value = ''
@@ -698,6 +694,7 @@ async function loadModels(preferredModel = '') {
   const key = selectedKey.value
   if (!key) {
     model.value = ''
+    loadingModels.value = false
     return
   }
   const controller = new AbortController()
@@ -705,12 +702,13 @@ async function loadModels(preferredModel = '') {
   loadingModels.value = true
   try {
     const response = await listVideoModels(key.key, controller.signal)
+    if (disposed || modelController !== controller || selectedKeyId.value !== key.id) return
     const filtered = filterVideoModels(response.data || [])
     models.value = filtered
     model.value = selectPreferredVideoModel(filtered, operation.value, preferredModel || model.value)
     resolution.value = normalizeVideoResolution(model.value, resolution.value)
   } catch (error) {
-    if ((error as Error).name !== 'AbortError') {
+    if (!disposed && modelController === controller && (error as Error).name !== 'AbortError') {
       model.value = ''
       appStore.showError(errorText(error, t('videoStudio.modelsFailed')))
     }
@@ -720,13 +718,6 @@ async function loadModels(preferredModel = '') {
       modelController = null
     }
   }
-}
-
-function stopPolling() {
-  taskController?.abort()
-  taskController = null
-  if (pollTimer) clearTimeout(pollTimer)
-  pollTimer = null
 }
 
 function resetVideoPlaybackState() {
@@ -743,230 +734,70 @@ function releaseVideoObjectURL() {
   resetVideoPlaybackState()
 }
 
-function resetResult() {
-  stopPolling()
+function clearVideoContent() {
+  contentController?.abort()
+  contentController = null
   releaseVideoObjectURL()
-  task.value = null
-  requestId.value = ''
-  activeHistoryId.value = ''
-  viewState.value = 'idle'
-  errorMessage.value = ''
-  pollWarning.value = ''
   contentError.value = ''
   loadingContent.value = false
 }
 
-function stripRequestImage(request: GenerateVideoRequest): GenerateVideoRequest {
-  const { image: _image, ...safeRequest } = request
-  return safeRequest
-}
-
-function persistActiveTask(stored: StoredVideoTask) {
-  sessionStorage.setItem(ACTIVE_TASK_KEY, JSON.stringify({
-    ...stored,
-    request: stripRequestImage(stored.request),
-  }))
-}
-
-function readActiveTask(): StoredVideoTask | null {
-  try {
-    const raw = sessionStorage.getItem(ACTIVE_TASK_KEY)
-    if (!raw) return null
-    const value = JSON.parse(raw) as StoredVideoTask
-    if (!value.requestId || !Number.isFinite(value.apiKeyId) || !value.request?.model) return null
-    value.request.aspect_ratio = normalizeVideoAspectRatio(value.request.aspect_ratio)
-    return value
-  } catch {
-    clearActiveTask()
-    return null
-  }
-}
-
-function clearActiveTask() {
-  sessionStorage.removeItem(ACTIVE_TASK_KEY)
-}
-
-function addHistoryItem(stored: StoredVideoTask) {
-  const item: StoredVideoHistoryItem = {
-    ...stored,
-    request: stripRequestImage(stored.request),
-    status: 'processing',
-  }
-  history.value = [item, ...history.value.filter((entry) => entry.requestId !== item.requestId)]
-    .slice(0, MAX_HISTORY_ITEMS)
-  activeHistoryId.value = item.requestId
-}
-
-function updateHistoryItem(id: string, patch: Partial<StoredVideoHistoryItem>) {
-  history.value = history.value.map((item) => item.requestId === id ? { ...item, ...patch } : item)
-}
-
-function backendTaskToHistory(taskItem: VideoTask, key: ApiKey): StoredVideoHistoryItem | null {
-  const id = getVideoRequestId(taskItem)
-  const metadata = taskItem.metadata
-  const modelName = String(metadata?.model || '').trim()
-  if (!id || !modelName) return null
-  const taskResolution = metadata?.resolution
-  const safeResolution = allResolutions.includes(taskResolution as VideoResolution)
-    ? taskResolution as VideoResolution
-    : '480p'
-  const taskAspectRatio = metadata?.aspect_ratio
-  const safeAspectRatio = VIDEO_ASPECT_RATIOS.includes(taskAspectRatio as VideoAspectRatio)
-    ? taskAspectRatio as VideoAspectRatio
-    : undefined
-  const createdAt = Number(taskItem.created_at)
-  return {
-    requestId: id,
-    apiKeyId: key.id,
-    operation: metadata?.operation === 'image' ? 'image' : 'text',
-    request: {
-      model: modelName,
-      prompt: String(metadata?.prompt || ''),
-      resolution: safeResolution,
-      aspect_ratio: safeAspectRatio,
-      duration: Math.max(1, Number(metadata?.duration) || 4),
-    },
-    startedAt: Number.isFinite(createdAt) && createdAt > 0 ? createdAt * 1000 : Date.now(),
-    status: normalizeVideoTaskState(taskItem.status),
-    errorMessage: taskErrorText(taskItem.error),
-  }
-}
-
-async function loadHistory() {
-  const key = selectedKey.value
-  if (!key) {
-    history.value = []
-    return
-  }
-  try {
-    const result = await listVideoTasks(key.key, MAX_HISTORY_ITEMS)
-    retentionDays.value = result.retentionDays
-    persistentHistory.value = result.persistentHistory
-    history.value = result.tasks
-      .map(item => backendTaskToHistory(item, key))
-      .filter((item): item is StoredVideoHistoryItem => item !== null)
-  } catch (error) {
-    appStore.showError(errorText(error, t('videoStudio.historyLoadFailed')))
-  }
+function newTask() {
+  if (isWorking.value) return
+  activeHistoryId.value = ''
+  prompt.value = ''
+  clearSourceImage()
+  clearVideoContent()
 }
 
 async function generateVideo() {
-  if (!canGenerate.value) return
+  if (!canGenerate.value || !selectedKey.value) return
   const key = selectedKey.value
-  if (!key) return
-
-  stopPolling()
-  releaseVideoObjectURL()
-  task.value = null
-  requestId.value = ''
-  errorMessage.value = ''
-  pollWarning.value = ''
-  contentError.value = ''
-  viewState.value = 'processing'
-  submitting.value = true
-  startedAt.value = Date.now()
-  now.value = startedAt.value
-
-  const controller = new AbortController()
-  taskController = controller
-  try {
-    const imageUrl = operation.value === 'image'
-      ? sourceImageFile.value
-        ? await fileToDataURL(sourceImageFile.value)
-        : sourceImageUrl.value
-      : ''
-    const request = buildGenerateVideoRequest({
-      operation: operation.value,
-      model: model.value,
-      prompt: prompt.value,
-      resolution: resolution.value,
-      aspectRatio: aspectRatio.value,
-      duration: duration.value,
-      imageUrl,
-    })
-    const submitted = await submitVideoTask(key.key, request, controller.signal)
-    const id = getVideoRequestId(submitted)
-    if (!id) throw new Error(t('videoStudio.missingTaskId'))
-
-    task.value = submitted
-    requestId.value = id
-    const stored: StoredVideoTask = {
-      requestId: id,
-      apiKeyId: key.id,
-      operation: operation.value,
-      request,
-      startedAt: startedAt.value,
-    }
-    persistActiveTask(stored)
-    addHistoryItem(stored)
-    submitting.value = false
-    pollTimer = setTimeout(() => void pollTask(id, key), VIDEO_POLL_INTERVAL_MS)
-  } catch (error) {
-    if ((error as Error).name !== 'AbortError') failTask(errorText(error, t('videoStudio.submitFailed')))
-  } finally {
-    submitting.value = false
-    if (taskController === controller) taskController = null
-  }
+  const mode = operation.value
+  const sourceFile = sourceImageFile.value
+  const sourceURL = sourceImageUrl.value
+  const request = buildGenerateVideoRequest({
+    operation: mode, model: model.value, prompt: prompt.value,
+    resolution: resolution.value, aspectRatio: aspectRatio.value, duration: duration.value,
+  })
+  now.value = Date.now()
+  await tasks.submit(key, mode, request, mode === 'image'
+    ? () => sourceFile ? fileToDataURL(sourceFile) : Promise.resolve(sourceURL)
+    : undefined)
 }
 
-function nextPollDelay(): number {
-  return videoTaskPollDelay(startedAt.value)
-}
-
-async function pollTask(id: string, key: ApiKey) {
-  const controller = new AbortController()
-  taskController = controller
-  try {
-    const current = await getVideoTask(key.key, id, controller.signal)
-    task.value = current
-    pollWarning.value = ''
-    const state = normalizeVideoTaskState(current.status)
-    if (state === 'completed') {
-      viewState.value = 'completed'
-      updateHistoryItem(id, { status: 'completed', errorMessage: '' })
-      clearActiveTask()
-      taskController = null
-      await loadVideoContent(key, id)
-      appStore.showSuccess(t('videoStudio.generateSuccess'))
-      return
-    }
-    if (state === 'failed') {
-      failTask(taskErrorText(current.error) || t('videoStudio.generateFailed'))
-      return
-    }
-    viewState.value = 'processing'
-    pollTimer = setTimeout(() => void pollTask(id, key), nextPollDelay())
-  } catch (error) {
-    if ((error as Error).name === 'AbortError') return
-    if (shouldRetryVideoPollError(error)) {
-      pollWarning.value = errorText(error, t('videoStudio.pollFailed'))
-      viewState.value = 'processing'
-      pollTimer = setTimeout(() => void pollTask(id, key), nextPollDelay())
-    } else {
-      failTask(errorText(error, t('videoStudio.pollFailed')))
-    }
-  } finally {
-    if (taskController === controller) taskController = null
-  }
-}
-async function loadVideoContent(key: ApiKey, id: string) {
-  releaseVideoObjectURL()
-  contentError.value = ''
+async function loadVideoContent(key: ApiKey, id: string, refresh = false) {
+  clearVideoContent()
   loadingContent.value = true
   const controller = new AbortController()
-  taskController = controller
+  contentController = controller
   try {
-    const blob = await downloadVideoContent(key.key, id, controller.signal)
+    const item = history.value.find(entry => entry.requestId === id && entry.apiKeyId === key.id)
+    if (!item) return
+    // Changing the player cancels only this selection, never the task's delivery.
+    const blob = await tasks.getContent(item, refresh)
+    if (disposed || controller !== contentController || activeHistoryId.value !== id) return
     videoObjectUrl.value = URL.createObjectURL(blob)
   } catch (error) {
-    if ((error as Error).name !== 'AbortError') {
+    if (!disposed && controller === contentController && (error as Error).name !== 'AbortError') {
       contentError.value = errorText(error, t('videoStudio.contentUnavailable'))
     }
   } finally {
-    loadingContent.value = false
-    if (taskController === controller) taskController = null
+    if (contentController === controller) {
+      loadingContent.value = false
+      contentController = null
+    }
   }
 }
+
+// Only the selected result may load the player; background completion never changes it.
+watch([activeHistoryId, viewState], ([id, state]) => {
+  clearVideoContent()
+  if (!id || state !== 'completed') return
+  const key = apiKeys.value.find(entry => entry.id === activeHistoryItem.value?.apiKeyId)
+  if (key) void loadVideoContent(key, id)
+  else contentError.value = t('videoStudio.historyKeyMissing')
+}, { flush: 'sync' })
 
 function handleVideoCanPlay() {
   videoReady.value = true
@@ -1003,23 +834,10 @@ function handleVideoPlaybackError() {
 }
 
 async function reloadVideoContent() {
-  const key = selectedKey.value
-  if (!key || !requestId.value) return
-  await loadVideoContent(key, requestId.value)
-}
-
-function failTask(message: string) {
-  viewState.value = 'failed'
-  errorMessage.value = message
-  if (requestId.value) updateHistoryItem(requestId.value, { status: 'failed', errorMessage: message })
-  clearActiveTask()
-  stopPolling()
-}
-
-function taskErrorText(error: VideoTask['error']): string {
-  if (!error) return ''
-  if (typeof error === 'string') return error
-  return String(error.message || error.code || '')
+  const item = activeHistoryItem.value
+  const key = apiKeys.value.find(entry => entry.id === item?.apiKeyId)
+  if (!key || !item) return
+  await loadVideoContent(key, item.requestId, true)
 }
 
 function errorText(error: unknown, fallback: string): string {
@@ -1030,60 +848,48 @@ function errorText(error: unknown, fallback: string): string {
 }
 
 async function downloadVideo() {
-  const key = selectedKey.value
-  if (!key || !requestId.value) return
-  if (!videoObjectUrl.value) await loadVideoContent(key, requestId.value)
-  if (!videoObjectUrl.value) return
+  const item = activeHistoryItem.value
+  const key = apiKeys.value.find(entry => entry.id === item?.apiKeyId)
+  if (!key || !item) return
+  if (!videoObjectUrl.value) await loadVideoContent(key, item.requestId)
+  if (!videoObjectUrl.value || activeHistoryId.value !== item.requestId) return
   const anchor = document.createElement('a')
   anchor.href = videoObjectUrl.value
-  anchor.download = `video-studio-${requestId.value}.mp4`
+  anchor.download = 'video-studio-' + item.requestId + '.mp4'
   document.body.appendChild(anchor)
   anchor.click()
   anchor.remove()
 }
 
-async function selectHistoryItem(item: StoredVideoHistoryItem) {
-  if (isWorking.value) return
-  const key = apiKeys.value.find((entry) => entry.id === item.apiKeyId)
+function selectHistoryItem(item: VideoHistoryItem) {
+  if (clearingHistory.value) return
+  activeHistoryId.value = item.requestId
+}
+
+async function reuseParameters() {
+  const item = activeHistoryItem.value
+  if (!item || isWorking.value || loadingModels.value) return
+  const key = apiKeys.value.find(entry => entry.id === item.apiKeyId)
   if (!key) {
     appStore.showError(t('videoStudio.historyKeyMissing'))
     return
   }
-  stopPolling()
-  releaseVideoObjectURL()
+  clearSourceImage()
   selectedKeyId.value = key.id
   operation.value = item.operation
   prompt.value = item.request.prompt
   duration.value = item.request.duration
   resolution.value = item.request.resolution
   aspectRatio.value = normalizeVideoAspectRatio(item.request.aspect_ratio)
-  startedAt.value = item.startedAt
-  requestId.value = item.requestId
-  activeHistoryId.value = item.requestId
-  errorMessage.value = item.errorMessage || ''
-  task.value = { id: item.requestId, request_id: item.requestId, status: item.status }
+  try { localStorage.setItem(lastKeyStorageKey(), String(key.id)) } catch { /* Optional preference. */ }
   await loadModels(item.request.model)
-  if (item.status === 'failed') {
-    viewState.value = 'failed'
-    return
-  }
-  viewState.value = item.status
-  if (item.status === 'completed') {
-    await loadVideoContent(key, item.requestId)
-    return
-  }
-  pollTimer = setTimeout(() => void pollTask(item.requestId, key), 0)
+  if (item.operation === 'image') appStore.showSuccess(t('videoStudio.reuploadSource'))
 }
 
 async function clearHistory() {
-  if (isWorking.value) return
-  const key = selectedKey.value
-  if (!key) return
-  try {
-    await clearVideoTasks(key.key)
-    history.value = []
-    resetResult()
-  } catch (error) {
+  if (isWorking.value || runningCount.value || deliveringCount.value || loadingHistory.value) return
+  if (!window.confirm(t('videoStudio.clearHistoryConfirm'))) return
+  try { await tasks.clearHistory() } catch (error) {
     appStore.showError(errorText(error, t('videoStudio.historyClearFailed')))
   }
 }
@@ -1108,39 +914,10 @@ function historyDotClass(status: StoredVideoHistoryItem['status']): string {
   return 'animate-pulse bg-amber-500'
 }
 
-function formatHistoryTime(timestamp: number): string {
-  return new Intl.DateTimeFormat(locale.value === 'zh' ? 'zh-CN' : 'en-US', {
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(new Date(timestamp))
-}
-
-function formatElapsed(seconds: number): string {
+function formatElapsed(seconds: number | null): string {
+  if (seconds == null) return '—'
   const minutes = Math.floor(seconds / 60)
-  return `${String(minutes).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`
-}
-
-async function restoreActiveTask(stored: StoredVideoTask): Promise<boolean> {
-  const key = apiKeys.value.find((item) => item.id === stored.apiKeyId)
-  if (!key) {
-    clearActiveTask()
-    return false
-  }
-  selectedKeyId.value = key.id
-  operation.value = stored.operation
-  prompt.value = stored.request.prompt
-  duration.value = stored.request.duration
-  resolution.value = stored.request.resolution
-  aspectRatio.value = normalizeVideoAspectRatio(stored.request.aspect_ratio)
-  startedAt.value = stored.startedAt || Date.now()
-  requestId.value = stored.requestId
-  activeHistoryId.value = stored.requestId
-  viewState.value = 'processing'
-  task.value = { id: stored.requestId, request_id: stored.requestId, status: 'processing' }
-  await loadModels(stored.request.model)
-  if (!history.value.some((item) => item.requestId === stored.requestId)) addHistoryItem(stored)
-  pollTimer = setTimeout(() => void pollTask(stored.requestId, key), 0)
-  return true
+  return String(minutes).padStart(2, '0') + ':' + String(seconds % 60).padStart(2, '0')
 }
 
 onMounted(async () => {
@@ -1150,18 +927,15 @@ onMounted(async () => {
       listEligibleVideoKeys(),
       userGroupsAPI.getUserGroupRates().catch(() => ({})),
     ])
+    if (disposed) return
     apiKeys.value = keys
     userRates.value = rates
-
-    const stored = readActiveTask()
-    const storedKey = stored ? keys.find(item => item.id === stored.apiKeyId) : null
-    selectedKeyId.value = storedKey?.id || keys[0]?.id || null
-    await loadHistory()
-    if (stored && storedKey && await restoreActiveTask(stored)) return
-
+    let lastKeyId = 0
+    try { lastKeyId = Number(localStorage.getItem(lastKeyStorageKey())) } catch { /* Optional preference. */ }
+    selectedKeyId.value = keys.find(key => key.id === lastKeyId)?.id || keys[0]?.id || null
     const draft = consumeVideoStudioImageDraft()
     if (draft) setSourceImageURL(draft.imageUrl)
-    await loadModels()
+    await Promise.all([loadModels(), tasks.restore()])
   } catch (error) {
     appStore.showError(errorText(error, t('videoStudio.keysFailed')))
   } finally {
@@ -1170,8 +944,9 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  disposed = true
   modelController?.abort()
-  stopPolling()
+  contentController?.abort()
   if (elapsedTimer) clearInterval(elapsedTimer)
   releaseSourcePreview()
   releaseVideoObjectURL()
@@ -1179,6 +954,12 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+.video-canvas {
+  height: clamp(420px, 70vh, 600px);
+  height: clamp(420px, 70svh, 600px);
+  flex: none;
+}
+
 .video-settings-panel :deep(.select-trigger) {
   min-height: 40px;
   border-radius: 8px;
@@ -1210,6 +991,10 @@ onBeforeUnmount(() => {
 }
 
 @media (min-width: 1280px) {
+  .video-canvas {
+    height: max(600px, calc(100vh - 10rem));
+  }
+
   .video-workspace {
     min-height: calc(100vh - 9rem);
   }
