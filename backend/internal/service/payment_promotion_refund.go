@@ -22,19 +22,20 @@ func (s *PaymentService) markPromotionRefundPending(ctx context.Context, p *Refu
 		return nil, err
 	}
 	defer func() { _ = tx.Rollback() }()
+	now := time.Now().UTC().Truncate(time.Microsecond)
 	n, err := tx.PaymentOrder.Update().Where(paymentorder.IDEQ(p.OrderID), paymentorder.StatusEQ(OrderStatusRefunding)).
-		SetStatus(OrderStatusRefundPending).SetUpdatedAt(time.Now().UTC().Truncate(time.Microsecond)).SetRefundAmount(p.RefundAmount).SetRefundReason(p.Reason).ClearRefundAt().SetForceRefund(false).ClearFailedAt().ClearFailedReason().Save(ctx)
+		SetStatus(OrderStatusRefundPending).SetUpdatedAt(now).SetRefundAmount(p.RefundAmount).SetRefundReason(p.Reason).ClearRefundAt().SetForceRefund(false).ClearFailedAt().ClearFailedReason().Save(ctx)
 	if err != nil {
 		return nil, err
 	}
 	if n != 1 {
 		return nil, infraerrors.Conflict("CONFLICT", "order status changed")
 	}
-	detail, err := json.Marshal(map[string]any{"refundID": refundResponseID(resp), "refundAmount": p.RefundAmount, "deductionRetained": true, "deductionRollbackOK": true, "balanceDeducted": p.RefundAmount})
+	detail, err := json.Marshal(map[string]any{"refundID": refundResponseID(resp), "refundAmount": p.RefundAmount, "deductionRetained": true, "deductionRollbackOK": true, "balanceDeducted": p.RefundAmount, "requestedAt": now})
 	if err != nil {
 		return nil, err
 	}
-	if err := tx.PaymentAuditLog.Create().SetOrderID(strconv.FormatInt(p.OrderID, 10)).SetAction("REFUND_PENDING").SetDetail(string(detail)).SetOperator("admin").OnConflictColumns(paymentauditlog.FieldOrderID, paymentauditlog.FieldAction).UpdateNewValues().Exec(ctx); err != nil {
+	if err := tx.PaymentAuditLog.Create().SetOrderID(strconv.FormatInt(p.OrderID, 10)).SetAction("REFUND_PENDING").SetDetail(string(detail)).SetCreatedAt(now).SetOperator("admin").OnConflictColumns(paymentauditlog.FieldOrderID, paymentauditlog.FieldAction).UpdateNewValues().Exec(ctx); err != nil {
 		return nil, err
 	}
 	if err := tx.Commit(); err != nil {

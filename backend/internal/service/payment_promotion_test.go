@@ -249,12 +249,14 @@ func TestPaymentPromotionPendingRefundRetainsCreditAndRestoresOnFailureOnce(t *t
 	u, err := client.User.Get(ctx, order.UserID)
 	require.NoError(t, err)
 	require.Zero(t, u.Balance)
-	require.True(t, svc.latestRefundPendingDetail(ctx, order.ID).DeductionRetained)
+	detail, err := svc.latestRefundPendingDetail(ctx, order.ID)
+	require.NoError(t, err)
+	require.True(t, detail.DeductionRetained)
 	order, err = client.PaymentOrder.Get(ctx, order.ID)
 	require.NoError(t, err)
-	_, err = svc.finalizeRefundFailed(ctx, order, errors.New("gateway rejected refund"))
+	_, err = svc.finalizeRefundFailed(ctx, svc.refundFinalizePlan(order), errors.New("gateway rejected refund"))
 	require.NoError(t, err)
-	_, err = svc.finalizeRefundFailed(ctx, order, errors.New("duplicate failure"))
+	_, err = svc.finalizeRefundFailed(ctx, svc.refundFinalizePlan(order), errors.New("duplicate failure"))
 	require.Error(t, err)
 	u, err = client.User.Get(ctx, order.UserID)
 	require.NoError(t, err)
@@ -272,7 +274,7 @@ func TestPaymentPromotionPendingRefundRetainsCreditAndRestoresOnFailureOnce(t *t
 		require.NoError(t, err)
 		order, err = client.PaymentOrder.Get(ctx, order.ID)
 		require.NoError(t, err)
-		_, err = svc.finalizeRefundFailed(ctx, order, errors.New("retry failed"))
+		_, err = svc.finalizeRefundFailed(ctx, svc.refundFinalizePlan(order), errors.New("retry failed"))
 		require.NoError(t, err)
 	}
 	u, err = client.User.Get(ctx, order.UserID)
@@ -300,7 +302,7 @@ func TestPaymentPromotionRefundRollbackFailureRequiresOfflineHandling(t *testing
 	require.Equal(t, OrderStatusRefundFailed, current.Status)
 }
 
-func TestPaymentPromotionPendingRefundDoesNotDependOnAuditForDeduction(t *testing.T) {
+func TestPaymentPromotionPendingRefundMissingAuditKeepsDeductionAndCorruptAuditFailsClosed(t *testing.T) {
 	for _, status := range []string{payment.ProviderStatusSuccess, payment.ProviderStatusFailed} {
 		for _, corruptAudit := range []bool{false, true} {
 			t.Run(status+strconv.FormatBool(corruptAudit), func(t *testing.T) {
@@ -323,6 +325,16 @@ func TestPaymentPromotionPendingRefundDoesNotDependOnAuditForDeduction(t *testin
 				restore := replacePaymentProviderFactoryForTest(t, &refundQueryProviderTestDouble{refundResponse: &payment.RefundResponse{Status: status, RefundID: "rf_test"}})
 				defer restore()
 				_, err = svc.QueryAndFinalizeRefund(ctx, order.ID)
+				if corruptAudit {
+					require.Error(t, err)
+					current, loadErr := client.PaymentOrder.Get(ctx, order.ID)
+					require.NoError(t, loadErr)
+					require.Equal(t, OrderStatusRefundPending, current.Status)
+					u, loadErr := client.User.Get(ctx, order.UserID)
+					require.NoError(t, loadErr)
+					require.Equal(t, 150.0, u.Balance)
+					return
+				}
 				require.NoError(t, err)
 				u, err := client.User.Get(ctx, order.UserID)
 				require.NoError(t, err)

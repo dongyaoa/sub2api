@@ -30,11 +30,16 @@ func TestPaymentPromotionRejectsUnknownOrderTypeBeforePaymentAndFulfillment(t *t
 	_, err := client.PaymentOrder.UpdateOneID(order.ID).SetOrderType("other").Save(ctx)
 	require.NoError(t, err)
 	svc := &PaymentService{entClient: client}
-	require.Equal(t, "INVALID_ORDER_TYPE", infraerrors.Reason(svc.executeFulfillment(ctx, order.ID)))
 	require.Equal(t, "INVALID_ORDER_TYPE", infraerrors.Reason(svc.ExecuteBalanceFulfillment(ctx, order.ID)))
+	// Upstream acknowledges invalid historical orders without crediting them,
+	// records FAILED, and avoids endless payment webhook retries.
+	require.NoError(t, svc.executeFulfillment(ctx, order.ID))
 	current, err := client.PaymentOrder.Get(ctx, order.ID)
 	require.NoError(t, err)
-	require.Equal(t, OrderStatusPaid, current.Status)
+	require.Equal(t, OrderStatusFailed, current.Status)
+	u, err := client.User.Get(ctx, order.UserID)
+	require.NoError(t, err)
+	require.Equal(t, 110.0, u.Balance)
 }
 
 func TestPaymentPromotionRejectsZeroOrOverflowCreditBeforePayment(t *testing.T) {
@@ -137,7 +142,7 @@ func TestPaymentPromotionUnknownRefundOutcomeKeepsCreditReclaimed(t *testing.T) 
 			require.Equal(t, "PROMOTION_REFUND_PENDING", infraerrors.Reason(err))
 			require.Equal(t, 1, provider.calls)
 			// Only a definitive later gateway failure may release the funds.
-			_, err = svc.finalizeRefundFailed(ctx, current, errors.New("confirmed failure"))
+			_, err = svc.finalizeRefundFailed(ctx, svc.refundFinalizePlan(current), errors.New("confirmed failure"))
 			require.NoError(t, err)
 			u, err = client.User.Get(ctx, order.UserID)
 			require.NoError(t, err)

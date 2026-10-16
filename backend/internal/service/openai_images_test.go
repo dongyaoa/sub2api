@@ -77,7 +77,7 @@ func TestOpenAIGatewayServiceParseOpenAIImagesRequest_MultipartEdit(t *testing.T
 	for i := 0; i < 10; i++ {
 		part, err := writer.CreateFormFile("image", fmt.Sprintf("source-%d.png", i))
 		require.NoError(t, err)
-		_, err = part.Write([]byte(fmt.Sprintf("fake-image-bytes-%d", i)))
+		_, err = fmt.Fprintf(part, "fake-image-bytes-%d", i)
 		require.NoError(t, err)
 	}
 	require.NoError(t, writer.Close())

@@ -160,7 +160,7 @@ func readAccountTestGeminiBody(ctx context.Context, body io.Reader, status int) 
 	for {
 		line, err := reader.ReadString('\n')
 		_, _ = output.WriteString(line)
-		if extractTextFromSSEResponse([]byte(line)) != "" {
+		if text, _ := extractContentFromSSEResponse([]byte(line)); text != "" {
 			m.receivedText()
 		}
 		if err == io.EOF {

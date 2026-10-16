@@ -267,7 +267,8 @@ func TestAccountTestMetricsAntigravityObservesFirstTextWhileBuffering(t *testing
 	body, err := readAccountTestGeminiBody(ctx, &accountTestTimedReader{now: &now, chunks: chunks}, 200)
 	require.NoError(t, err)
 	require.Equal(t, expected, string(body))
-	require.Equal(t, "hello", extractTextFromSSEResponse(body))
+	text, _ := extractContentFromSSEResponse(body)
+	require.Equal(t, "hello", text)
 	require.Equal(t, int64(100), *m.firstTokenMs)
 	require.Equal(t, int64(200), now.Sub(m.startedAt).Milliseconds())
 }
