@@ -35,7 +35,7 @@ const (
 	GrokMediaEndpointVideoContent      GrokMediaEndpoint = "video_content"
 
 	// Official xAI Imagine image-edit limit.
-	grokMediaMaxEditSourceImages = 3
+	grokMediaMaxEditSourceImages = 10
 )
 
 func (e GrokMediaEndpoint) RequiresRequestBody() bool {

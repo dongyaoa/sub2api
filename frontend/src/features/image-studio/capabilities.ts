@@ -102,8 +102,8 @@ export function getMaxImageQuantity(platform: ImageStudioPlatform): number {
   return platform === 'gemini' ? 1 : 4
 }
 
-export function getMaxSourceImageQuantity(platform: ImageStudioPlatform): number {
-  return platform === 'gemini' ? 1 : 4
+export function getMaxSourceImageQuantity(platform: ImageStudioPlatform = 'openai'): number {
+  return platform === 'gemini' ? 14 : 10
 }
 
 export function getPreferredImageModel(platform: ImageStudioPlatform): string {

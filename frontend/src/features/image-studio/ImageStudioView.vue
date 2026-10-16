@@ -71,12 +71,18 @@
                   :placeholder="t('imageStudio.selectKey')"
                   @change="handleKeySelection"
                 >
+                  <template #selected="{ option }">
+                    <span v-if="option" class="flex min-w-0 items-center gap-2">
+                      <span class="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase" :class="platformBadgeClass(option.platform)">{{ option.platform }}</span>
+                      <span class="truncate">{{ option.label }}</span>
+                    </span>
+                  </template>
                   <template #option="{ option }">
                     <div class="min-w-0 flex-1">
                       <div class="truncate font-medium text-gray-900 dark:text-white">{{ option.keyName }}</div>
                       <div class="mt-0.5 flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
                         <span class="truncate">{{ option.groupName }}</span>
-                        <span class="uppercase">{{ option.platform }}</span>
+                        <span class="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase" :class="platformBadgeClass(option.platform)">{{ option.platform }}</span>
                       </div>
                     </div>
                     <Icon v-if="Number(option.value) === selectedKeyId" name="check" size="sm" class="text-primary-500" />
@@ -125,7 +131,7 @@
                 @dragleave.prevent="sourceDragActive = false"
                 @drop.prevent="handleSourceDrop"
               >
-                <div class="grid grid-cols-2 gap-2">
+                <div class="grid max-h-44 grid-cols-2 gap-2 overflow-y-auto">
                   <div
                     v-for="(file, index) in sourceImageFiles"
                     :key="file.name + '-' + file.lastModified + '-' + index"
@@ -313,6 +319,7 @@
               <span>{{ actionButtonLabel }}</span>
               <span v-if="!isWorking && estimatedCost != null" class="text-white/75">{{ formatUSD(estimatedCost) }}</span>
             </button>
+            <p class="text-center text-[11px] leading-5 text-gray-400">{{ t('imageStudio.multitaskHint') }}</p>
           </form>
           </section>
         </aside>
@@ -321,17 +328,20 @@
           <div class="mb-2 flex min-h-8 flex-wrap items-center justify-between gap-3">
             <div class="flex min-w-0 items-center gap-3">
               <h2 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('imageStudio.canvas') }}</h2>
-              <p v-if="taskId" class="max-w-[440px] truncate text-xs text-gray-400" :title="taskId">{{ taskId }}</p>
+              <span v-if="runningCount" class="rounded-full bg-amber-50 px-2 py-1 text-xs text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">{{ t('imageStudio.runningTasks', { count: runningCount }) }}</span>
             </div>
             <div v-if="viewState !== 'idle'" class="flex items-center gap-2 text-sm">
               <span class="h-2 w-2 rounded-full" :class="statusDotClass" />
               <span class="font-medium text-gray-700 dark:text-gray-300">{{ statusLabel }}</span>
-              <span v-if="isWorking" class="tabular-nums text-gray-400">{{ formatElapsed(elapsedSeconds) }}</span>
+              <span v-if="elapsedSeconds !== null" class="text-xs tabular-nums text-gray-400">{{ t('imageStudio.duration') }} {{ formatElapsed(elapsedSeconds) }}</span>
             </div>
+            <button type="button" data-testid="new-task" class="ml-auto inline-flex h-7 shrink-0 items-center justify-center gap-1 whitespace-nowrap rounded-md border border-emerald-200 bg-emerald-50 px-2.5 text-xs font-medium text-emerald-700 transition-colors hover:border-emerald-300 hover:bg-emerald-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/40 focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-40 dark:border-emerald-800/70 dark:bg-emerald-950/40 dark:text-emerald-300 dark:hover:bg-emerald-900/50 dark:focus-visible:ring-offset-dark-900" :disabled="isWorking" @click="newTask">
+              <Icon name="plus" size="xs" />{{ t('imageStudio.newTask') }}
+            </button>
           </div>
 
-          <section class="studio-canvas relative min-h-[600px] flex-1 overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-dark-700 dark:bg-dark-900">
-            <div v-if="viewState === 'idle'" class="flex min-h-[600px] flex-col items-center justify-center px-6 text-center">
+          <section class="studio-canvas relative min-h-0 min-w-0 overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-dark-700 dark:bg-dark-900">
+            <div v-if="viewState === 'idle'" class="flex h-full min-h-0 flex-col items-center justify-center overflow-y-auto px-6 text-center">
               <div class="mb-4 flex h-14 w-14 items-center justify-center rounded-lg border border-gray-200 bg-gray-50 dark:border-dark-700 dark:bg-dark-800">
                 <Icon :name="operation === 'edit' ? 'edit' : 'sparkles'" size="xl" class="text-gray-400 dark:text-gray-500" />
               </div>
@@ -339,16 +349,17 @@
               <p class="mt-1 text-sm text-gray-400">{{ emptyStateHint }}</p>
             </div>
 
-            <div v-else-if="isWorking" class="flex min-h-[600px] min-w-0 p-3">
-              <div class="grid min-h-0 min-w-0 flex-1 grid-cols-1 gap-3" :class="quantity > 1 ? 'sm:grid-cols-2' : ''">
+            <div v-else-if="viewState === 'processing'" class="flex h-full min-h-0 min-w-0 flex-col gap-3 overflow-y-auto p-3">
+              <p v-if="activeHistoryItem?.pollWarning" class="px-2 text-xs text-amber-600">{{ t('imageStudio.reconnecting') }}</p>
+              <div class="grid min-h-0 min-w-0 flex-1 grid-cols-1 gap-3" :class="displayQuantity > 1 ? 'sm:grid-cols-2' : ''">
                 <div
-                  v-for="index in quantity"
+                  v-for="index in displayQuantity"
                   :key="index"
                   class="studio-generating-frame relative flex min-h-[160px] min-w-0 items-center justify-center overflow-hidden rounded-lg border border-gray-200 bg-gray-50 dark:border-dark-700 dark:bg-dark-800"
                 >
                   <div class="relative z-10 flex min-w-0 flex-col items-center px-4 text-center">
                     <span class="studio-spinner mb-4 flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-primary-200 bg-white text-primary-600 dark:border-primary-900 dark:bg-dark-900 dark:text-primary-400">
-                      <Icon :name="operation === 'edit' ? 'edit' : 'sparkles'" size="lg" />
+                      <Icon :name="statusOperation === 'edit' ? 'edit' : 'sparkles'" size="lg" />
                     </span>
                     <span class="max-w-full text-sm font-medium text-gray-700 dark:text-gray-200">{{ processingItemLabel(index) }}</span>
                     <span class="mt-1 text-xs text-gray-400">{{ statusLabel }}</span>
@@ -356,27 +367,27 @@
                 </div>
               </div>
             </div>
-            <div v-else-if="viewState === 'failed'" class="flex min-h-[600px] flex-col items-center justify-center px-6 text-center">
+            <div v-else-if="viewState === 'failed'" class="flex h-full min-h-0 flex-col items-center justify-center overflow-y-auto px-6 text-center">
               <div class="mb-4 flex h-14 w-14 items-center justify-center rounded-lg bg-red-50 text-red-600 dark:bg-red-950/30 dark:text-red-400">
                 <Icon name="exclamationCircle" size="xl" />
               </div>
               <p class="text-base font-semibold text-gray-900 dark:text-white">{{ failedStateTitle }}</p>
               <p class="mt-2 max-w-xl text-sm leading-6 text-gray-500 dark:text-gray-400">{{ errorMessage }}</p>
-              <button type="button" class="mt-5 inline-flex items-center gap-2 rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-dark-600 dark:text-gray-200 dark:hover:bg-dark-800" @click="generateImages">
+              <button v-if="activeHistoryItem" type="button" :disabled="isWorking" class="mt-5 inline-flex items-center gap-2 rounded-lg border border-gray-200 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 dark:border-dark-600 dark:text-gray-200 dark:hover:bg-dark-800" @click="reuseParameters(activeHistoryItem)">
                 <Icon name="refresh" size="sm" />
-                {{ t('imageStudio.retry') }}
+                {{ t('imageStudio.reuseParameters') }}
               </button>
             </div>
 
-            <div v-else class="flex min-h-[600px] min-w-0 p-3">
+            <div v-else class="flex h-full min-h-0 min-w-0 p-3">
               <div v-if="activeImage" class="flex min-h-0 min-w-0 flex-1 flex-col gap-3">
                 <figure class="group flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden rounded-lg border border-gray-200 bg-gray-50 dark:border-dark-700 dark:bg-dark-800">
-                  <div class="studio-single-media relative flex min-h-[420px] flex-1 items-center justify-center overflow-hidden bg-gray-100 dark:bg-dark-950">
+                  <div class="studio-single-media relative flex min-h-0 min-w-0 flex-1 items-center justify-center overflow-hidden bg-gray-100 dark:bg-dark-950">
                     <img
                       v-if="!imageLoadErrors[activeImageIndex]"
                       :src="imageSource(activeImage.url, activeImageIndex)"
                       :alt="t('imageStudio.imageAlt', { index: activeImageIndex + 1 })"
-                      class="h-full w-full object-contain"
+                      class="absolute inset-0 h-full w-full object-contain"
                       loading="eager"
                       @error="markImageError(activeImageIndex)"
                     />
@@ -422,11 +433,19 @@
                       </button>
                     </div>
                   </div>
-                  <figcaption class="flex min-h-11 items-center justify-between gap-3 px-3 py-2">
+                  <figcaption class="flex min-h-11 shrink-0 items-center justify-between gap-3 px-3 py-2">
                     <span class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('imageStudio.imagePosition', { current: activeImageIndex + 1, total: images.length }) }}</span>
                     <span class="text-xs text-gray-400">{{ displayResolution }} · {{ displayRatio }}</span>
                   </figcaption>
                 </figure>
+
+                <div v-if="activeHistoryItem" class="flex shrink-0 flex-wrap items-center justify-between gap-2 text-xs">
+                  <span class="min-w-0 truncate text-gray-500 dark:text-gray-400" :title="activeHistoryItem.model + ' · ' + activeHistoryItem.groupName">{{ activeHistoryItem.model }} · {{ activeHistoryItem.groupName }}</span>
+                  <div class="flex shrink-0 gap-2">
+                    <button type="button" class="rounded-md border border-gray-200 px-2.5 py-1.5 text-gray-600 hover:bg-gray-50 dark:border-dark-600 dark:text-gray-300 dark:hover:bg-dark-800" :disabled="isWorking" @click="reuseParameters(activeHistoryItem, true)">{{ t('imageStudio.reusePrompt') }}</button>
+                    <button type="button" class="rounded-md bg-primary-50 px-2.5 py-1.5 font-medium text-primary-700 dark:bg-primary-950/30 dark:text-primary-300" :disabled="isWorking" @click="reuseParameters(activeHistoryItem)">{{ t('imageStudio.reuseParameters') }}</button>
+                  </div>
+                </div>
 
                 <div
                   v-if="images.length > 1"
@@ -464,7 +483,7 @@
             <button
               type="button"
               class="flex h-8 w-8 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-30 dark:hover:bg-dark-800 dark:hover:text-gray-200"
-              :disabled="history.length === 0 || isWorking || loadingHistory || clearingHistory"
+              :disabled="!history.some(item => item.status !== 'processing') || loadingHistory || clearingHistory || !!deletingHistoryId"
               :title="t('imageStudio.clearHistory')"
               :aria-label="t('imageStudio.clearHistory')"
               @click="clearHistory"
@@ -474,7 +493,7 @@
           </div>
 
           <section class="studio-history-panel flex-1 overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-dark-700 dark:bg-dark-900">
-            <div v-if="loadingHistory" class="flex min-h-40 items-center justify-center text-gray-400">
+            <div v-if="loadingHistory && history.length === 0" class="flex min-h-40 items-center justify-center text-gray-400">
               <Icon name="refresh" size="md" class="animate-spin" />
             </div>
 
@@ -488,20 +507,27 @@
               <div
                 v-for="item in history"
                 :key="item.id"
-                class="flex w-full items-center gap-2.5 border-l-2 px-3 py-3 text-left transition-colors"
+                class="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_2rem] items-center gap-x-2 gap-y-2.5 overflow-hidden border-l-2 px-3 py-2.5 text-left transition-colors"
                 :class="activeHistoryId === item.id ? 'border-l-primary-500 bg-primary-50/60 dark:bg-primary-950/20' : 'border-l-transparent hover:bg-gray-50 dark:hover:bg-dark-800'"
               >
+                <div data-testid="history-meta" class="col-span-2 grid min-w-0 grid-cols-[minmax(0,1fr)_auto] items-center gap-2 text-[10px] leading-4">
+                  <div data-testid="history-status" class="flex min-w-0 items-center gap-1.5 overflow-hidden" :title="historyStatusLabel(item.status) + ' · ' + t('imageStudio.duration') + ' ' + itemDurationLabel(item)">
+                    <span class="h-1.5 w-1.5 shrink-0 rounded-full" :class="historyDotClass(item.status)" />
+                    <span class="shrink-0 whitespace-nowrap" :class="historyStatusClass(item.status)">{{ historyStatusLabel(item.status) }}</span>
+                    <span class="min-w-0 truncate whitespace-nowrap tabular-nums text-gray-400">{{ t('imageStudio.duration') }} {{ itemDurationLabel(item) }}</span>
+                  </div>
+                  <time class="justify-self-end whitespace-nowrap tabular-nums text-gray-400" :datetime="new Date(item.createdAt).toISOString()">{{ formatHistoryTime(item.createdAt) }}</time>
+                </div>
                 <button
                   type="button"
-                  class="flex min-w-0 flex-1 items-center gap-2.5 text-left"
-                  :disabled="isWorking"
+                  class="col-start-1 row-start-2 flex w-full min-w-0 items-center gap-2.5 text-left"
                   :title="item.prompt"
                   @click="selectHistoryItem(item)"
                 >
                   <div class="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-md bg-gray-100 dark:bg-dark-800">
                     <img
-                      v-if="historyThumbnail(item)"
-                      :src="historyThumbnail(item)"
+                      v-if="item.thumbnail"
+                      :src="item.thumbnail"
                       :alt="t('imageStudio.historyThumbnail')"
                       class="h-full w-full object-cover"
                     />
@@ -510,20 +536,15 @@
                   </div>
                   <div class="min-w-0 flex-1">
                     <p class="truncate text-xs font-medium text-gray-800 dark:text-gray-200">{{ item.prompt }}</p>
-                    <div class="mt-1 flex items-center justify-between gap-2 text-[11px] text-gray-400">
+                    <div class="mt-1 truncate text-[11px] text-gray-400">
                       <span>{{ operationLabel(item.operation) }} · {{ item.resolution }} · {{ item.ratio }}</span>
-                      <span>{{ formatHistoryTime(item.createdAt) }}</span>
-                    </div>
-                    <div class="mt-1 flex items-center gap-1.5 text-[11px]" :class="historyStatusClass(item.status)">
-                      <span class="h-1.5 w-1.5 rounded-full" :class="historyDotClass(item.status)" />
-                      <span>{{ historyStatusLabel(item.status) }}</span>
                     </div>
                   </div>
                 </button>
                 <button
                   type="button"
-                  class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-30 dark:hover:bg-red-950/30 dark:hover:text-red-400"
-                  :disabled="isWorking || item.status === 'processing' || deletingHistoryId === item.id"
+                  class="col-start-2 row-start-2 flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-red-50 hover:text-red-600 disabled:cursor-not-allowed disabled:opacity-30 dark:hover:bg-red-950/30 dark:hover:text-red-400"
+                  :disabled="item.status === 'processing' || !!deletingHistoryId || clearingHistory"
                   :title="t('imageStudio.deleteHistoryItem')"
                   :aria-label="t('imageStudio.deleteHistoryItem')"
                   @click="deleteHistoryItem(item)"
@@ -538,11 +559,37 @@
     </div>
 
     <BaseDialog :show="previewIndex !== null" :title="t('imageStudio.previewTitle')" width="full" @close="previewIndex = null">
-      <div v-if="previewImage" class="flex max-h-[76vh] min-h-[320px] items-center justify-center overflow-hidden rounded-lg bg-gray-100 p-2 dark:bg-dark-950">
-        <img :src="previewImage.url" :alt="t('imageStudio.previewTitle')" class="max-h-[74vh] max-w-full object-contain" />
+      <div v-if="previewImage && activeHistoryItem" class="grid min-w-0 gap-5 lg:grid-cols-[minmax(0,1fr)_300px]">
+        <div class="relative flex min-h-[280px] min-w-0 items-center justify-center overflow-hidden rounded-xl bg-gray-100 p-3 dark:bg-dark-950">
+          <img :src="previewImage.url" :alt="activeHistoryItem.prompt || t('imageStudio.previewTitle')" class="max-h-[68vh] w-full object-contain" />
+          <div v-if="images.length > 1" class="absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-3 rounded-full bg-black/70 px-3 py-2 text-xs text-white">
+            <button type="button" :aria-label="t('imageStudio.previousImage')" @click="previewIndex = ((previewIndex || 0) - 1 + images.length) % images.length"><Icon name="chevronLeft" size="sm" /></button>
+            <span>{{ (previewIndex || 0) + 1 }} / {{ images.length }}</span>
+            <button type="button" :aria-label="t('imageStudio.nextImage')" @click="previewIndex = ((previewIndex || 0) + 1) % images.length"><Icon name="chevronRight" size="sm" /></button>
+          </div>
+        </div>
+        <aside class="flex max-h-[68vh] min-w-0 flex-col gap-5 overflow-y-auto text-sm">
+          <div>
+            <span class="inline-block rounded-md px-2 py-1 text-[11px] font-semibold uppercase" :class="platformBadgeClass(activeHistoryItem.platform)">{{ activeHistoryItem.platform }}</span>
+            <h3 class="mt-3 break-all font-semibold text-gray-900 dark:text-white">{{ activeHistoryItem.model }}</h3>
+            <p class="mt-1 text-xs text-gray-400">{{ t('imageStudio.group') }} · {{ activeHistoryItem.groupName }}</p>
+          </div>
+          <dl class="grid grid-cols-2 gap-x-3 gap-y-4 rounded-lg bg-gray-50 p-3 text-xs dark:bg-dark-800">
+            <div><dt class="text-gray-400">{{ t('imageStudio.generatedAt') }}</dt><dd class="mt-1 text-gray-800 dark:text-gray-200">{{ formatHistoryTime(activeHistoryItem.createdAt) }}</dd></div>
+            <div><dt class="text-gray-400">{{ t('imageStudio.duration') }}</dt><dd class="mt-1 tabular-nums text-gray-800 dark:text-gray-200">{{ itemDurationLabel(activeHistoryItem) }}</dd></div>
+            <div><dt class="text-gray-400">{{ t('imageStudio.resolution') }}</dt><dd class="mt-1 text-gray-800 dark:text-gray-200">{{ activeHistoryItem.resolution }} · {{ activeHistoryItem.ratio }}</dd></div>
+            <div><dt class="text-gray-400">{{ t('imageStudio.operationMode') }}</dt><dd class="mt-1 text-gray-800 dark:text-gray-200">{{ operationLabel(activeHistoryItem.operation) }}</dd></div>
+          </dl>
+          <div class="min-h-0">
+            <h4 class="mb-2 text-xs font-medium text-gray-500">{{ t('imageStudio.prompt') }}</h4>
+            <p class="whitespace-pre-wrap break-words text-sm leading-6 text-gray-700 dark:text-gray-300">{{ activeHistoryItem.prompt }}</p>
+          </div>
+        </aside>
       </div>
       <template #footer>
-        <div class="flex justify-end">
+        <div class="flex flex-wrap justify-end gap-2">
+          <button v-if="activeHistoryItem" type="button" class="btn btn-secondary" :disabled="isWorking" @click="reuseParameters(activeHistoryItem, true)">{{ t('imageStudio.reusePrompt') }}</button>
+          <button v-if="activeHistoryItem" type="button" class="btn btn-primary" :disabled="isWorking" @click="reuseParameters(activeHistoryItem)">{{ t('imageStudio.reuseParameters') }}</button>
           <button v-if="previewImage" type="button" class="btn btn-secondary" @click="downloadImage(previewImage.url, previewIndex || 0)">
             <Icon name="download" size="sm" />
             {{ t('imageStudio.download') }}
@@ -567,15 +614,9 @@ import { useAppStore } from '@/stores/app'
 import type { ApiKey } from '@/types'
 import { listEligibleImageKeys } from './access'
 import {
-  clearImageTasks,
-  deleteImageTask,
   extractTaskImageData,
   getImageModelPricing,
-  getImageTask,
   listImageModels,
-  listImageTasks,
-  submitImageEditTask,
-  submitImageTask,
 } from './api'
 import {
   buildGenerateImageRequest,
@@ -591,6 +632,7 @@ import {
   supportsImageEditing,
 } from './capabilities'
 import { estimateImageCost, formatUSD, getImagePriceTiers } from './pricing'
+import { useImageTasks, historyDuration, formatHistoryTime, type StudioHistoryItem } from './useImageTasks'
 import type {
   GenerateImageRequest,
   ImageAspectRatio,
@@ -600,32 +642,11 @@ import type {
   ImageResolutionTier,
   ImageStudioError,
   ImageStudioPlatform,
-  ImageTask,
-  StoredImageTask,
   StudioOperation,
 } from './types'
 
 type HistoryStatus = 'processing' | 'completed' | 'failed'
 
-interface StudioHistoryItem {
-  id: string
-  operation: StudioOperation
-  prompt: string
-  model: string
-  resolution: ImageResolutionTier
-  ratio: ImageAspectRatio
-  quantity: number
-  createdAt: number
-  status: HistoryStatus
-  task?: ImageTask
-  thumbnail?: string
-  sourceThumbnail?: string
-  errorMessage?: string
-}
-
-const STORAGE_KEY = 'image_studio_active_task_v1'
-const POLL_INTERVAL_MS = 3000
-const MAX_HISTORY_ITEMS = 10
 const MAX_SOURCE_IMAGE_BYTES = 20 * 1024 * 1024
 const SOURCE_IMAGE_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp'])
 const GEMINI_IMAGE_MODEL_NAMES: Record<string, string> = {
@@ -657,30 +678,24 @@ const ratio = ref<ImageAspectRatio>('1:1')
 const quantity = ref(1)
 const loadingKeys = ref(true)
 const loadingModels = ref(false)
-const submitting = ref(false)
-const task = ref<ImageTask | null>(null)
-const viewState = ref<'idle' | 'processing' | 'completed' | 'failed'>('idle')
-const errorMessage = ref('')
-const lastRequest = ref<GenerateImageRequest | null>(null)
-const startedAt = ref(0)
 const now = ref(Date.now())
 const previewIndex = ref<number | null>(null)
 const activeImageIndex = ref(0)
 const imageLoadErrors = ref<Record<number, boolean>>({})
 const imageReloadTokens = ref<Record<number, number>>({})
-const history = ref<StudioHistoryItem[]>([])
-const activeHistoryId = ref('')
-const historyRetentionDays = ref(7)
-const loadingHistory = ref(false)
-const clearingHistory = ref(false)
-const deletingHistoryId = ref('')
+const {
+  history, activeHistoryId, activeHistoryItem, runningCount, historyRetentionDays,
+  loadingHistory, submitting, deletingHistoryId, clearingHistory,
+  loadHistory, restore, submit, remove,
+} = useImageTasks(apiKeys, message => appStore.showError(message || t('imageStudio.historyLoadFailed')), () => t('imageStudio.emptyResult'))
+const task = computed(() => activeHistoryItem.value?.task || null)
+const viewState = computed(() => activeHistoryItem.value?.status || 'idle')
+const errorMessage = computed(() => activeHistoryItem.value?.errorMessage || '')
+const displayQuantity = computed(() => activeHistoryItem.value?.quantity || 1)
+const reusing = ref(false)
 
-let historySequence = 0
 let modelController: AbortController | null = null
 let pricingController: AbortController | null = null
-let historyController: AbortController | null = null
-let taskController: AbortController | null = null
-let pollTimer: ReturnType<typeof setTimeout> | null = null
 let elapsedTimer: ReturnType<typeof setInterval> | null = null
 
 const selectedKey = computed(() => apiKeys.value.find((key) => key.id === selectedKeyId.value) || null)
@@ -729,12 +744,11 @@ const priceTiers = computed(() => getImagePriceTiers(modelPricing.value))
 const estimatedCost = computed(() => estimateImageCost(modelPricing.value, resolution.value, quantity.value))
 const images = computed(() => task.value ? extractTaskImageData(task.value) : [])
 const activeImage = computed(() => images.value[activeImageIndex.value] || images.value[0] || null)
-const taskId = computed(() => task.value?.task_id || task.value?.id || '')
-const isWorking = computed(() => submitting.value || viewState.value === 'processing')
+const isWorking = computed(() => submitting.value || reusing.value)
 const canGenerate = computed(() => {
   if (isWorking.value || !model.value.trim() || !prompt.value.trim()) return false
   if (loadingModels.value || loadingPricing.value || !modelPricing.value || pricingError.value) return false
-  if (operation.value === 'edit' && (!supportsImageEditing(platform.value) || sourceImageFiles.value.length === 0)) return false
+  if (operation.value === 'edit' && (!supportsImageEditing(platform.value) || (sourceImageFiles.value.length === 0 || sourceImageFiles.value.length > maxSourceImages.value))) return false
   return !!selectedKey.value
 })
 const statusOperation = computed<StudioOperation>(() => (
@@ -749,10 +763,10 @@ const actionButtonLabel = computed(() => {
 const emptyStateTitle = computed(() => t(operation.value === 'edit' ? 'imageStudio.editEmpty' : 'imageStudio.empty'))
 const emptyStateHint = computed(() => t(operation.value === 'edit' ? 'imageStudio.editEmptyHint' : 'imageStudio.emptyHint'))
 const failedStateTitle = computed(() => t(statusOperation.value === 'edit' ? 'imageStudio.editFailed' : 'imageStudio.failed'))
-const elapsedSeconds = computed(() => startedAt.value > 0 ? Math.max(0, Math.floor((now.value - startedAt.value) / 1000)) : 0)
+const elapsedSeconds = computed(() => activeHistoryItem.value ? historyDuration(activeHistoryItem.value, now.value) : null)
 const statusLabel = computed(() => {
   const editing = statusOperation.value === 'edit'
-  if (submitting.value) return t(editing ? 'imageStudio.editSubmitting' : 'imageStudio.submitting')
+  if (activeHistoryItem.value?.id.startsWith('local-') && submitting.value) return t(editing ? 'imageStudio.editSubmitting' : 'imageStudio.submitting')
   if (viewState.value === 'processing') return t(editing ? 'imageStudio.editProcessing' : 'imageStudio.processing')
   if (viewState.value === 'completed') return t(editing ? 'imageStudio.editCompleted' : 'imageStudio.completed')
   return t(editing ? 'imageStudio.editFailed' : 'imageStudio.failed')
@@ -763,22 +777,44 @@ const statusDotClass = computed(() => {
   return 'animate-pulse bg-amber-500'
 })
 const previewImage = computed(() => previewIndex.value == null ? null : images.value[previewIndex.value] || null)
-const activeHistoryItem = computed(() => history.value.find((item) => item.id === activeHistoryId.value) || null)
 const displayResolution = computed(() => activeHistoryItem.value?.resolution || resolution.value)
 const displayRatio = computed(() => activeHistoryItem.value?.ratio || ratio.value)
+
+function resetCanvas() {
+  activeHistoryId.value = ''
+  previewIndex.value = null
+  activeImageIndex.value = 0
+  imageLoadErrors.value = {}
+  imageReloadTokens.value = {}
+}
+
+function newTask() {
+  if (isWorking.value) return
+  resetCanvas()
+  prompt.value = ''
+  clearSourceImages()
+}
 
 function switchOperation(nextOperation: StudioOperation) {
   if (isWorking.value || operation.value === nextOperation) return
   if (nextOperation === 'edit' && !supportsImageEditing(platform.value)) return
   operation.value = nextOperation
-  task.value = null
-  activeHistoryId.value = ''
-  viewState.value = 'idle'
-  errorMessage.value = ''
-  previewIndex.value = null
-  activeImageIndex.value = 0
-  imageLoadErrors.value = {}
-  imageReloadTokens.value = {}
+  resetCanvas()
+}
+
+function keyPreferenceStorage() {
+  return 'image_studio_last_key_v1:' + (apiKeys.value[0]?.user_id || 'local')
+}
+
+function rememberKey() {
+  try { localStorage.setItem(keyPreferenceStorage(), String(selectedKeyId.value)) } catch { /* Optional preference. */ }
+}
+
+function platformBadgeClass(value: unknown): string {
+  if (value === 'openai') return 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300'
+  if (value === 'gemini') return 'bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300'
+  if (value === 'grok') return 'bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300'
+  return 'bg-gray-100 text-gray-700 dark:bg-dark-700 dark:text-gray-300'
 }
 
 function selectResolution(tier: ImageResolutionTier) {
@@ -799,30 +835,18 @@ function selectRatio(nextRatio: ImageAspectRatio) {
 
 async function handleKeySelection() {
   if (!selectedKey.value || isWorking.value) return
+  rememberKey()
   if (operation.value === 'edit' && !supportsImageEditing(platform.value)) operation.value = 'generate'
-  task.value = null
-  activeHistoryId.value = ''
-  viewState.value = 'idle'
-  errorMessage.value = ''
-  previewIndex.value = null
-  activeImageIndex.value = 0
-  imageLoadErrors.value = {}
-  imageReloadTokens.value = {}
-  const normalized = normalizeStudioSelection(
-    platform.value,
-    ratio.value,
-    resolution.value,
-    openAI4KEnabled.value,
-  )
+  const normalized = normalizeStudioSelection(platform.value, ratio.value, resolution.value, openAI4KEnabled.value)
   ratio.value = normalized.ratio
   resolution.value = normalized.resolution
-  trimSourceImages(maxSourceImages.value)
+  // Keep the user's uploaded files when changing groups; require explicit removal if over the new limit.
+  if (sourceImageFiles.value.length > maxSourceImages.value) {
+    appStore.showError(t('imageStudio.sourceImageCountError', { max: maxSourceImages.value }))
+  }
   quality.value = 'auto'
   quantity.value = Math.min(quantity.value, maxQuantity.value)
-  await Promise.all([
-    loadModels(getPreferredImageModel(platform.value)),
-    loadHistory(),
-  ])
+  await Promise.all([loadModels(getPreferredImageModel(platform.value)), loadHistory(selectedKey.value)])
 }
 
 function openSourcePicker() {
@@ -883,20 +907,15 @@ function removeSourceImage(index: number) {
   sourcePreviewUrls.value.splice(index, 1)
 }
 
-function trimSourceImages(limit: number) {
-  const safeLimit = Math.max(1, limit)
-  while (sourceImageFiles.value.length > safeLimit) {
-    const previewUrl = sourcePreviewUrls.value.pop()
-    if (previewUrl) URL.revokeObjectURL(previewUrl)
-    sourceImageFiles.value.pop()
-  }
+function clearSourceImages() {
+  sourcePreviewUrls.value.forEach(url => URL.revokeObjectURL(url))
+  sourcePreviewUrls.value = []
+  sourceImageFiles.value = []
 }
 
-
-
 function processingItemLabel(index: number): string {
-  const key = operation.value === 'edit' ? 'imageStudio.editRendering' : 'imageStudio.rendering'
-  return t(key, { current: index, total: quantity.value })
+  const key = statusOperation.value === 'edit' ? 'imageStudio.editRendering' : 'imageStudio.rendering'
+  return t(key, { current: index, total: displayQuantity.value })
 }
 
 function operationLabel(value: StudioOperation): string {
@@ -969,223 +988,75 @@ async function loadPricing() {
 
 watch([selectedKeyId, model, loadingModels], () => { void loadPricing() }, { flush: 'sync' })
 
-function stopPolling() {
-  taskController?.abort()
-  taskController = null
-  if (pollTimer) clearTimeout(pollTimer)
-  pollTimer = null
-}
-
-function persistTask(stored: StoredImageTask) {
-  sessionStorage.setItem(STORAGE_KEY, JSON.stringify(stored))
-}
-
-function clearPersistedTask() {
-  sessionStorage.removeItem(STORAGE_KEY)
-}
-
-function readPersistedTask(): StoredImageTask | null {
-  try {
-    const raw = sessionStorage.getItem(STORAGE_KEY)
-    if (!raw) return null
-    const value = JSON.parse(raw) as StoredImageTask
-    if (!value.taskId || !Number.isFinite(value.apiKeyId) || !value.request?.model) return null
-    return value
-  } catch {
-    clearPersistedTask()
-    return null
-  }
-}
-
-function beginHistoryItem(request: GenerateImageRequest): StudioHistoryItem {
-  const item: StudioHistoryItem = {
-    id: String(Date.now()) + '-' + String(++historySequence),
-    operation: operation.value,
-    prompt: request.prompt,
-    model: request.model,
-    resolution: resolution.value,
-    ratio: ratio.value,
-    quantity: request.n,
-    createdAt: Date.now(),
-    status: 'processing',
-    sourceThumbnail: operation.value === 'edit' && sourceImageFiles.value[0]
-      ? URL.createObjectURL(sourceImageFiles.value[0])
-      : undefined,
-  }
-  const nextHistory = [item, ...history.value]
-  nextHistory.slice(MAX_HISTORY_ITEMS).forEach((entry) => {
-    if (entry.sourceThumbnail) URL.revokeObjectURL(entry.sourceThumbnail)
-  })
-  history.value = nextHistory.slice(0, MAX_HISTORY_ITEMS)
-  activeHistoryId.value = item.id
-  return item
-}
-
-function updateHistoryItem(id: string, patch: Partial<StudioHistoryItem>) {
-  if (!id) return
-  history.value = history.value.map((item) => item.id === id ? { ...item, ...patch } : item)
-}
-
-function completeHistoryItem(id: string, completedTask: ImageTask) {
-  const firstImage = extractTaskImageData(completedTask)[0]
-  const item = history.value.find((entry) => entry.id === id)
-  if (item?.sourceThumbnail) URL.revokeObjectURL(item.sourceThumbnail)
-  updateHistoryItem(id, {
-    status: 'completed',
-    task: completedTask,
-    thumbnail: firstImage?.url,
-    sourceThumbnail: undefined,
-    errorMessage: '',
-  })
-}
-
 function selectHistoryItem(item: StudioHistoryItem) {
-  if (isWorking.value || item.status === 'processing') return
   activeHistoryId.value = item.id
-  task.value = item.task || null
-  viewState.value = item.status
-  errorMessage.value = item.errorMessage || ''
-  startedAt.value = item.createdAt
-  now.value = Date.now()
   previewIndex.value = null
   activeImageIndex.value = 0
   imageLoadErrors.value = {}
   imageReloadTokens.value = {}
 }
 
-function imageTaskResolution(item: ImageTask): ImageResolutionTier {
-  const value = item.metadata?.resolution?.toUpperCase()
-  if (value === '1K' || value === '2K' || value === '4K') return value
-  const size = item.metadata?.size?.toLowerCase() || ''
-  if (
-    size === '2k' ||
-    ['1536x1024', '1024x1536', '2048x1152', '1152x2048', '1536x1152', '1152x1536', '1792x768'].includes(size)
-  ) return '2K'
-  if (
-    size === '4k' ||
-    [
-      '2880x2880',
-      '3456x2304',
-      '2304x3456',
-      '3840x2160',
-      '2160x3840',
-      '3072x2304',
-      '2304x3072',
-      '3584x1536',
-      '4096x4096',
-      '4096x2731',
-      '2731x4096',
-    ].includes(size)
-  ) return '4K'
-  return '1K'
-}
-
-function imageTaskRatio(item: ImageTask): ImageAspectRatio {
-  const value = item.metadata?.aspect_ratio
-  if (value && ['1:1', '3:2', '2:3', '16:9', '9:16', '4:3', '3:4', '21:9'].includes(value)) return value
-  const size = item.metadata?.size?.toLowerCase()
-  if (size === '1536x1024' || size === '3456x2304' || size === '4096x2731') return '3:2'
-  if (size === '1024x1536' || size === '2304x3456' || size === '2731x4096') return '2:3'
-  if (size === '2048x1152' || size === '3840x2160') return '16:9'
-  if (size === '1152x2048' || size === '2160x3840') return '9:16'
-  if (size === '1536x1152' || size === '3072x2304') return '4:3'
-  if (size === '1152x1536' || size === '2304x3072') return '3:4'
-  if (size === '1792x768' || size === '3584x1536') return '21:9'
-  return '1:1'
-}
-
-function imageTaskToHistoryItem(item: ImageTask): StudioHistoryItem {
-  const taskImages = extractTaskImageData(item)
-  return {
-    id: item.task_id || item.id,
-    operation: item.metadata?.operation === 'edit' ? 'edit' : 'generate',
-    prompt: item.metadata?.prompt || item.task_id || item.id,
-    model: item.metadata?.model || '',
-    resolution: imageTaskResolution(item),
-    ratio: imageTaskRatio(item),
-    quantity: Math.max(1, item.metadata?.quantity || taskImages.length || 1),
-    createdAt: item.created_at * 1000,
-    status: item.status,
-    task: item,
-    thumbnail: taskImages[0]?.url,
-    errorMessage: taskErrorText(item.error),
-  }
-}
-
-async function loadHistory() {
-  historyController?.abort()
-  const key = selectedKey.value
-  if (!key) {
-    history.value = []
-    return
-  }
-  const controller = new AbortController()
-  historyController = controller
-  loadingHistory.value = true
-  try {
-    const result = await listImageTasks(key.key, MAX_HISTORY_ITEMS, controller.signal)
-    history.value = result.tasks.map(imageTaskToHistoryItem)
-    historyRetentionDays.value = result.retentionDays
-  } catch (error) {
-    if ((error as Error).name !== 'AbortError') {
-      history.value = []
-      appStore.showError(errorText(error, t('imageStudio.historyLoadFailed')))
-    }
-  } finally {
-    if (historyController === controller) {
-      loadingHistory.value = false
-      historyController = null
-    }
-  }
-}
-
 async function clearHistory() {
-  const key = selectedKey.value
-  if (isWorking.value || !key || clearingHistory.value) return
+  if (clearingHistory.value) return
+  const items = history.value.filter(item => item.status !== 'processing')
+  if (!items.length || !window.confirm(t('imageStudio.clearCompletedConfirm'))) return
   clearingHistory.value = true
-  try {
-    await clearImageTasks(key.key)
-    history.value.forEach((item) => {
-      if (item.sourceThumbnail) URL.revokeObjectURL(item.sourceThumbnail)
-    })
-    history.value = []
-    activeHistoryId.value = ''
-    task.value = null
-    viewState.value = 'idle'
-    clearPersistedTask()
-  } catch (error) {
-    appStore.showError(errorText(error, t('imageStudio.historyClearFailed')))
-  } finally {
-    clearingHistory.value = false
-  }
+  try { for (const item of items) await remove(item) }
+  catch (error) { appStore.showError(errorText(error, t('imageStudio.historyClearFailed'))) }
+  finally { clearingHistory.value = false }
 }
 
 async function deleteHistoryItem(item: StudioHistoryItem) {
-  const key = selectedKey.value
-  if (isWorking.value || !key || item.status === 'processing' || deletingHistoryId.value) return
+  if (item.status === 'processing' || deletingHistoryId.value || clearingHistory.value) return
   if (!window.confirm(t('imageStudio.deleteHistoryConfirm'))) return
   deletingHistoryId.value = item.id
-  try {
-    await deleteImageTask(key.key, item.id)
-    if (item.sourceThumbnail) URL.revokeObjectURL(item.sourceThumbnail)
-    history.value = history.value.filter((historyItem) => historyItem.id !== item.id)
-    if (activeHistoryId.value === item.id) {
-      activeHistoryId.value = ''
-      task.value = null
-      viewState.value = 'idle'
-      previewIndex.value = null
-      activeImageIndex.value = 0
-      clearPersistedTask()
-    }
-  } catch (error) {
-    appStore.showError(errorText(error, t('imageStudio.historyDeleteFailed')))
-  } finally {
-    deletingHistoryId.value = ''
-  }
+  try { await remove(item) }
+  catch (error) { appStore.showError(errorText(error, t('imageStudio.historyDeleteFailed'))) }
+  finally { deletingHistoryId.value = '' }
 }
 
-function historyThumbnail(item: StudioHistoryItem): string {
-  return item.thumbnail || item.sourceThumbnail || ''
+function itemDurationLabel(item: StudioHistoryItem): string {
+  const seconds = historyDuration(item, now.value)
+  return seconds == null ? '—' : formatElapsed(seconds)
+}
+
+async function reuseParameters(item: StudioHistoryItem, promptOnly = false) {
+  if (isWorking.value) return
+  if (promptOnly) {
+    prompt.value = item.prompt
+    previewIndex.value = null
+    return
+  }
+  const key = apiKeys.value.find(key => key.id === item.apiKeyId)
+  if (!key) { appStore.showError(t('imageStudio.reuseKeyUnavailable')); return }
+  reusing.value = true
+  try {
+    selectedKeyId.value = key.id
+    rememberKey()
+    await loadModels(item.model)
+    await loadPricing()
+    if (model.value !== item.model) {
+      appStore.showError(t('imageStudio.reuseModelUnavailable'))
+      return
+    }
+    operation.value = item.operation
+    prompt.value = item.prompt
+    quality.value = item.request.quality || 'auto'
+    quantity.value = Math.min(item.quantity, maxQuantity.value)
+    const normalized = normalizeStudioSelection(platform.value, item.ratio, item.resolution, openAI4KEnabled.value)
+    ratio.value = normalized.ratio
+    resolution.value = normalized.resolution
+    if (ratio.value !== item.ratio || resolution.value !== item.resolution) {
+      appStore.showError(t('imageStudio.reuseAdjusted'))
+    }
+    clearSourceImages()
+    if (item.operation === 'edit') {
+      sourceImageFiles.value = (item.sourceFiles || []).slice(0, maxSourceImages.value)
+      sourcePreviewUrls.value = sourceImageFiles.value.map(file => URL.createObjectURL(file))
+      if (!sourceImageFiles.value.length) appStore.showError(t('imageStudio.reuploadReferences'))
+    }
+    previewIndex.value = null
+  } finally { reusing.value = false }
 }
 
 function historyStatusLabel(status: HistoryStatus): string {
@@ -1204,13 +1075,6 @@ function historyDotClass(status: HistoryStatus): string {
   return 'animate-pulse bg-amber-500'
 }
 
-function formatHistoryTime(timestamp: number): string {
-  return new Date(timestamp).toLocaleTimeString([], {
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
-
 function currentRequest(): GenerateImageRequest {
   return buildGenerateImageRequest({
     platform: platform.value,
@@ -1225,108 +1089,20 @@ function currentRequest(): GenerateImageRequest {
 }
 
 async function generateImages() {
-  if (!canGenerate.value) return
-  const editing = operation.value === 'edit'
-  const sourceFiles = sourceImageFiles.value
-  const key = selectedKey.value
-  if (!key) return
-  if (editing && sourceFiles.length === 0) return
-
-  stopPolling()
-  task.value = null
+  if (!canGenerate.value || !selectedKey.value) return
+  rememberKey()
+  previewIndex.value = null
   activeImageIndex.value = 0
   imageLoadErrors.value = {}
   imageReloadTokens.value = {}
-  errorMessage.value = ''
-  previewIndex.value = null
-  const request = currentRequest()
-  const historyItem = beginHistoryItem(request)
-  lastRequest.value = request
-  startedAt.value = historyItem.createdAt
-  now.value = startedAt.value
-  viewState.value = 'processing'
-  submitting.value = true
-  const controller = new AbortController()
-  taskController = controller
-
-  try {
-    const submitted = editing
-      ? await submitImageEditTask(key.key, sourceFiles, request, controller.signal)
-      : await submitImageTask(key.key, request, controller.signal)
-    task.value = submitted
-    updateHistoryItem(historyItem.id, { task: submitted })
-    persistTask({
-      taskId: submitted.task_id || submitted.id,
-      apiKeyId: key.id,
-      operation: operation.value,
-      request,
-      platform: platform.value,
-      ratio: ratio.value,
-      resolution: resolution.value,
-      startedAt: startedAt.value,
-    })
-    submitting.value = false
-    await pollTask(submitted.task_id || submitted.id, key)
-  } catch (error) {
-    if ((error as Error).name === 'AbortError') return
-    failTask(errorText(error, t(editing ? 'imageStudio.editSubmitFailed' : 'imageStudio.submitFailed')))
-  } finally {
-    submitting.value = false
-  }
-}
-async function pollTask(id: string, key: ApiKey) {
-  const controller = new AbortController()
-  taskController = controller
-  try {
-    const current = await getImageTask(key.key, id, controller.signal)
-    task.value = current
-    updateHistoryItem(activeHistoryId.value, { task: current })
-    if (current.status === 'completed') {
-      if (extractTaskImageData(current).length === 0) {
-        failTask(t('imageStudio.emptyResult'))
-        return
-      }
-      viewState.value = 'completed'
-      completeHistoryItem(activeHistoryId.value, current)
-      clearPersistedTask()
-      taskController = null
-      const completedOperation = history.value.find((item) => item.id === activeHistoryId.value)?.operation || operation.value
-      appStore.showSuccess(t(completedOperation === 'edit' ? 'imageStudio.editSuccess' : 'imageStudio.generateSuccess'))
-      return
-    }
-    if (current.status === 'failed') {
-      const failedOperation = history.value.find((item) => item.id === activeHistoryId.value)?.operation || operation.value
-      failTask(taskErrorText(current.error) || t(failedOperation === 'edit' ? 'imageStudio.editGenerateFailed' : 'imageStudio.generateFailed'))
-      return
-    }
-    viewState.value = 'processing'
-    pollTimer = setTimeout(() => pollTask(id, key), POLL_INTERVAL_MS)
-  } catch (error) {
-    if ((error as Error).name === 'AbortError') return
-    failTask(errorText(error, t('imageStudio.pollFailed')))
-  }
-}
-
-function failTask(message: string) {
-  viewState.value = 'failed'
-  errorMessage.value = message
-  updateHistoryItem(activeHistoryId.value, {
-    status: 'failed',
-    task: task.value || undefined,
-    errorMessage: message,
+  await submit(selectedKey.value, {
+    request: currentRequest(),
+    operation: operation.value,
+    platform: platform.value,
+    ratio: ratio.value,
+    resolution: resolution.value,
+    sourceFiles: operation.value === 'edit' ? [...sourceImageFiles.value] : [],
   })
-  clearPersistedTask()
-  stopPolling()
-}
-
-function taskErrorText(error: unknown): string {
-  if (!error) return ''
-  if (typeof error === 'string') return error
-  if (typeof error === 'object') {
-    const value = error as { message?: string; error?: { message?: string } }
-    return value.message || value.error?.message || ''
-  }
-  return ''
 }
 
 function errorText(error: unknown, fallback: string): string {
@@ -1416,65 +1192,17 @@ function triggerDownload(url: string, filename: string) {
   anchor.remove()
 }
 
-async function restoreTask(stored: StoredImageTask) {
-  const key = apiKeys.value.find((item) => item.id === stored.apiKeyId)
-  if (!key) {
-    clearPersistedTask()
-    return false
-  }
-  operation.value = stored.operation || 'generate'
-  selectedKeyId.value = key.id
-  prompt.value = stored.request.prompt || ''
-  model.value = stored.request.model || ''
-  quantity.value = Math.min(maxQuantity.value, Math.max(1, stored.request.n || 1))
-  quality.value = stored.request.quality || 'auto'
-  ratio.value = stored.ratio || '1:1'
-  resolution.value = stored.resolution || '1K'
-  lastRequest.value = stored.request
-  activeImageIndex.value = 0
-  startedAt.value = stored.startedAt || Date.now()
-  viewState.value = 'processing'
-  task.value = {
-    id: stored.taskId,
-    task_id: stored.taskId,
-    object: operation.value === 'edit' ? 'image.edit.task' : 'image.generation.task',
-    status: 'processing',
-    created_at: Math.floor(startedAt.value / 1000),
-    expires_at: 0,
-  }
-  const restoredHistoryItem = history.value.find((item) => item.id === stored.taskId)
-  if (restoredHistoryItem) {
-    activeHistoryId.value = restoredHistoryItem.id
-    updateHistoryItem(restoredHistoryItem.id, { task: task.value, status: 'processing' })
-  } else {
-    const localHistoryItem = beginHistoryItem(stored.request)
-    updateHistoryItem(localHistoryItem.id, { createdAt: startedAt.value, task: task.value })
-  }
-  await loadModels(stored.request.model)
-  await pollTask(stored.taskId, key)
-  return true
-}
-
 onMounted(async () => {
   elapsedTimer = setInterval(() => { now.value = Date.now() }, 1000)
   try {
-    const keys = await listEligibleImageKeys()
-    apiKeys.value = keys
-    const stored = readPersistedTask()
-    if (stored) {
-      const storedKey = keys.find((key) => key.id === stored.apiKeyId)
-      if (storedKey) {
-        selectedKeyId.value = storedKey.id
-        await loadHistory()
-        if (await restoreTask(stored)) return
-      }
-    }
-    const defaultKey = keys.find((key) => key.group?.platform === 'openai') || keys[0]
+    apiKeys.value = await listEligibleImageKeys()
+    loadingKeys.value = false
+    let remembered: number | null = null
+    try { remembered = Number(localStorage.getItem(keyPreferenceStorage())) } catch { /* Optional preference. */ }
+    const defaultKey = apiKeys.value.find(key => key.id === remembered)
+      || apiKeys.value.find(key => key.group?.platform === 'openai') || apiKeys.value[0]
     selectedKeyId.value = defaultKey?.id || null
-    await Promise.all([
-      loadModels(getPreferredImageModel(platform.value)),
-      loadHistory(),
-    ])
+    await Promise.all([loadModels(getPreferredImageModel(platform.value)), restore()])
   } catch (error) {
     appStore.showError(errorText(error, t('imageStudio.keysFailed')))
   } finally {
@@ -1485,13 +1213,8 @@ onMounted(async () => {
 onBeforeUnmount(() => {
   modelController?.abort()
   pricingController?.abort()
-  historyController?.abort()
-  stopPolling()
   if (elapsedTimer) clearInterval(elapsedTimer)
-  sourcePreviewUrls.value.forEach((previewUrl) => URL.revokeObjectURL(previewUrl))
-  history.value.forEach((item) => {
-    if (item.sourceThumbnail) URL.revokeObjectURL(item.sourceThumbnail)
-  })
+  clearSourceImages()
 })
 </script>
 
@@ -1523,18 +1246,20 @@ onBeforeUnmount(() => {
   max-height: 560px;
 }
 
+.studio-canvas {
+  /* Definite height in every state; intrinsic image dimensions must not size the workspace. */
+  height: clamp(420px, 70vh, 600px);
+  height: clamp(420px, 70svh, 600px);
+  flex: none;
+}
+
 .studio-single-media {
   flex: 1 1 0%;
 }
 
 @media (min-width: 1280px) {
-  .studio-canvas,
-  .studio-canvas > div {
-    min-height: max(600px, calc(100vh - 10rem));
-  }
-
-  .studio-canvas > div {
-    height: 100%;
+  .studio-canvas {
+    height: max(600px, calc(100vh - 10rem));
   }
 }
 

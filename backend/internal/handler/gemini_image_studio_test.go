@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"encoding/json"
+	"fmt"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -117,6 +118,62 @@ func TestBuildGeminiStudioImageRequestRejectsUnsupportedInputs(t *testing.T) {
 	require.ErrorContains(t, err, "model is required")
 	_, _, err = buildGeminiStudioImageRequest("/v1/images/generations", "application/json", []byte(`{"model":"gemini-3.1-flash-image","prompt":"draw","n":2}`))
 	require.ErrorContains(t, err, "one image per request")
+}
+
+func TestBuildGeminiStudioImageRequestEditMultipleReferences(t *testing.T) {
+	for _, count := range []int{10, 14, 15} {
+		t.Run(fmt.Sprintf("%d images", count), func(t *testing.T) {
+			var body bytes.Buffer
+			writer := multipart.NewWriter(&body)
+			require.NoError(t, writer.WriteField("model", gemini3ProImageModel))
+			require.NoError(t, writer.WriteField("prompt", "combine the references"))
+			for i := 0; i < count; i++ {
+				part, err := writer.CreateFormFile("image", fmt.Sprintf("reference-%d.png", i))
+				require.NoError(t, err)
+				_, err = part.Write([]byte{0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a, byte(i)})
+				require.NoError(t, err)
+			}
+			require.NoError(t, writer.Close())
+			_, nativeBody, err := buildGeminiStudioImageRequest("/v1/images/edits", writer.FormDataContentType(), body.Bytes())
+			if count > 14 {
+				require.ErrorContains(t, err, "maximum of 14 source images")
+				require.Nil(t, nativeBody)
+				return
+			}
+			require.NoError(t, err)
+			var request geminiStudioRequest
+			require.NoError(t, json.Unmarshal(nativeBody, &request))
+			require.Len(t, request.Contents[0].Parts, count+1)
+			for i := 0; i < count; i++ {
+				inline := request.Contents[0].Parts[i].InlineData
+				require.NotNil(t, inline)
+				require.Equal(t, "image/png", inline.MimeType)
+				data, err := base64.StdEncoding.DecodeString(inline.Data)
+				require.NoError(t, err)
+				require.Equal(t, byte(i), data[len(data)-1], "reference order must be preserved")
+			}
+			require.Equal(t, "combine the references", request.Contents[0].Parts[count].Text)
+		})
+	}
+}
+
+func TestBuildGeminiStudioImageRequestEditValidatesEveryReference(t *testing.T) {
+	for _, invalidData := range [][]byte{nil, []byte("not an image")} {
+		var body bytes.Buffer
+		writer := multipart.NewWriter(&body)
+		require.NoError(t, writer.WriteField("model", gemini3ProImageModel))
+		require.NoError(t, writer.WriteField("prompt", "edit both"))
+		for i, data := range [][]byte{{0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a}, invalidData} {
+			part, err := writer.CreateFormFile("image", fmt.Sprintf("source-%d.png", i))
+			require.NoError(t, err)
+			_, err = part.Write(data)
+			require.NoError(t, err)
+		}
+		require.NoError(t, writer.Close())
+		_, nativeBody, err := buildGeminiStudioImageRequest("/v1/images/edits", writer.FormDataContentType(), body.Bytes())
+		require.Error(t, err, "an invalid later reference must not be ignored")
+		require.Nil(t, nativeBody)
+	}
 }
 
 func TestNormalizeGeminiStudioImageResponse(t *testing.T) {

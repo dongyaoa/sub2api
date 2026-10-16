@@ -1278,13 +1278,52 @@ func TestPrepareGrokImageEditNormalizesOfficialImageObjects(t *testing.T) {
 	}
 }
 
-func TestPrepareGrokImageEditRejectsMoreThanThreeSources(t *testing.T) {
-	body := []byte(`{"images":["https://example.com/1.png","https://example.com/2.png","https://example.com/3.png","https://example.com/4.png"]}`)
-
-	out, _, err := prepareGrokMediaForwardBody(GrokMediaEndpointImagesEdits, body, "application/json")
-	require.Error(t, err)
-	require.Nil(t, out)
-	require.Contains(t, err.Error(), "maximum of 3 source images")
+func TestPrepareGrokImageEditReferenceLimit(t *testing.T) {
+	for _, count := range []int{10, 11} {
+		for _, multipartBody := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%d images multipart=%t", count, multipartBody), func(t *testing.T) {
+				urls := make([]string, count)
+				for i := range urls {
+					urls[i] = fmt.Sprintf("https://example.com/%d.png", i)
+				}
+				body, err := json.Marshal(map[string]any{"images": urls})
+				require.NoError(t, err)
+				contentType := "application/json"
+				if multipartBody {
+					var buffer bytes.Buffer
+					writer := multipart.NewWriter(&buffer)
+					for i := 0; i < count; i++ {
+						header := make(textproto.MIMEHeader)
+						header.Set("Content-Disposition", fmt.Sprintf(`form-data; name="image"; filename="reference-%d.png"`, i))
+						header.Set("Content-Type", "image/png")
+						part, err := writer.CreatePart(header)
+						require.NoError(t, err)
+						_, err = part.Write([]byte{0x89, 'P', 'N', 'G', 0x0d, 0x0a, 0x1a, 0x0a, byte(i)})
+						require.NoError(t, err)
+					}
+					require.NoError(t, writer.Close())
+					body, contentType = buffer.Bytes(), writer.FormDataContentType()
+				}
+				out, _, err := prepareGrokMediaForwardBody(GrokMediaEndpointImagesEdits, body, contentType)
+				if count > 10 {
+					require.ErrorContains(t, err, "maximum of 10 source images")
+					require.Nil(t, out)
+					return
+				}
+				require.NoError(t, err)
+				images := gjson.GetBytes(out, "images").Array()
+				require.Len(t, images, 10)
+				for i, image := range images {
+					require.Equal(t, "image_url", image.Get("type").String())
+					if !multipartBody {
+						require.Equal(t, urls[i], image.Get("url").String())
+					} else {
+						require.Contains(t, image.Get("url").String(), "data:image/png;base64,")
+					}
+				}
+			})
+		}
+	}
 }
 
 func TestNormalizeGrokMediaModelForEndpoint(t *testing.T) {

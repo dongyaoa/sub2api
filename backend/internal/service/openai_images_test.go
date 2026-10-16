@@ -74,10 +74,12 @@ func TestOpenAIGatewayServiceParseOpenAIImagesRequest_MultipartEdit(t *testing.T
 	require.NoError(t, writer.WriteField("model", "gpt-image-2"))
 	require.NoError(t, writer.WriteField("prompt", "replace background"))
 	require.NoError(t, writer.WriteField("size", "1536x1024"))
-	part, err := writer.CreateFormFile("image", "source.png")
-	require.NoError(t, err)
-	_, err = part.Write([]byte("fake-image-bytes"))
-	require.NoError(t, err)
+	for i := 0; i < 10; i++ {
+		part, err := writer.CreateFormFile("image", fmt.Sprintf("source-%d.png", i))
+		require.NoError(t, err)
+		_, err = part.Write([]byte(fmt.Sprintf("fake-image-bytes-%d", i)))
+		require.NoError(t, err)
+	}
 	require.NoError(t, writer.Close())
 
 	req := httptest.NewRequest(http.MethodPost, "/v1/images/edits", bytes.NewReader(body.Bytes()))
@@ -96,7 +98,11 @@ func TestOpenAIGatewayServiceParseOpenAIImagesRequest_MultipartEdit(t *testing.T
 	require.Equal(t, "replace background", parsed.Prompt)
 	require.Equal(t, "1536x1024", parsed.Size)
 	require.Equal(t, "2K", parsed.SizeTier)
-	require.Len(t, parsed.Uploads, 1)
+	require.Len(t, parsed.Uploads, 10)
+	for i, upload := range parsed.Uploads {
+		require.Equal(t, fmt.Sprintf("source-%d.png", i), upload.FileName)
+		require.Equal(t, []byte(fmt.Sprintf("fake-image-bytes-%d", i)), upload.Data)
+	}
 	require.Equal(t, OpenAIImagesCapabilityNative, parsed.RequiredCapability)
 }
 

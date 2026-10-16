@@ -1,6 +1,6 @@
 <template>
   <div class="min-w-0">
-    <div class="mb-2 flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-[10px] text-gray-400 dark:text-dark-400">
+    <div class="mb-1.5 flex flex-wrap items-center justify-between gap-x-2 gap-y-1 text-[10px] text-gray-400 dark:text-dark-400">
       <span>{{ t('upstreamCenter.history.recent') }}</span>
       <span class="tabular-nums" :title="dateTime(lastChecked)" data-testid="upstream-last-updated">{{ updatedLabel }}</span>
     </div>
@@ -21,7 +21,7 @@
         <span v-else class="history-bar history-bar--empty" data-status="unknown" aria-hidden="true"></span>
       </template>
     </div>
-    <div v-if="legend" class="mt-2 flex flex-wrap justify-end gap-3 text-[10px] text-gray-500 dark:text-dark-400">
+    <div v-if="legend" class="mt-1.5 flex flex-wrap justify-end gap-3 text-[10px] text-gray-500 dark:text-dark-400">
       <span v-for="state in ['operational', 'degraded', 'error']" :key="state" class="inline-flex items-center gap-1.5"><i class="h-2.5 w-1 rounded-full" :class="colors[state]"></i>{{ t(`upstreamCenter.status.${state}`) }}</span>
     </div>
   </div>
@@ -56,8 +56,8 @@ function copyDetails(record: UpstreamHistoryRecord) {
 }
 </script>
 <style scoped>
-.history-strip { display: grid; grid-template-columns: repeat(60, minmax(0, 1fr)); gap: clamp(2px, 0.2vw, 3px); align-items: center; width: 100%; height: 24px; }
-.history-bar { display: block; width: 100%; min-width: 0; height: 22px; border-radius: 3px; }
+.history-strip { display: grid; grid-template-columns: repeat(45, minmax(0, 1fr)); gap: clamp(2px, 0.2vw, 3px); align-items: center; width: 100%; height: 22px; }
+.history-bar { display: block; width: 100%; min-width: 0; height: 20px; border-radius: 3px; }
 .history-bar--empty { background: linear-gradient(180deg, #e8eaf0, #e3e6ed); }
 .history-bar--success { background: linear-gradient(180deg, #27d96c, #19c55d); }
 .history-bar--degraded { background: linear-gradient(180deg, #fbc94c, #f2b82b); }

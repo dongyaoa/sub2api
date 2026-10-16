@@ -11,10 +11,10 @@ beforeEach(() => { vi.useFakeTimers(); vi.setSystemTime(new Date('2026-09-24T00:
 afterEach(() => { vi.useRealTimers(); document.body.innerHTML = '' })
 
 describe('upstream check history strip', () => {
-  it('pads 60 compact bars on the left and exposes copyable error details using HelpTooltip', async () => {
+  it('pads 45 compact bars on the left and exposes copyable error details using HelpTooltip', async () => {
     const wrapper = mount(UpstreamHistoryBar, { props: { records: [record] }, global: { stubs: { Icon: true } } })
-    expect(wrapper.findAll('[data-status]')).toHaveLength(60)
-    expect(wrapper.findAll('[data-status="unknown"]')).toHaveLength(59)
+    expect(wrapper.findAll('[data-status]')).toHaveLength(45)
+    expect(wrapper.findAll('[data-status="unknown"]')).toHaveLength(44)
     expect(document.body.querySelector('[role="tooltip"]')).toBeNull()
     const bar = wrapper.get('[data-status="error"]')
     expect(bar.classes()).toContain('history-bar--failure')

@@ -110,7 +110,7 @@ func TestAsyncImageHandlerSubmitAndPoll(t *testing.T) {
 			ID:      9,
 			UserID:  7,
 			GroupID: &groupID,
-			Group:   &service.Group{ID: groupID, Platform: service.PlatformOpenAI, AllowImageGeneration: true},
+			Group:   &service.Group{ID: groupID, Name: "Original image group", Platform: service.PlatformOpenAI, AllowImageGeneration: true},
 		})
 		c.Next()
 	})
@@ -118,7 +118,7 @@ func TestAsyncImageHandlerSubmitAndPoll(t *testing.T) {
 	router.GET("/v1/images/tasks/:task_id", h.Get)
 
 	requestCtx, cancelRequest := context.WithCancel(context.Background())
-	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations/async", strings.NewReader(`{"model":"gpt-image-1","prompt":"cat"}`)).WithContext(requestCtx)
+	req := httptest.NewRequest(http.MethodPost, "/v1/images/generations/async", strings.NewReader(`{"model":"gpt-image-1","prompt":"cat","group_name":"Spoofed group","group_id":999}`)).WithContext(requestCtx)
 	req.Header.Set("Content-Type", "application/json")
 	w := httptest.NewRecorder()
 	router.ServeHTTP(w, req)
@@ -152,6 +152,10 @@ func TestAsyncImageHandlerSubmitAndPoll(t *testing.T) {
 	require.Equal(t, "no-store", pollWriter.Header().Get("Cache-Control"))
 	require.Empty(t, pollWriter.Header().Get("Retry-After"))
 	require.Contains(t, pollWriter.Body.String(), "https://example.test/image.png")
+	var result service.ImageTask
+	require.NoError(t, json.Unmarshal(pollWriter.Body.Bytes(), &result))
+	require.Equal(t, int64(3), result.Metadata.GroupID)
+	require.Equal(t, "Original image group", result.Metadata.GroupName)
 }
 
 func TestAsyncImageHandlerSubmitMultipleImagesFansOutAndMerges(t *testing.T) {

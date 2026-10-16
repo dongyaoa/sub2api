@@ -61,7 +61,7 @@ func TestUpstreamStatisticsKeepModelsSeparateAndUnknownUnsampled(t *testing.T) {
 	old, newer := from.Add(time.Hour), from.Add(2*time.Hour)
 	target := &service.UpstreamTarget{ID: 9, Models: []string{"claude", "gpt", "empty"}}
 	mock.ExpectQuery(`SELECT target_id,model, COUNT\(\*\)`).WithArgs(pq.Array([]int64{9}), from).WillReturnRows(sqlmock.NewRows([]string{"target_id", "model", "count", "success", "avg", "p95", "samples7d", "success7d"}).AddRow(9, "claude", 2, 1, 150.0, 150.0, 4, 3).AddRow(9, "gpt", 1, 1, 200.0, 200.0, 1, 1))
-	mock.ExpectQuery(`SELECT h.id,h.target_id.*LIMIT 60`).WithArgs(pq.Array([]int64{9})).WillReturnRows(sqlmock.NewRows([]string{"id", "target_id", "model", "status", "latency_ms", "ping_latency_ms", "http_status", "message", "checked_at", "cost", "cost_source"}).AddRow(1, 9, "claude", "operational", 150, nil, 200, "", old, nil, "unknown").AddRow(2, 9, "gpt", "operational", 200, nil, 200, "", old, nil, "unknown").AddRow(3, 9, "claude", "error", 300, nil, 500, "HTTP 500", newer, nil, "unknown"))
+	mock.ExpectQuery(`SELECT h.id,h.target_id.*LIMIT 45`).WithArgs(pq.Array([]int64{9})).WillReturnRows(sqlmock.NewRows([]string{"id", "target_id", "model", "status", "latency_ms", "ping_latency_ms", "http_status", "message", "checked_at", "cost", "cost_source"}).AddRow(1, 9, "claude", "operational", 150, nil, 200, "", old, nil, "unknown").AddRow(2, 9, "gpt", "operational", 200, nil, 200, "", old, nil, "unknown").AddRow(3, 9, "claude", "error", 300, nil, 500, "HTTP 500", newer, nil, "unknown"))
 	require.NoError(t, repo.PopulateStatistics(context.Background(), []*service.UpstreamTarget{target}, from))
 	require.Len(t, target.Statistics, 3)
 	claude, gpt, empty := target.Statistics[0], target.Statistics[1], target.Statistics[2]

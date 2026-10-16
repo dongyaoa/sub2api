@@ -32,6 +32,8 @@ var (
 // ImageTaskMetadata contains the small, display-safe subset of the original
 // request needed to rebuild image-studio history without storing source images.
 type ImageTaskMetadata struct {
+	GroupID     int64  `json:"group_id,omitempty"`
+	GroupName   string `json:"group_name,omitempty"`
 	Operation   string `json:"operation,omitempty"`
 	Model       string `json:"model,omitempty"`
 	Prompt      string `json:"prompt,omitempty"`

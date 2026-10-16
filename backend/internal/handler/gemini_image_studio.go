@@ -22,6 +22,7 @@ const (
 	gemini3ProImageLegacyModel = "gemini-3-pro-image"
 	gemini3ProImageModel       = "gemini-3-pro-image-preview"
 	maxGeminiSourceImage       = 20 << 20
+	maxGeminiSourceImages      = 14
 )
 
 var geminiStudioAspectRatios = map[string]struct{}{
@@ -86,13 +87,15 @@ func buildGeminiStudioImageRequest(path, contentType string, body []byte) (strin
 		return "", nil, fmt.Errorf("unsupported aspect_ratio %q", aspectRatio)
 	}
 
-	parts := make([]geminiStudioPart, 0, 2)
+	parts := make([]geminiStudioPart, 0, maxGeminiSourceImages+1)
 	if strings.Contains(path, "/edits") {
-		inline, err := geminiStudioSourceImage(contentType, body)
+		images, err := geminiStudioSourceImages(contentType, body)
 		if err != nil {
 			return "", nil, err
 		}
-		parts = append(parts, geminiStudioPart{InlineData: inline})
+		for _, inline := range images {
+			parts = append(parts, geminiStudioPart{InlineData: inline})
+		}
 	}
 	parts = append(parts, geminiStudioPart{Text: strings.TrimSpace(metadata.Prompt)})
 
@@ -107,7 +110,7 @@ func buildGeminiStudioImageRequest(path, contentType string, body []byte) (strin
 	return model, nativeBody, nil
 }
 
-func geminiStudioSourceImage(contentType string, body []byte) (*geminiStudioInlineData, error) {
+func geminiStudioSourceImages(contentType string, body []byte) ([]*geminiStudioInlineData, error) {
 	mediaType, params, err := mime.ParseMediaType(strings.TrimSpace(contentType))
 	if err != nil || !strings.EqualFold(mediaType, "multipart/form-data") {
 		return nil, errors.New("gemini image editing requires multipart/form-data")
@@ -117,6 +120,7 @@ func geminiStudioSourceImage(contentType string, body []byte) (*geminiStudioInli
 		return nil, errors.New("multipart boundary is required")
 	}
 	reader := multipart.NewReader(bytes.NewReader(body), boundary)
+	images := make([]*geminiStudioInlineData, 0, maxGeminiSourceImages)
 	for {
 		part, partErr := reader.NextPart()
 		if errors.Is(partErr, io.EOF) {
@@ -128,6 +132,10 @@ func geminiStudioSourceImage(contentType string, body []byte) (*geminiStudioInli
 		if part.FormName() != "image" || part.FileName() == "" {
 			_ = part.Close()
 			continue
+		}
+		if len(images) >= maxGeminiSourceImages {
+			_ = part.Close()
+			return nil, fmt.Errorf("a maximum of %d source images is supported for image edits", maxGeminiSourceImages)
 		}
 		data, readErr := io.ReadAll(io.LimitReader(part, maxGeminiSourceImage+1))
 		mimeType := strings.ToLower(strings.TrimSpace(part.Header.Get("Content-Type")))
@@ -149,9 +157,12 @@ func geminiStudioSourceImage(contentType string, body []byte) (*geminiStudioInli
 		default:
 			return nil, errors.New("source image must be PNG, JPEG, or WebP")
 		}
-		return &geminiStudioInlineData{MimeType: mimeType, Data: base64.StdEncoding.EncodeToString(data)}, nil
+		images = append(images, &geminiStudioInlineData{MimeType: mimeType, Data: base64.StdEncoding.EncodeToString(data)})
 	}
-	return nil, errors.New("source image is required")
+	if len(images) == 0 {
+		return nil, errors.New("source image is required")
+	}
+	return images, nil
 }
 
 func (h *AsyncImageHandler) executeGeminiStudioImage(c *gin.Context) {

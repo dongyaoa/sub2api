@@ -52,6 +52,8 @@ export interface ImageGenerationResult {
 export type ImageTaskStatus = 'processing' | 'completed' | 'failed'
 
 export interface ImageTaskMetadata {
+  group_id?: number
+  group_name?: string
   operation?: StudioOperation
   model?: string
   prompt?: string

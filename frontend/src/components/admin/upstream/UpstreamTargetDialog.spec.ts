@@ -11,15 +11,15 @@ vi.mock('@/api/admin/upstreamCenter', () => ({ upstreamCenterAPI: { createTarget
 vi.mock('@/api/admin/accounts', () => ({ list: mocks.accounts, getById: mocks.account }))
 vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
 const dialog = defineComponent({ props: ['show'], template: '<div v-if="show"><slot /><slot name="footer" /></div>' })
-const select = defineComponent({ props: ['modelValue', 'options'], emits: ['update:modelValue'], template: '<select class="test-accounts" :value="modelValue" @change="$emit(\'update:modelValue\', $event.target.value)"><option value="">Select</option><option v-for="item in options" :key="item.value" :value="item.value">{{ item.label }}</option></select>' })
+const select = defineComponent({ props: ['modelValue', 'options'], emits: ['update:modelValue'], template: '<select :class="{ \'test-accounts\': $attrs.id !== \'monitor-source-group\' }" :value="modelValue" @change="$emit(\'update:modelValue\', $event.target.value)"><option value="">Select</option><option v-for="item in options" :key="item.value" :value="item.value">{{ item.label }}</option></select>' })
 const tags = defineComponent({ props: ['models'], emits: ['update:models'], template: '<button class="test-model-add" type="button" @click="$emit(\'update:models\', [\'gpt-test\'])">Add model</button>' })
 const supplier = { id: 2, name: 'Supplier', website: 'https://example.com', targets: [] } as unknown as UpstreamSupplier
 function target(): UpstreamTarget {
   return { id: 9, supplier_id: 2, name: 'Existing group', provider: 'openai', api_mode: 'responses', endpoint: 'https://example.com', api_key_masked: 'sk-***', models: ['gpt-test'], enabled: true, interval_seconds: 300, timeout_seconds: 45, degraded_threshold_ms: 6000, account_ids: [7], wallet_ref: 'shared', notes: '', statistics: [] } as unknown as UpstreamTarget
 }
 let wrapper: VueWrapper | undefined
-function render(item: UpstreamTarget | null = null, realModelInput = false, parentSupplier: UpstreamSupplier | null = supplier, realSelect = false) {
-  wrapper = mount(UpstreamTargetDialog, { attachTo: document.body, props: { show: true, target: item, supplier: parentSupplier }, global: { stubs: { BaseDialog: dialog, Select: realSelect ? false : select, Toggle: false, Icon: true, ModelTagInput: realModelInput ? false : tags, transition: true } } })
+function render(item: UpstreamTarget | null = null, realModelInput = false, parentSupplier: UpstreamSupplier | null = supplier, realSelect = false, suppliers: UpstreamSupplier[] = []) {
+  wrapper = mount(UpstreamTargetDialog, { attachTo: document.body, props: { show: true, target: item, supplier: parentSupplier, suppliers }, global: { stubs: { BaseDialog: dialog, Select: realSelect ? false : select, Toggle: false, Icon: true, ModelTagInput: realModelInput ? false : tags, transition: true } } })
   return wrapper
 }
 async function chooseOption(view: VueWrapper, selector: string, text: string) {
@@ -34,6 +34,98 @@ async function chooseOption(view: VueWrapper, selector: string, text: string) {
 }
 beforeEach(() => { vi.resetAllMocks(); mocks.accounts.mockResolvedValue({ items: [{ id: 7, name: 'Imported account', platform: 'openai' }] }); mocks.supplierAccounts.mockResolvedValue({ items: [{ id: 7, name: 'Imported account', platform: 'openai', endpoint: 'https://example.com' }], total: 1, page: 1, page_size: 100 }); mocks.account.mockResolvedValue({ id: 7, name: 'Imported account', platform: 'openai', credentials: { base_url: 'https://example.com' } }); mocks.models.mockResolvedValue(['gpt-test']); mocks.create.mockResolvedValue({}); mocks.update.mockResolvedValue({}) })
 afterEach(() => { wrapper?.unmount(); wrapper = undefined; document.body.innerHTML = ''; vi.useRealTimers() })
+
+describe('monitor sources from existing upstream groups', () => {
+  const sources = () => [{ ...supplier, newapi_access_token_configured: true, targets: [target()] }]
+  it('fills the selected group without copying account bindings or requiring console credentials', async () => {
+    const view = render(null, true, null, false, sources())
+    await flushPromises()
+    view.getComponent(ModelTagInput).vm.$emit('update:models', ['custom-monitor-model'])
+    await view.get('#target-interval').setValue('90')
+    await view.get('#monitor-source-group').setValue('9')
+    expect((view.get('#target-endpoint').element as HTMLInputElement).value).toBe('https://example.com')
+    expect((view.get('#target-api-mode').element as HTMLSelectElement).value).toBe('responses')
+    expect(view.get('#target-key').attributes('required')).toBeUndefined()
+    expect(view.find('[data-testid="newapi-authorization"]').exists()).toBe(false)
+    expect(view.get('[data-testid="newapi-group-inheritance"]').text()).toBe('upstreamCenter.groupSource.authorizationHint')
+    await view.findAll('button').find(button => button.text() === 'upstreamCenter.form.fetchModels')!.trigger('click')
+    await flushPromises()
+    expect(mocks.models).toHaveBeenCalledWith(expect.objectContaining({ source_target_id: 9, target_id: undefined, account_id: undefined, api_key: undefined, endpoint: 'https://example.com' }))
+    await view.get('form').trigger('submit'); await flushPromises()
+    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ name: 'Existing group', supplier_id: null, account_ids: [], source_target_id: 9, source_account_id: undefined, newapi_user_id: undefined, newapi_access_token: undefined, api_key: undefined, models: ['custom-monitor-model'], interval_seconds: 90 }))
+  })
+  it('retains an existing source on name edits, and explicitly clears it when removed', async () => {
+    const monitor = { ...target(), id: 30, supplier_id: null, account_ids: [], source_target_id: 9, newapi_access_token_configured: true }
+    const view = render(monitor, false, null, false, sources())
+    await flushPromises()
+    expect((view.get('#monitor-source-group').element as HTMLSelectElement).value).toBe('9')
+    await view.get('#target-name').setValue('Renamed monitor')
+    await view.get('form').trigger('submit'); await flushPromises()
+    expect(mocks.update).toHaveBeenLastCalledWith(30, expect.objectContaining({ source_target_id: 9, newapi_user_id: undefined }))
+    await view.get('[data-testid="clear-monitor-group"]').trigger('click')
+    expect(view.find('[data-testid="newapi-group-inheritance"]').exists()).toBe(false)
+    await view.get('form').trigger('submit'); await flushPromises()
+    expect(mocks.update).toHaveBeenLastCalledWith(30, expect.objectContaining({ source_target_id: 0, newapi_user_id: 0 }))
+  })
+  it('requires a new independent token after detaching inherited authorization, even for the same user', async () => {
+    const monitor = { ...target(), id: 30, supplier_id: null, account_ids: [], source_target_id: 9, newapi_user_id: 42, newapi_access_token_configured: true, newapi_credentials_inherited: true }
+    const view = render(monitor, false, null, false, sources())
+    await flushPromises()
+    await view.get('[data-testid="clear-monitor-group"]').trigger('click')
+    await view.get('#target-newapi-enabled').trigger('click')
+    await view.get('#target-newapi-user').setValue('42')
+    expect(view.get('#target-newapi-token').attributes('required')).toBeDefined()
+    await view.get('form').trigger('submit'); await flushPromises()
+    expect(mocks.update).not.toHaveBeenCalled()
+    await view.get('#target-newapi-token').setValue('independent-console-token')
+    await view.get('form').trigger('submit'); await flushPromises()
+    expect(mocks.update).toHaveBeenCalledWith(30, expect.objectContaining({ source_target_id: 0, newapi_user_id: 42, newapi_access_token: 'independent-console-token' }))
+  })
+  it.each(['endpoint', 'provider', 'key'])('cancels group authorization reuse after changing %s', async field => {
+    const view = render(null, false, null, false, sources())
+    await flushPromises()
+    await view.get('#monitor-source-group').setValue('9')
+    if (field === 'endpoint') await view.get('#target-endpoint').setValue('https://other.example')
+    if (field === 'provider') await view.get('#target-provider').setValue('anthropic')
+    await view.get('#target-key').setValue('new-manual-key')
+    expect(view.find('[data-testid="newapi-group-inheritance"]').exists()).toBe(false)
+    await view.get('form').trigger('submit'); await flushPromises()
+    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ source_target_id: undefined, api_key: 'new-manual-key', newapi_access_token: undefined }))
+  })
+  it('clears unsaved console authorization when selecting a group', async () => {
+    const view = render(null, false, null, false, sources())
+    await flushPromises()
+    await view.get('#target-newapi-enabled').trigger('click')
+    await view.get('#target-newapi-user').setValue('42')
+    await view.get('#target-newapi-token').setValue('unsaved-console-token')
+    await view.get('#monitor-source-group').setValue('9')
+    await view.get('[data-testid="clear-monitor-group"]').trigger('click')
+    await view.get('#target-newapi-enabled').trigger('click')
+    expect((view.get('#target-newapi-token').element as HTMLInputElement).value).toBe('')
+    expect((view.get('#target-newapi-user').element as HTMLInputElement).value).toBe('')
+  })
+  it('does not let an earlier account import overwrite a newly chosen group', async () => {
+    let resolveAccount: (value: unknown) => void = () => undefined
+    mocks.account.mockReturnValue(new Promise(resolve => { resolveAccount = resolve }))
+    const view = render(null, false, null, false, sources())
+    await flushPromises()
+    await view.get('.test-accounts').setValue('7')
+    await view.findAll('button').find(button => button.text() === 'upstreamCenter.form.importAccount')!.trigger('click')
+    await view.get('#monitor-source-group').setValue('9')
+    resolveAccount({ id: 7, name: 'Old request', platform: 'anthropic', credentials: { base_url: 'https://old.example' } })
+    await flushPromises()
+    expect((view.get('#target-endpoint').element as HTMLInputElement).value).toBe('https://example.com')
+    await view.get('form').trigger('submit'); await flushPromises()
+    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ source_target_id: 9, source_account_id: undefined, provider: 'openai' }))
+  })
+  it('preserves an unavailable saved group until it is explicitly removed', async () => {
+    const view = render({ ...target(), supplier_id: null, account_ids: [], source_target_id: 99 }, false, null)
+    await flushPromises()
+    expect((view.get('#monitor-source-group').element as HTMLSelectElement).value).toBe('99')
+    await view.get('form').trigger('submit'); await flushPromises()
+    expect(mocks.update).toHaveBeenCalledWith(9, expect.objectContaining({ source_target_id: 99 }))
+  })
+})
 
 describe('upstream site account selection', () => {
   it('requests only this supplier’s accounts even before its first key group exists', async () => {
@@ -294,14 +386,14 @@ describe('upstream target credentials and form lifecycle', () => {
   it.each(['endpoint', 'provider', 'key'])('drops the imported credential reference when the %s is manually changed', async field => {
     const view = render(null, true, null, field === 'provider')
     await flushPromises()
-    if (field === 'provider') await chooseOption(view, '.select-trigger', 'Imported account')
+    if (field === 'provider') await chooseOption(view, '.select-trigger:not(#monitor-source-group)', 'Imported account')
     else await view.get('.test-accounts').setValue('7')
     await view.findAll('button').find(button => button.text() === 'upstreamCenter.form.importAccount')!.trigger('click')
     await flushPromises()
     if (field === 'endpoint') await view.get('#target-endpoint').setValue('https://manual.example')
     if (field === 'provider') {
-      expect(view.findAllComponents(Select).filter(item => !item.props('remote')).every(item => item.props('searchable') === false)).toBe(true)
-      expect(view.findAllComponents(Select)[0].props('remote')).toBe(true)
+      expect(view.findAllComponents(Select).filter(item => ['target-provider', 'target-api-mode'].includes(item.props('id'))).every(item => item.props('searchable') === false)).toBe(true)
+      expect(view.findAllComponents(Select).some(item => item.props('remote'))).toBe(true)
       await chooseOption(view, '#target-provider', 'upstreamCenter.form.providerAnthropic')
       expect(view.find('#target-api-mode').exists()).toBe(false)
       expect(view.getComponent(ModelTagInput).props('platform')).toBe('anthropic')

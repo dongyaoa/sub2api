@@ -954,17 +954,9 @@ const handleEvent = (event: {
 }) => {
   switch (event.type) {
     case 'proxy_info':
-      if (event.route_type === 'managed' && event.proxy_name) {
-        addLine(
-          t('admin.accounts.testProxySelected', {
-            name: event.proxy_name,
-            id: event.proxy_id ?? ''
-          }),
-          'text-cyan-300'
-        )
-      } else {
-        addLine(t(`admin.accounts.testProxyRoute.${event.route_type || 'unknown'}`), 'text-cyan-300')
-      }
+      // Proxy routing is an internal detail of the account test. Keep consuming
+      // the event for stream compatibility, but do not expose direct/proxy
+      // routing in the terminal output or copied test log.
       break
 
     case 'test_start':

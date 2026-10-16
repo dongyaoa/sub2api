@@ -152,9 +152,10 @@ describe('image studio capabilities', () => {
     expect(supportsImageEditing('grok')).toBe(true)
     expect(supportsImageEditing('gemini')).toBe(true)
     expect(getMaxImageQuantity('gemini')).toBe(1)
-    expect(getMaxSourceImageQuantity('openai')).toBe(4)
-    expect(getMaxSourceImageQuantity('grok')).toBe(4)
-    expect(getMaxSourceImageQuantity('gemini')).toBe(1)
+    expect(getMaxSourceImageQuantity()).toBe(10)
+    expect(getMaxSourceImageQuantity('openai')).toBe(10)
+    expect(getMaxSourceImageQuantity('grok')).toBe(10)
+    expect(getMaxSourceImageQuantity('gemini')).toBe(14)
     expect(getPreferredImageModel('gemini')).toBe('gemini-3.1-flash-image')
   })
 

@@ -177,7 +177,7 @@ func (s *UpstreamCenterService) ArchiveTarget(ctx context.Context, id int64) err
 
 func (s *UpstreamCenterService) SaveTarget(ctx context.Context, id int64, in UpstreamTargetInput) (*UpstreamTarget, error) {
 	t := &UpstreamTarget{Provider: MonitorProviderOpenAI, APIMode: MonitorAPIModeChatCompletions, Enabled: true, IntervalSeconds: 30, TimeoutSeconds: 45, DegradedThresholdMs: 6000, WalletRef: "default", Models: []string{"gpt-5.6-sol"}, AccountIDs: []int64{}}
-	var oldSupplier *int64
+	var oldSupplier, oldSourceTarget *int64
 	oldProvider, oldEndpoint, oldEncrypted := "", "", ""
 	var oldNewAPIUserID int64
 	oldNewAPITokenEncrypted := ""
@@ -188,6 +188,7 @@ func (s *UpstreamCenterService) SaveTarget(ctx context.Context, id int64, in Ups
 			return nil, err
 		}
 		oldSupplier = t.SupplierID
+		oldSourceTarget = t.SourceTargetID
 		oldProvider = t.Provider
 		oldEndpoint = normalizeEndpoint(t.Endpoint)
 		oldEncrypted = t.APIKeyEncrypted
@@ -238,6 +239,9 @@ func (s *UpstreamCenterService) SaveTarget(ctx context.Context, id int64, in Ups
 	plain := ""
 	if in.APIKey != nil {
 		plain = strings.TrimSpace(*in.APIKey)
+	}
+	if err := s.applyMonitorSource(ctx, t, in, &plain, id > 0 && (normalizeEndpoint(t.Endpoint) != oldEndpoint || t.Provider != oldProvider)); err != nil {
+		return nil, err
 	}
 	if in.SourceAccountID != nil {
 		if t.SupplierID != nil || len(t.AccountIDs) > 0 || plain != "" {
@@ -317,12 +321,16 @@ func (s *UpstreamCenterService) SaveTarget(ctx context.Context, id int64, in Ups
 			return nil, err
 		}
 	}
-	if supplier != nil && supplier.NewAPICredentialsManaged {
+	if t.SourceTargetID != nil {
+		if err := s.inheritMonitorSourceAuthorization(ctx, t); err != nil {
+			return nil, err
+		}
+	} else if supplier != nil && supplier.NewAPICredentialsManaged {
 		inheritSupplierNewAPICredentials(t, supplier)
 	} else {
 		// A site's secret never follows a group moved outside its authorized scope.
 		if t.NewAPICredentialsInherited {
-			if in.NewAPIAccessToken != nil && strings.TrimSpace(*in.NewAPIAccessToken) != "" {
+			if oldSourceTarget == nil && in.NewAPIAccessToken != nil && strings.TrimSpace(*in.NewAPIAccessToken) != "" {
 				return nil, ErrUpstreamInvalid.WithMetadata(map[string]string{"field": "newapi_access_token", "detail": "save the group move first, then configure independent console authorization"})
 			}
 			t.NewAPIUserID, t.NewAPIAccessTokenEncrypted = 0, ""
@@ -604,6 +612,16 @@ func upstreamCheckMessage(r *CheckResult, key string) string {
 
 func (s *UpstreamCenterService) Models(ctx context.Context, in UpstreamModelsInput) ([]string, error) {
 	provider, endpoint, key := strings.TrimSpace(in.Provider), normalizeEndpoint(in.Endpoint), strings.TrimSpace(in.APIKey)
+	if in.SourceTargetID != nil {
+		if *in.SourceTargetID <= 0 || in.TargetID != nil || in.AccountID != nil || key != "" {
+			return nil, ErrUpstreamInvalid.WithMetadata(map[string]string{"field": "source_target_id", "detail": "choose one existing supplier group without another credential source"})
+		}
+		source := &UpstreamTarget{}
+		if err := s.applyMonitorSource(ctx, source, UpstreamTargetInput{SourceTargetID: in.SourceTargetID, Provider: &provider, Endpoint: &endpoint}, &key, false); err != nil {
+			return nil, err
+		}
+		provider, endpoint = source.Provider, source.Endpoint
+	}
 	if in.AccountID != nil {
 		if key != "" {
 			return nil, ErrUpstreamInvalid.WithMetadata(map[string]string{"field": "account_id", "detail": "choose either an account or an explicit API key"})

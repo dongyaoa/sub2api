@@ -109,6 +109,11 @@ func (h *AsyncImageHandler) Submit(c *gin.Context) {
 	}
 
 	metadata := parseAsyncImageTaskMetadata(c.Request.URL.Path, c.GetHeader("Content-Type"), body)
+	// Snapshot the authenticated group, never a client-provided group label.
+	if apiKey.Group != nil {
+		metadata.GroupID = apiKey.Group.ID
+		metadata.GroupName = apiKey.Group.Name
+	}
 	if metadata.Quantity > maxAsyncImageQuantity {
 		imageTaskJSONError(c, http.StatusBadRequest, "invalid_request_error", "n must be between 1 and 4 for asynchronous image tasks")
 		return

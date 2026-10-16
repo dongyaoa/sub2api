@@ -14,17 +14,17 @@ describe('upstream monitoring display invariants', () => {
   it('keeps missing samples neutral and displays the most recent records chronologically without mutating the API response', () => {
     const records = [record(2, '2026-09-23T10:05:00Z', 'degraded'), record(1, '2026-09-23T10:00:00Z', 'error')]
     const bars = recentHistory(records)
-    expect(bars).toHaveLength(60)
-    expect(bars.slice(0, 58).every(value => value === null)).toBe(true)
+    expect(bars).toHaveLength(45)
+    expect(bars.slice(0, 43).every(value => value === null)).toBe(true)
     expect(bars.slice(-2).map(value => value?.status)).toEqual(['error', 'degraded'])
     expect(records.map(value => value.id)).toEqual([2, 1])
     expect(recentHistory().every(value => value === null)).toBe(true)
   })
-  it('retains only the latest 60 records, including failures', () => {
+  it('retains only the latest 45 records, including failures', () => {
     const records = Array.from({ length: 65 }, (_, index) => record(index, new Date(Date.UTC(2026, 8, 23, 10, index)).toISOString(), index === 64 ? 'error' : 'operational'))
     const bars = recentHistory(records)
-    expect(bars[0]?.id).toBe(5)
-    expect(bars[59]?.status).toBe('error')
+    expect(bars[0]?.id).toBe(20)
+    expect(bars[44]?.status).toBe('error')
   })
   it('does not describe paused, never checked, or expired data as currently healthy', () => {
     vi.useFakeTimers(); vi.setSystemTime(new Date('2026-09-23T10:00:00Z'))

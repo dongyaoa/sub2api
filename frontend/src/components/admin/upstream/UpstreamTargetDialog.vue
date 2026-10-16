@@ -3,6 +3,12 @@
     <form id="upstream-target-form" class="space-y-5" @submit.prevent="save">
       <div v-if="supplier" class="flex items-center gap-2 rounded-xl bg-primary-50 px-4 py-3 text-sm text-primary-700 dark:bg-primary-500/10 dark:text-primary-300"><Icon name="server" size="sm" />{{ supplier.name }}</div>
       <div><label for="target-name" class="input-label">{{ t('upstreamCenter.form.name') }}</label><input id="target-name" v-model="form.name" required maxlength="100" class="input" :placeholder="t('upstreamCenter.form.targetNamePlaceholder')" /></div>
+      <section v-if="!supplier" class="rounded-xl border border-primary-100 bg-primary-50/30 p-4 dark:border-primary-900/60 dark:bg-primary-500/5" data-testid="monitor-group-source">
+        <label for="monitor-source-group" class="input-label">{{ t('upstreamCenter.groupSource.title') }}</label>
+        <Select id="monitor-source-group" :model-value="sourceTarget ? String(sourceTarget.id) : ''" :options="sourceGroupOptions" :placeholder="t('upstreamCenter.groupSource.placeholder')" :empty-text="t('upstreamCenter.groupSource.empty')" @update:model-value="selectSourceGroup" />
+        <p class="mt-2 text-xs leading-5 text-gray-500 dark:text-dark-400">{{ t('upstreamCenter.groupSource.hint') }}</p>
+        <button v-if="sourceTarget" type="button" class="mt-2 text-xs font-medium text-primary-600 dark:text-primary-400" data-testid="clear-monitor-group" @click="clearSourceTarget">{{ t('upstreamCenter.groupSource.clear') }}</button>
+      </section>
       <section class="rounded-xl border border-gray-200 p-4 dark:border-dark-700">
         <h3 class="text-sm font-medium text-gray-800 dark:text-gray-200">{{ t(supplier ? 'upstreamCenter.form.bindAccounts' : 'upstreamCenter.import.title') }}<span v-if="supplier && form.account_ids.length" class="ml-2 text-primary-600 dark:text-primary-400">{{ form.account_ids.length }}</span></h3>
         <p class="mb-3 mt-2 text-xs leading-5 text-gray-500 dark:text-dark-400">{{ t(supplier ? 'upstreamCenter.form.bindHint' : 'upstreamCenter.form.importCredentialHint') }}</p>
@@ -19,8 +25,9 @@
         <div v-if="form.provider === 'openai'"><label for="target-api-mode" class="input-label">{{ t('upstreamCenter.form.apiMode') }}</label><Select id="target-api-mode" v-model="form.api_mode" :options="apiModeOptions" :searchable="false" :aria-label="t('upstreamCenter.form.apiMode')" /></div>
       </div>
       <div><label for="target-endpoint" class="input-label">{{ t('upstreamCenter.form.endpoint') }}</label><input id="target-endpoint" v-model="form.endpoint" type="url" required class="input" :placeholder="t('upstreamCenter.form.websitePlaceholder')" /><p class="mt-1.5 text-xs text-gray-500 dark:text-dark-400">{{ t('upstreamCenter.form.endpointHint') }}</p></div>
-      <div><label for="target-key" class="input-label">{{ t('upstreamCenter.form.apiKey') }}</label><input id="target-key" v-model="form.api_key" type="password" autocomplete="new-password" class="input" :required="!canKeepSavedKey && !sourceAccount && !(supplier && form.account_ids.length)" :placeholder="t(sourceAccount ? 'upstreamCenter.form.importedKeyPlaceholder' : canKeepSavedKey ? 'upstreamCenter.form.keepKey' : 'upstreamCenter.form.apiKeyPlaceholder')" /><p v-if="target?.api_key_masked && !sourceAccount && canKeepSavedKey" class="mt-1.5 font-mono text-xs text-gray-400">{{ t('upstreamCenter.form.existingKey', { key: target.api_key_masked }) }}</p><p v-if="sourceAccount || (supplier && form.account_ids.length)" class="mt-1.5 text-xs text-primary-600 dark:text-primary-400">{{ t(target && !sourceAccount ? 'upstreamCenter.form.accountEditHint' : 'upstreamCenter.form.useAccountKeyHint') }}</p><p v-else-if="target && !canKeepSavedKey" class="mt-1.5 text-xs text-amber-600 dark:text-amber-400">{{ t('upstreamCenter.form.changedConnectionKeyHint') }}</p></div>
+      <div><label for="target-key" class="input-label">{{ t('upstreamCenter.form.apiKey') }}</label><input id="target-key" v-model="form.api_key" type="password" autocomplete="new-password" class="input" :required="!canKeepSavedKey && !sourceAccount && !sourceTarget && !(supplier && form.account_ids.length)" :placeholder="t(sourceTarget ? 'upstreamCenter.groupSource.keyPlaceholder' : sourceAccount ? 'upstreamCenter.form.importedKeyPlaceholder' : canKeepSavedKey ? 'upstreamCenter.form.keepKey' : 'upstreamCenter.form.apiKeyPlaceholder')" /><p v-if="target?.api_key_masked && !sourceAccount && !sourceTarget && canKeepSavedKey" class="mt-1.5 font-mono text-xs text-gray-400">{{ t('upstreamCenter.form.existingKey', { key: target.api_key_masked }) }}</p><p v-if="sourceAccount || sourceTarget || (supplier && form.account_ids.length)" class="mt-1.5 text-xs text-primary-600 dark:text-primary-400">{{ t(sourceTarget ? 'upstreamCenter.groupSource.keyHint' : target && !sourceAccount ? 'upstreamCenter.form.accountEditHint' : 'upstreamCenter.form.useAccountKeyHint') }}</p><p v-else-if="target && !canKeepSavedKey" class="mt-1.5 text-xs text-amber-600 dark:text-amber-400">{{ t('upstreamCenter.form.changedConnectionKeyHint') }}</p></div>
       <p v-if="supplier" class="rounded-xl bg-gray-50 p-3 text-xs leading-5 text-gray-500 dark:bg-dark-900/40 dark:text-dark-400" data-testid="newapi-site-inheritance">{{ t('upstreamCenter.newapi.inheritedHint') }}</p>
+      <p v-else-if="sourceTarget" class="rounded-xl bg-primary-50 p-3 text-xs leading-5 text-primary-700 dark:bg-primary-500/10 dark:text-primary-300" data-testid="newapi-group-inheritance">{{ t('upstreamCenter.groupSource.authorizationHint') }}</p>
       <section v-else class="rounded-xl border border-gray-200 bg-gray-50/60 p-4 dark:border-dark-700 dark:bg-dark-900/40" data-testid="newapi-authorization">
         <div class="flex items-center justify-between gap-4">
           <label for="target-newapi-enabled" class="flex flex-wrap items-center gap-2 text-sm font-medium text-gray-800 dark:text-gray-200"><span class="rounded-md border border-primary-100 bg-primary-50 px-1.5 py-0.5 text-[11px] font-semibold text-primary-700 dark:border-primary-800 dark:bg-primary-500/10 dark:text-primary-300">New API</span>{{ t('upstreamCenter.newapi.authorization') }}</label>
@@ -38,7 +45,7 @@
         </div>
       </section>
       <div>
-        <div class="mb-2 flex items-center justify-between gap-2"><label class="input-label mb-0">{{ t('upstreamCenter.form.models') }}</label><button type="button" class="text-xs font-medium text-primary-600 disabled:opacity-50 dark:text-primary-400" :disabled="modelsLoading || !form.endpoint || (!form.api_key && !canKeepSavedKey && !sourceAccount && !(supplier && form.account_ids.length))" @click="fetchModels">{{ t(modelsLoading ? 'upstreamCenter.form.fetching' : 'upstreamCenter.form.fetchModels') }}</button></div>
+        <div class="mb-2 flex items-center justify-between gap-2"><label class="input-label mb-0">{{ t('upstreamCenter.form.models') }}</label><button type="button" class="text-xs font-medium text-primary-600 disabled:opacity-50 dark:text-primary-400" :disabled="modelsLoading || !form.endpoint || (!form.api_key && !canKeepSavedKey && !sourceAccount && !sourceTarget && !(supplier && form.account_ids.length))" @click="fetchModels">{{ t(modelsLoading ? 'upstreamCenter.form.fetching' : 'upstreamCenter.form.fetchModels') }}</button></div>
         <ModelTagInput :models="form.models" :platform="form.provider" :placeholder="t('upstreamCenter.form.modelsPlaceholder')" @update:models="form.models = $event" />
         <p class="mt-1.5 text-xs text-gray-500 dark:text-dark-400">{{ t('upstreamCenter.form.modelsHint') }}</p>
         <p v-if="modelError" role="status" class="mt-2 text-xs text-amber-600 dark:text-amber-400">{{ modelError }}</p>
@@ -70,7 +77,7 @@ import { upstreamCenterAPI, type UpstreamSupplier, type UpstreamTarget, type Ups
 import * as accountsAPI from '@/api/admin/accounts'
 import type { AccountListItem } from '@/types'
 import { extractApiErrorMessage } from '@/utils/apiError'
-const props = defineProps<{ show: boolean; target: UpstreamTarget | null; supplier: UpstreamSupplier | null }>()
+const props = withDefaults(defineProps<{ show: boolean; target: UpstreamTarget | null; supplier: UpstreamSupplier | null; suppliers?: UpstreamSupplier[] }>(), { suppliers: () => [] })
 const emit = defineEmits<{ close: []; saved: [] }>()
 const { t } = useI18n()
 const providerOptions = computed(() => [
@@ -88,17 +95,40 @@ const discoveredModels = ref<string[]>([])
 const accounts = ref<Pick<AccountListItem, 'id' | 'name' | 'platform'>[]>([]), accountNames = ref<Record<number, string>>({}), accountsLoading = ref(false), accountError = ref(''), accountPicker = ref('')
 const accountSearch = ref(''), accountPage = ref(0), accountTotal = ref(0)
 const sourceAccount = ref<{ id: number; name: string } | null>(null)
+const sourceTarget = ref<{ id: number; name: string } | null>(null)
+const sourceGroups = computed(() => props.suppliers.flatMap(supplier => supplier.targets.map(target => ({ supplier, target }))))
+const sourceGroupOptions = computed(() => {
+  const options = sourceGroups.value.map(({ supplier, target }) => ({ value: String(target.id), label: `${supplier.name} · ${target.name} · ${target.provider}` }))
+  if (sourceTarget.value && !options.some(option => option.value === String(sourceTarget.value!.id))) options.unshift({ value: String(sourceTarget.value.id), label: sourceTarget.value.name })
+  return options
+})
 const normalizedEndpoint = (value: string) => value.trim().replace(/\/+$/, '')
 const canKeepSavedKey = computed(() => Boolean(props.target && normalizedEndpoint(form.endpoint) === normalizedEndpoint(props.target.endpoint) && form.provider === props.target.provider))
-const canKeepNewapiToken = computed(() => Boolean(newapiEnabled.value && props.target?.newapi_access_token_configured && canKeepSavedKey.value && form.newapi_user_id === props.target.newapi_user_id))
+const canKeepNewapiToken = computed(() => Boolean(newapiEnabled.value && props.target?.newapi_access_token_configured && !props.target.source_target_id && !props.target.newapi_credentials_inherited && canKeepSavedKey.value && form.newapi_user_id === props.target.newapi_user_id))
 const accountOptions = computed(() => accounts.value.filter(account => ['openai', 'anthropic', 'gemini'].includes(account.platform) && !form.account_ids.includes(account.id)).map(account => ({ value: String(account.id), label: `${account.name} · ${account.platform}` })))
 function clearSourceAccount() { sourceAccount.value = null }
+function clearSourceTarget() {
+  if (!sourceTarget.value) return
+  sourceTarget.value = null; newapiEnabled.value = false; form.newapi_user_id = undefined; form.newapi_access_token = ''
+}
+function selectSourceGroup(value: unknown) {
+  const group = sourceGroups.value.find(item => String(item.target.id) === String(value))
+  if (!group) return
+  importRequest++; importing.value = false
+  clearSourceAccount(); clearSourceTarget(); form.api_key = ''; form.account_ids = []
+  form.provider = group.target.provider; form.endpoint = group.target.endpoint; form.api_mode = group.target.api_mode
+  if (!form.name) form.name = group.target.name
+  newapiEnabled.value = false; form.newapi_user_id = undefined; form.newapi_access_token = ''
+  sourceTarget.value = { id: group.target.id, name: `${group.supplier.name} · ${group.target.name}` }
+  accountPicker.value = ''; accountError.value = ''; error.value = ''; invalidateModels()
+}
 function invalidateModels() { modelRequest++; modelsLoading.value = false; modelError.value = ''; discoveredModels.value = [] }
-watch([() => form.endpoint, () => form.provider, () => form.api_key], () => { clearSourceAccount(); invalidateModels() }, { flush: 'sync' })
+watch([() => form.endpoint, () => form.provider, () => form.api_key], () => { clearSourceAccount(); clearSourceTarget(); invalidateModels() }, { flush: 'sync' })
 watch(sourceAccount, invalidateModels, { flush: 'sync' })
+watch(sourceTarget, invalidateModels, { flush: 'sync' })
 watch([() => form.endpoint, () => form.provider, () => form.newapi_user_id], () => { form.newapi_access_token = '' }, { flush: 'sync' })
 watch(newapiEnabled, enabled => { if (!enabled) form.newapi_access_token = '' }, { flush: 'sync' })
-let accountRequest = 0, dialogGeneration = 0, modelRequest = 0
+let accountRequest = 0, dialogGeneration = 0, modelRequest = 0, importRequest = 0
 let accountController: AbortController | undefined
 let searchTimer: ReturnType<typeof setTimeout> | undefined
 watch([() => props.show, () => props.supplier?.id, () => props.supplier?.website, () => props.supplier?.newapi_api_base, () => props.target?.id], ([show]) => {
@@ -111,7 +141,12 @@ watch([() => props.show, () => props.supplier?.id, () => props.supplier?.website
   if (!props.supplier) form.account_ids = []
   form.newapi_user_id = props.target?.newapi_user_id
   newapiEnabled.value = !props.supplier && Boolean(props.target?.newapi_access_token_configured)
-  sourceAccount.value = null; form.api_key = ''; error.value = ''; modelError.value = ''; discoveredModels.value = []; accountPicker.value = ''; accountError.value = ''
+  sourceAccount.value = null; sourceTarget.value = null; form.api_key = ''; error.value = ''; modelError.value = ''; discoveredModels.value = []; accountPicker.value = ''; accountError.value = ''
+  if (!props.supplier && props.target?.source_target_id) {
+    const source = sourceGroups.value.find(item => item.target.id === props.target!.source_target_id)
+    sourceTarget.value = { id: props.target.source_target_id, name: source ? `${source.supplier.name} · ${source.target.name}` : t('upstreamCenter.groupSource.savedGroup', { id: props.target.source_target_id }) }
+    newapiEnabled.value = false; form.newapi_user_id = undefined
+  }
   void loadAccounts('')
 }, { immediate: true })
 async function loadAccounts(search: string, append = false) {
@@ -150,11 +185,11 @@ function belongsToSupplier(endpoint: string): boolean {
 }
 async function importAccount() {
   if (!accountPicker.value || importing.value || accountsLoading.value) return
-  const id = Number(accountPicker.value), generation = dialogGeneration
+  const id = Number(accountPicker.value), generation = dialogGeneration, request = ++importRequest
   importing.value = true
   try {
     const account = await accountsAPI.getById(id)
-    if (generation !== dialogGeneration) return
+    if (generation !== dialogGeneration || request !== importRequest) return
     const defaultEndpoints = { openai: 'https://api.openai.com', anthropic: 'https://api.anthropic.com', gemini: 'https://generativelanguage.googleapis.com' }
     const provider = account.platform as UpstreamTargetInput['provider']
     const baseURL = account.credentials?.base_url
@@ -162,6 +197,7 @@ async function importAccount() {
     if (props.supplier && (!endpoint || !belongsToSupplier(endpoint))) {
       accountPicker.value = ''; accountError.value = t('upstreamCenter.accountSelection.changedSite'); return
     }
+    clearSourceTarget()
     if (!props.supplier || !form.account_ids.length) {
       if (['openai', 'anthropic', 'gemini'].includes(account.platform)) {
         if (form.provider !== provider) form.api_mode = 'chat_completions'
@@ -176,14 +212,14 @@ async function importAccount() {
       form.account_ids = []; form.api_key = ''; sourceAccount.value = { id, name: account.name }
     }
     accountNames.value[id] = account.name; accountPicker.value = ''; accountError.value = ''
-  } catch (err) { if (generation === dialogGeneration) accountError.value = extractApiErrorMessage(err, t('upstreamCenter.form.accountLoadFailed')) }
-  finally { if (generation === dialogGeneration) importing.value = false }
+  } catch (err) { if (generation === dialogGeneration && request === importRequest) accountError.value = extractApiErrorMessage(err, t('upstreamCenter.form.accountLoadFailed')) }
+  finally { if (generation === dialogGeneration && request === importRequest) importing.value = false }
 }
 async function fetchModels() {
   const generation = dialogGeneration, request = ++modelRequest
   modelsLoading.value = true; modelError.value = ''
   try {
-    const models = await upstreamCenterAPI.models({ target_id: sourceAccount.value || !canKeepSavedKey.value ? undefined : props.target?.id, account_id: sourceAccount.value?.id ?? (!props.target && !form.api_key?.trim() ? form.account_ids[0] : undefined), provider: form.provider, endpoint: form.endpoint.trim(), api_key: form.api_key?.trim() || undefined })
+    const models = await upstreamCenterAPI.models({ target_id: sourceTarget.value || sourceAccount.value || !canKeepSavedKey.value ? undefined : props.target?.id, source_target_id: sourceTarget.value?.id, account_id: sourceAccount.value?.id ?? (!props.target && !form.api_key?.trim() ? form.account_ids[0] : undefined), provider: form.provider, endpoint: form.endpoint.trim(), api_key: form.api_key?.trim() || undefined })
     if (generation !== dialogGeneration || request !== modelRequest) return
     discoveredModels.value = [...new Set(models || [])].sort()
     if (!models?.length) modelError.value = t('upstreamCenter.form.noModels')
@@ -196,13 +232,13 @@ async function save() {
   const models = [...new Set(form.models.map(model => model.trim()).filter(Boolean))]
   if (!models.length) { error.value = t('upstreamCenter.form.requiredModels'); return }
   if (models.length > 8) { error.value = t('upstreamCenter.form.maxModels'); return }
-  if (!canKeepSavedKey.value && !form.api_key?.trim() && !sourceAccount.value && !(props.supplier && form.account_ids.length)) { error.value = t('upstreamCenter.form.requiredKey'); return }
+  if (!canKeepSavedKey.value && !form.api_key?.trim() && !sourceAccount.value && !sourceTarget.value && !(props.supplier && form.account_ids.length)) { error.value = t('upstreamCenter.form.requiredKey'); return }
   try { const url = new URL(form.endpoint); if (url.protocol !== 'https:') throw new Error() } catch { error.value = t('upstreamCenter.form.validUrl'); return }
   if (newapiEnabled.value && (!Number.isSafeInteger(form.newapi_user_id) || Number(form.newapi_user_id) <= 0)) { error.value = t('upstreamCenter.newapi.requiredUserId'); return }
   if (newapiEnabled.value && !form.newapi_access_token?.trim() && !canKeepNewapiToken.value) { error.value = t('upstreamCenter.newapi.requiredToken'); return }
   saving.value = true
   try {
-    const input = { ...form, name: form.name.trim(), endpoint: form.endpoint.trim(), api_key: form.api_key?.trim() || undefined, newapi_user_id: props.supplier ? undefined : newapiEnabled.value ? form.newapi_user_id : props.target?.newapi_access_token_configured ? 0 : undefined, newapi_access_token: !props.supplier && newapiEnabled.value ? form.newapi_access_token?.trim() || undefined : undefined, source_account_id: !props.supplier ? sourceAccount.value?.id : undefined, models, account_ids: props.supplier ? [...form.account_ids] : [], notes: form.notes.trim(), wallet_ref: form.wallet_ref.trim() || 'default' }
+    const input = { ...form, name: form.name.trim(), endpoint: form.endpoint.trim(), api_key: form.api_key?.trim() || undefined, newapi_user_id: props.supplier || sourceTarget.value ? undefined : newapiEnabled.value ? form.newapi_user_id : props.target?.newapi_access_token_configured ? 0 : undefined, newapi_access_token: !props.supplier && !sourceTarget.value && newapiEnabled.value ? form.newapi_access_token?.trim() || undefined : undefined, source_account_id: !props.supplier ? sourceAccount.value?.id : undefined, source_target_id: props.supplier ? undefined : sourceTarget.value?.id ?? (props.target?.source_target_id ? 0 : undefined), models, account_ids: props.supplier ? [...form.account_ids] : [], notes: form.notes.trim(), wallet_ref: form.wallet_ref.trim() || 'default' }
     if (props.target) await upstreamCenterAPI.updateTarget(props.target.id, input)
     else await upstreamCenterAPI.createTarget(input)
     form.newapi_access_token = ''; emit('saved'); emit('close')

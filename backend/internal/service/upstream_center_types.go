@@ -52,6 +52,7 @@ type UpstreamBindingCredential struct {
 type UpstreamTarget struct {
 	ID                          int64                               `json:"id"`
 	SupplierID                  *int64                              `json:"supplier_id"`
+	SourceTargetID              *int64                              `json:"source_target_id"`
 	Name                        string                              `json:"name"`
 	Provider                    string                              `json:"provider"`
 	APIMode                     string                              `json:"api_mode"`
@@ -97,7 +98,11 @@ type UpstreamTargetInput struct {
 	NewAPIAccessToken *string `json:"newapi_access_token"`
 	// SourceAccountID copies credentials once for an independent monitor. It is
 	// never persisted as an account binding or returned in target responses.
-	SourceAccountID     *int64    `json:"source_account_id"`
+	SourceAccountID *int64 `json:"source_account_id"`
+	// SourceTargetID imports an existing supplier group's inference credentials.
+	// Its reference retains site authorization inheritance without business bindings.
+	// Zero detaches the reference; omitted fields preserve it on partial updates.
+	SourceTargetID      *int64    `json:"source_target_id"`
 	Models              *[]string `json:"models"`
 	Enabled             *bool     `json:"enabled"`
 	IntervalSeconds     *int      `json:"interval_seconds"`
@@ -158,11 +163,12 @@ type UpstreamOverview struct {
 	Summary   *UpstreamFinanceSummary `json:"summary"`
 }
 type UpstreamModelsInput struct {
-	TargetID  *int64 `json:"target_id"`
-	AccountID *int64 `json:"account_id"`
-	Provider  string `json:"provider"`
-	Endpoint  string `json:"endpoint"`
-	APIKey    string `json:"api_key"`
+	TargetID       *int64 `json:"target_id"`
+	AccountID      *int64 `json:"account_id"`
+	SourceTargetID *int64 `json:"source_target_id"`
+	Provider       string `json:"provider"`
+	Endpoint       string `json:"endpoint"`
+	APIKey         string `json:"api_key"`
 }
 
 type UpstreamCenterRepository interface {

@@ -123,11 +123,11 @@ describe('image studio external API', () => {
       json: vi.fn().mockResolvedValue(accepted),
     })
     vi.stubGlobal('fetch', fetchMock)
-    const file = new File(['source'], 'source.webp', { type: 'image/webp' })
+    const files = Array.from({ length: 10 }, (_, i) => new File([`source-${i}`], `source-${i}.webp`, { type: 'image/webp' }))
 
     await expect(submitImageEditTask(
       'site-key',
-      file,
+      files,
       { model: 'gpt-image-2', prompt: 'remove the sign', n: 1, size: '1024x1024' },
     )).resolves.toEqual(accepted)
 
@@ -138,6 +138,8 @@ describe('image studio external API', () => {
       Accept: 'application/json',
     })
     expect(init.body).toBeInstanceOf(FormData)
+    expect((init.body as FormData).getAll('image').map((file) => (file as File).name))
+      .toEqual(files.map((file) => file.name))
   })
   it('distinguishes initial network failures from interrupted long generations', () => {
     const networkError = new TypeError('Failed to fetch')

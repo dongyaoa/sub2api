@@ -36,7 +36,7 @@ func TestUpstreamFinancePostgresLedger(t *testing.T) {
 	_, err = db.ExecContext(ctx, `CREATE TABLE accounts (id BIGINT PRIMARY KEY, credentials JSONB NOT NULL DEFAULT '{}', platform TEXT NOT NULL DEFAULT 'openai', type TEXT NOT NULL DEFAULT 'apikey', deleted_at TIMESTAMPTZ);
 CREATE TABLE usage_logs (id BIGSERIAL PRIMARY KEY, created_at TIMESTAMPTZ NOT NULL, account_id BIGINT NOT NULL, group_id BIGINT, user_id BIGINT NOT NULL DEFAULT 1, api_key_id BIGINT NOT NULL DEFAULT 1, requested_model TEXT, model TEXT NOT NULL DEFAULT 'gpt-test', request_id TEXT, actual_cost NUMERIC NOT NULL DEFAULT 0, total_cost NUMERIC NOT NULL DEFAULT 0, account_stats_cost NUMERIC, account_rate_multiplier NUMERIC, billing_type SMALLINT NOT NULL DEFAULT 0, input_tokens INT NOT NULL DEFAULT 0, output_tokens INT NOT NULL DEFAULT 0, cache_creation_tokens INT NOT NULL DEFAULT 0, cache_read_tokens INT NOT NULL DEFAULT 0);`)
 	require.NoError(t, err)
-	for _, name := range []string{"242_upstream_center.sql", "243_upstream_finance.sql", "243_upstream_finance.sql", "244_upstream_remote_billing.sql", "244_upstream_remote_billing.sql", "247_upstream_finance_usage_totals.sql", "247_upstream_finance_usage_totals.sql", "253_upstream_newapi_credentials.sql", "253_upstream_newapi_credentials.sql", "254_upstream_storage_retention.sql", "254_upstream_storage_retention.sql", "265_upstream_finance_reported_day.sql", "265_upstream_finance_reported_day.sql", "266_upstream_finance_reported_30_days.sql", "266_upstream_finance_reported_30_days.sql", "267_upstream_supplier_recharge_ratio.sql", "267_upstream_supplier_recharge_ratio.sql", "269_upstream_supplier_newapi.sql"} {
+	for _, name := range []string{"242_upstream_center.sql", "243_upstream_finance.sql", "243_upstream_finance.sql", "244_upstream_remote_billing.sql", "244_upstream_remote_billing.sql", "247_upstream_finance_usage_totals.sql", "247_upstream_finance_usage_totals.sql", "253_upstream_newapi_credentials.sql", "253_upstream_newapi_credentials.sql", "254_upstream_storage_retention.sql", "254_upstream_storage_retention.sql", "265_upstream_finance_reported_day.sql", "265_upstream_finance_reported_day.sql", "266_upstream_finance_reported_30_days.sql", "266_upstream_finance_reported_30_days.sql", "267_upstream_supplier_recharge_ratio.sql", "267_upstream_supplier_recharge_ratio.sql", "269_upstream_supplier_newapi.sql", "272_upstream_monitor_source_group.sql"} {
 		migration, err := migrations.FS.ReadFile(name)
 		require.NoError(t, err)
 		_, err = db.ExecContext(ctx, string(migration))
@@ -316,7 +316,7 @@ INSERT INTO upstream_account_bindings(target_id,account_id,supplier_id,target_na
 		require.Zero(t, value.AccountBilled)
 	})
 
-	t.Run("statistics use fixed seven days and sixty latest samples", func(t *testing.T) {
+	t.Run("statistics use fixed seven days and forty-five latest samples", func(t *testing.T) {
 		_, err := db.ExecContext(ctx, `UPDATE upstream_targets SET models='["recent","old","missing","null-latency"]'::jsonb WHERE id=3;
 INSERT INTO upstream_monitor_history(target_id,target_name,model,status,latency_ms,checked_at)
 SELECT 3,'Independent monitor','recent',CASE WHEN n=61 THEN 'error' ELSE 'operational' END,n,NOW()-make_interval(mins=>62-n) FROM generate_series(1,61) n;
@@ -334,10 +334,10 @@ INSERT INTO upstream_monitor_history(target_id,target_name,model,status,latency_
 		require.Equal(t, int64(61), recent.SampleCount)
 		require.InDelta(t, 60.0/61*100, *recent.Availability, 1e-9)
 		require.InDelta(t, 60.0/62*100, *recent.Availability7d, 1e-9)
-		require.Len(t, recent.Timeline, 60)
+		require.Len(t, recent.Timeline, 45)
 		require.Equal(t, 61, *recent.LatestLatencyMs)
 		require.Equal(t, "error", recent.Status)
-		require.Equal(t, 2, *recent.Timeline[0].LatencyMs)
+		require.Equal(t, 17, *recent.Timeline[0].LatencyMs)
 		require.NotNil(t, recent.LastCheckedAt)
 		require.Nil(t, target.Statistics[1].Availability7d)
 		require.Nil(t, target.Statistics[2].Availability7d)

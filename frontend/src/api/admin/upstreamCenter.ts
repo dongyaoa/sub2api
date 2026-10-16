@@ -115,6 +115,7 @@ export interface UpstreamTargetInput {
   newapi_user_id?: number
   newapi_access_token?: string
   source_account_id?: number
+  source_target_id?: number | null
   models: string[]
   enabled: boolean
   interval_seconds: number
@@ -265,7 +266,7 @@ export const upstreamCenterAPI = {
   async syncBalance(id: number): Promise<UpstreamBalanceSnapshot> {
     return (await apiClient.post<UpstreamBalanceSnapshot>(`${base}/targets/${id}/sync-balance`, undefined, { timeout: 60000 })).data
   },
-  async models(input: { target_id?: number; account_id?: number; provider: UpstreamProvider; endpoint: string; api_key?: string }): Promise<string[]> {
+  async models(input: { target_id?: number; account_id?: number; source_target_id?: number; provider: UpstreamProvider; endpoint: string; api_key?: string }): Promise<string[]> {
     return (await apiClient.post<{ models: string[] }>(`${base}/models`, input, { timeout: 60000 })).data.models
   },
   async history(id: number, params: UpstreamPageQuery & { model?: string }, signal?: AbortSignal): Promise<UpstreamPage<UpstreamHistoryRecord>> {

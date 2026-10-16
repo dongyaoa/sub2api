@@ -1,7 +1,7 @@
 <template>
-  <article :class="compact ? 'min-w-0 py-4' : 'card min-w-0 p-5'">
+  <article :class="compact ? 'min-w-0 py-3' : 'card min-w-0 p-4'">
     <header class="flex items-start gap-2.5">
-      <div v-if="!compact" class="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary-50 text-primary-600 dark:bg-primary-500/10 dark:text-primary-400"><Icon name="chart" size="md" /></div>
+      <div v-if="!compact" class="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg" :class="providerAppearance.className" :title="providerAppearance.label" data-testid="upstream-platform"><PlatformIcon :platform="target.provider" size="lg" /></div>
       <div class="min-w-0 flex-1">
         <div class="flex items-start justify-between gap-3">
           <button type="button" class="min-w-0 truncate text-left font-semibold leading-5 text-gray-900 hover:text-primary-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:text-gray-100 dark:hover:text-primary-400" :class="compact ? 'text-sm' : 'text-base'" :title="target.name" @click="emit('details', target, selectedModel)">{{ target.name }}</button>
@@ -14,7 +14,7 @@
       </div>
     </header>
 
-    <div class="mt-3 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
+    <div class="mt-2.5 grid grid-cols-[minmax(0,1fr)_auto] items-center gap-2">
       <div class="flex min-w-0 items-center gap-1.5 text-[11px] leading-4 text-gray-400 dark:text-dark-400">
         <label :for="target.models.length > 1 ? `target-model-${target.id}` : undefined" class="shrink-0 text-[10px]">{{ t('upstreamCenter.model') }}</label>
         <Select v-if="target.models.length > 1" :id="`target-model-${target.id}`" v-model="selectedModel" :options="modelOptions" :searchable="false" :aria-label="t('upstreamCenter.model')" class="model-select min-w-0 flex-1" :title="selectedModel" />
@@ -26,24 +26,24 @@
       </div>
     </div>
 
-    <dl class="mt-3 grid grid-cols-2 gap-4">
+    <dl class="mt-2.5 grid grid-cols-2 gap-3">
       <div class="min-w-0">
         <dt class="text-[10px] leading-4 text-gray-500 dark:text-dark-400">{{ t('upstreamCenter.availability7d') }}</dt>
         <dd class="mt-0.5"><strong class="text-base font-semibold leading-5 tabular-nums text-gray-400" :style="{ color: availabilityColor(statistics?.availability_7d) }" data-testid="upstream-availability">{{ availability(statistics?.availability_7d) }}</strong></dd>
       </div>
-      <div class="min-w-0 border-l border-gray-100 pl-4 dark:border-dark-700">
+      <div class="min-w-0 border-l border-gray-100 pl-3 dark:border-dark-700">
         <dt class="text-[10px] leading-4 text-gray-500 dark:text-dark-400">{{ t('upstreamCenter.latestLatency') }}</dt>
         <dd class="mt-0.5"><strong class="text-base font-semibold leading-5 tabular-nums" :class="latencyColor(statistics?.latest_latency_ms, target.degraded_threshold_ms, target.timeout_seconds, statistics?.status)" data-testid="upstream-latency">{{ latency(statistics?.latest_latency_ms) }}</strong></dd>
       </div>
     </dl>
-    <UpstreamHistoryBar class="mt-3" :records="statistics?.timeline || []" :last-checked-at="statistics?.last_checked_at" :legend="!compact" @select="record => emit('details', target, selectedModel, record)" />
-    <div v-if="!compact" class="mt-2 flex min-w-0 items-center justify-between gap-2 text-[10px] leading-4 text-gray-400 dark:text-dark-400">
+    <UpstreamHistoryBar class="mt-2.5" :records="statistics?.timeline || []" :last-checked-at="statistics?.last_checked_at" :legend="!compact" @select="record => emit('details', target, selectedModel, record)" />
+    <div v-if="!compact" class="mt-1.5 flex min-w-0 items-center justify-between gap-2 text-[10px] leading-4 text-gray-400 dark:text-dark-400">
       <span class="shrink-0">{{ t('upstreamCenter.nextCheck') }}</span>
       <time v-if="target.enabled" class="min-w-0 truncate text-right tabular-nums" :datetime="target.next_check_at || undefined" :title="dateTime(target.next_check_at)" data-testid="upstream-next-check">{{ dateTime(target.next_check_at) }}</time>
       <span v-else data-testid="upstream-next-check">{{ t('upstreamCenter.status.paused') }}</span>
     </div>
 
-    <footer :class="compact ? 'mt-3' : 'mt-3 border-t border-gray-100 pt-2 dark:border-dark-700'" class="flex flex-wrap items-center justify-between gap-1.5">
+    <footer :class="compact ? 'mt-2' : 'mt-2 border-t border-gray-100 pt-1.5 dark:border-dark-700'" class="flex flex-wrap items-center justify-between gap-1.5">
       <div class="flex min-w-0 items-center gap-2">
         <button type="button" class="inline-flex h-8 items-center gap-1.5 rounded-md text-[11px] font-medium text-primary-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 disabled:opacity-50 dark:text-primary-400" :disabled="busy || running" @click="emit('run', target)"><Icon :name="running ? 'refresh' : 'play'" size="xs" :class="running && 'animate-spin'" />{{ t(running ? 'upstreamCenter.running' : 'upstreamCenter.run') }}</button>
         <button v-if="!compact" type="button" class="inline-flex h-8 items-center rounded-md px-1 text-[11px] text-gray-500 hover:text-primary-600 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500 dark:text-dark-400 dark:hover:text-primary-400" @click="emit('details', target, selectedModel)">{{ t('upstreamCenter.details') }}</button>
@@ -61,6 +61,7 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import type { UpstreamHistoryRecord, UpstreamTarget } from '@/api/admin/upstreamCenter'
 import Select from '@/components/common/Select.vue'
+import PlatformIcon from '@/components/common/PlatformIcon.vue'
 import Icon from '@/components/icons/Icon.vue'
 import UpstreamHistoryBar from './UpstreamHistoryBar.vue'
 import UpstreamRateBadge from './UpstreamRateBadge.vue'
@@ -72,6 +73,11 @@ const emit = defineEmits<{ details: [target: UpstreamTarget, model: string, reco
 const { t } = useI18n()
 const website = computed(() => safeWebsite(props.target.endpoint))
 const websiteHost = computed(() => website.value ? new URL(website.value).host : '')
+const providerAppearance = computed(() => ({
+  openai: { label: 'OpenAI', className: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300' },
+  anthropic: { label: 'Anthropic', className: 'bg-orange-50 text-orange-700 dark:bg-orange-500/10 dark:text-orange-300' },
+  gemini: { label: 'Gemini', className: 'bg-sky-50 text-sky-700 dark:bg-sky-500/10 dark:text-sky-300' },
+})[props.target.provider] || { label: '', className: 'bg-gray-100 text-gray-500 dark:bg-dark-700 dark:text-gray-400' })
 const selectedModel = ref(props.target.models?.[0] || '')
 watch(() => props.target.models, models => { if (!models.includes(selectedModel.value)) selectedModel.value = models[0] || '' })
 const modelOptions = computed(() => props.target.models.map(model => ({ value: model, label: `${model} · ${t(`upstreamCenter.status.${targetStatus(props.target, model)}`)}` })))

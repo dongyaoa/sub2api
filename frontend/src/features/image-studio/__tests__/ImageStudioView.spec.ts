@@ -1,5 +1,5 @@
 import { flushPromises, mount } from '@vue/test-utils'
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import ImageStudioView from '../ImageStudioView.vue'
 import type { ImageModelPricing } from '../types'
 
@@ -56,6 +56,7 @@ function mountStudio() {
 beforeEach(() => {
   vi.clearAllMocks()
   sessionStorage.clear()
+  localStorage.clear()
   listKeys.mockResolvedValue(keys)
   listModels.mockResolvedValue({ object: 'list', data: [
     { id: 'gemini-nano-banana-2.1', image_generation: true },
@@ -64,7 +65,39 @@ beforeEach(() => {
   getPricing.mockImplementation(async (_key: string, model: string) => quote(model))
 })
 
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals() })
+
 describe('image studio model and billing integration', () => {
+  it('accepts fourteen Gemini references, refuses excess files, and allows replacing a removed image', async () => {
+    const revokeURL = vi.fn()
+    vi.stubGlobal('URL', class extends URL {
+      static createObjectURL = vi.fn(() => 'blob:test-reference')
+      static revokeObjectURL = revokeURL
+    })
+    const wrapper = mountStudio()
+    try {
+      await flushPromises()
+      const editTab = wrapper.findAll('[role="tab"]').find((tab) => tab.text().includes('imageStudio.editMode'))
+      await editTab!.trigger('click')
+      const input = wrapper.find('input[type="file"]')
+      expect(input.attributes('multiple')).toBeDefined()
+      const files = Array.from({ length: 15 }, (_, i) => new File([`reference-${i}`], `reference-${i}.png`, { type: 'image/png' }))
+      Object.defineProperty(input.element, 'files', { value: files, configurable: true })
+      await input.trigger('change')
+      expect(wrapper.findAll('img')).toHaveLength(14)
+      expect(showError).toHaveBeenCalledWith('imageStudio.sourceImageCountError')
+      expect(wrapper.findAll('button').some((button) => button.text().includes('imageStudio.addSourceImages'))).toBe(false)
+      const remove = wrapper.findAll('button').find((button) => button.attributes('title') === 'imageStudio.removeImage')
+      await remove!.trigger('click')
+      expect(wrapper.findAll('img')).toHaveLength(13)
+      expect(revokeURL).toHaveBeenCalledTimes(1)
+      Object.defineProperty(input.element, 'files', { value: [files[14]], configurable: true })
+      await input.trigger('change')
+      expect(wrapper.findAll('img')).toHaveLength(14)
+      expect(wrapper.text()).toContain('reference-14.png')
+    } finally { wrapper.unmount() }
+  })
+
   it('shows a newly configured model and its channel price instead of the group flat price', async () => {
     const wrapper = mountStudio()
     try {

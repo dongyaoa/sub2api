@@ -49,8 +49,8 @@ export function dateTime(value: string | null | undefined): string { return valu
 export function shortTime(value: string | null | undefined): string { return value ? new Date(value).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : '—' }
 export function domain(value: string): string { try { return new URL(value).host } catch { return value } }
 export function recentHistory(records: UpstreamHistoryRecord[] = []): Array<UpstreamHistoryRecord | null> {
-  const sorted = [...records].sort((a, b) => Date.parse(a.checked_at) - Date.parse(b.checked_at) || a.id - b.id).slice(-60)
-  return [...Array<null>(Math.max(0, 60 - sorted.length)).fill(null), ...sorted]
+  const sorted = [...records].sort((a, b) => Date.parse(a.checked_at) - Date.parse(b.checked_at) || a.id - b.id).slice(-45)
+  return [...Array<null>(Math.max(0, 45 - sorted.length)).fill(null), ...sorted]
 }
 export function targetStatus(target: UpstreamTarget, model?: string): string {
   if (!target.enabled) return 'paused'
