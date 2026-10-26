@@ -93,7 +93,8 @@ func TestModelSquareCatalog_IndependentSwitchPreservesVisibilityAndPricing(t *te
 		{Platform: "anthropic", Models: []string{"private-model"}},
 	}
 	channels := &squareCatalogRepo{channels: []service.Channel{
-		{Name: "visible", Status: service.StatusActive, GroupIDs: []int64{1, 2}, ModelPricing: pricing},
+		{Name: "visible", Status: service.StatusActive, GroupIDs: []int64{1, 2}, ModelPricing: pricing,
+			ModelMapping: map[string]map[string]string{"openai": {"mapping-only": "test-image"}}},
 		{Name: "private", Status: service.StatusActive, GroupIDs: []int64{2}, ModelPricing: pricing},
 		{Name: "disabled", Status: "inactive", GroupIDs: []int64{1}, ModelPricing: pricing},
 	}}
@@ -141,7 +142,11 @@ func TestModelSquareCatalog_IndependentSwitchPreservesVisibilityAndPricing(t *te
 	require.Equal(t, &price, model.Pricing.Intervals[0].PerRequestPrice)
 
 	settings.enabled = "true"
-	require.Equal(t, catalog, get("/channels/available"))
+	available := get("/channels/available")
+	require.Len(t, available, 1)
+	require.Len(t, available[0].Platforms[0].SupportedModels, 2)
+	require.Equal(t, "mapping-only", available[0].Platforms[0].SupportedModels[0].Name)
+	require.Equal(t, model.Pricing, available[0].Platforms[0].SupportedModels[0].Pricing)
 	require.Equal(t, catalog, get("/model-square/catalog"))
 }
 

@@ -4,6 +4,14 @@ vi.mock('@/api/client', () => ({ apiClient: client }))
 import { upstreamCenterAPI } from '@/api/admin/upstreamCenter'
 beforeEach(() => { vi.clearAllMocks() })
 describe('upstream storage API contract', () => {
+  it('purges all archives through bounded server batches, forwarding the continuation cursor', async () => {
+    const result = { deleted_count: 25, busy_count: 0, remaining_count: 205, has_more: true, next_cursor: 'next-batch' }
+    client.post.mockResolvedValue({ data: result })
+    await expect(upstreamCenterAPI.purgeArchives()).resolves.toEqual(result)
+    await upstreamCenterAPI.purgeArchives(result.next_cursor)
+    expect(client.post).toHaveBeenNthCalledWith(1, '/admin/upstream-center/storage/purge-archives', {}, { timeout: 60000 })
+    expect(client.post).toHaveBeenNthCalledWith(2, '/admin/upstream-center/storage/purge-archives', { cursor: 'next-batch' }, { timeout: 60000 })
+  })
   it('restores only the specified archived upstream or key group', async () => {
     const result = { suppliers_restored: 1, targets_restored: 2, bindings_restored: 2 }
     client.post.mockResolvedValue({ data: result })

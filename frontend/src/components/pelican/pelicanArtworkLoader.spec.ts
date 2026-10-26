@@ -21,6 +21,20 @@ beforeEach(async () => {
 })
 
 describe('user pelican artwork request scheduling', () => {
+  it('promotes an opened artwork ahead of queued thumbnails without duplicate downloads', async () => {
+    const responses = Array.from({ length: 6 }, () => deferred<PelicanRun>())
+    detail.mockImplementation((id: number) => responses[id - 1]!.promise)
+    const requests = responses.map((_, i) => loader.loadPelicanArtwork(run(i + 1)))
+    const opened = loader.loadPelicanArtwork(run(6), undefined, 'interactive')
+    expect(detail.mock.calls.map(call => call[0])).toEqual([1, 2, 3, 4])
+    responses[0]!.resolve(artwork(1)); await flushPromises()
+    expect(detail.mock.calls.map(call => call[0])).toEqual([1, 2, 3, 4, 6])
+    responses[5]!.resolve(artwork(6)); await flushPromises()
+    expect(detail.mock.calls.map(call => call[0])).toEqual([1, 2, 3, 4, 6, 5])
+    responses.slice(1, 5).forEach((response, index) => response.resolve(artwork(index + 2)))
+    await expect(Promise.all([...requests, opened])).resolves.toHaveLength(7)
+  })
+
   it('starts immediately, limits actual requests to four and drains the next queued request', async () => {
     const responses = Array.from({ length: 5 }, () => deferred<PelicanRun>())
     detail.mockImplementation((id: number) => responses[id - 1]!.promise)

@@ -7,6 +7,8 @@ import enSettings from "@/i18n/locales/en/admin/settings";
 import zhCommon from "@/i18n/locales/zh/common";
 import zhSettings from "@/i18n/locales/zh/admin/settings";
 import SettingsView from "../SettingsView.vue";
+const accessGate = vi.hoisted(() => ({ state: { enabled: false }, refreshAfterUpdate: vi.fn().mockResolvedValue(true) }));
+vi.mock('@/services/webAccess', () => ({ webAccessGate: accessGate }));
 
 const {
   getSettings,
@@ -34,6 +36,7 @@ const {
   deleteProvider,
   updatePaymentConfig,
   fetchPublicSettings,
+  refreshPublicSettingsAfterWebAccessUpdate,
   adminSettingsFetch,
   showError,
   showSuccess,
@@ -76,12 +79,19 @@ const {
   deleteProvider: vi.fn(),
   updatePaymentConfig: vi.fn(),
   fetchPublicSettings: vi.fn(),
+  refreshPublicSettingsAfterWebAccessUpdate: vi.fn(),
   adminSettingsFetch: vi.fn(),
   showError: vi.fn(),
   showSuccess: vi.fn(),
 }));
 
 const localeRef = vi.hoisted(() => ({ value: "zh-CN" }));
+
+beforeEach(() => {
+  accessGate.state.enabled = false;
+  accessGate.refreshAfterUpdate.mockClear();
+  refreshPublicSettingsAfterWebAccessUpdate.mockReset().mockImplementation(() => fetchPublicSettings(true));
+});
 
 vi.mock("@/api", () => ({
   adminAPI: {
@@ -134,6 +144,7 @@ vi.mock("@/stores", () => ({
     showWarning: vi.fn(),
     showInfo: vi.fn(),
     fetchPublicSettings,
+    refreshPublicSettingsAfterWebAccessUpdate,
   }),
 }));
 
@@ -832,6 +843,54 @@ describe("admin SettingsView payment visible method controls", () => {
     expect(updateSettings).toHaveBeenCalledWith(
       expect.objectContaining({ compact_home_enabled: true }),
     );
+  });
+
+  it("loads and saves webpage restrictions with normalized IP entries", async () => {
+    const wrapper = mountView();
+    await flushPromises();
+    await openSecurityTab(wrapper);
+    const card = wrapper.get('[data-testid="web-access-settings"]');
+    const toggle = card.get('input[type="checkbox"]');
+    expect((toggle.element as HTMLInputElement).checked).toBe(false);
+    await toggle.setValue(true);
+    await card.get('#web-access-message').setValue('  地区访问提示  ');
+    await card.get('#web-access-allowlist').setValue('203.0.113.10\n\n203.0.113.10\n2001:db8::/48');
+    await wrapper.find('form').trigger('submit.prevent');
+    await flushPromises();
+    expect(updateSettings).toHaveBeenCalledWith(expect.objectContaining({
+      web_access_cn_block_enabled: true,
+      web_access_block_message: '地区访问提示',
+      web_access_ip_allowlist: ['203.0.113.10', '2001:db8::/48'],
+    }));
+    expect(refreshPublicSettingsAfterWebAccessUpdate).toHaveBeenCalledWith(true);
+    expect(accessGate.refreshAfterUpdate).not.toHaveBeenCalled();
+    wrapper.unmount();
+  });
+
+  it('applies a saved disable before waiting for the effective public settings refresh', async () => {
+    getSettings.mockResolvedValueOnce({ ...baseSettingsResponse, web_access_cn_block_enabled: true });
+    accessGate.state.enabled = true;
+    let resolveRefresh!: () => void;
+    const refresh = new Promise<void>(resolve => { resolveRefresh = resolve; });
+    refreshPublicSettingsAfterWebAccessUpdate.mockImplementationOnce(persistedEnabled => {
+      if (!persistedEnabled) accessGate.state.enabled = false;
+      return refresh;
+    });
+    const wrapper = mountView();
+    await flushPromises();
+    await openSecurityTab(wrapper);
+    await wrapper.get('[data-testid="web-access-settings"] input[type="checkbox"]').setValue(false);
+    await wrapper.find('form').trigger('submit.prevent');
+    await flushPromises();
+    expect(refreshPublicSettingsAfterWebAccessUpdate).toHaveBeenCalledWith(false);
+    expect(accessGate.state.enabled).toBe(false);
+    expect(showSuccess).not.toHaveBeenCalled();
+    expect(accessGate.refreshAfterUpdate).not.toHaveBeenCalled();
+    resolveRefresh();
+    await flushPromises();
+    expect(showSuccess).toHaveBeenCalled();
+    expect(accessGate.refreshAfterUpdate).not.toHaveBeenCalled();
+    wrapper.unmount();
   });
 
   it("renders panel rate limit card and saves settings", async () => {

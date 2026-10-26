@@ -3,6 +3,9 @@ import { setActivePinia, createPinia } from 'pinia'
 import { useAppStore } from '@/stores/app'
 import { getPublicSettings } from '@/api/auth'
 import type { PublicSettings } from '@/types'
+import { webAccessGate } from '@/services/webAccess'
+
+vi.mock('@/services/webAccess', () => ({ webAccessGate: { setEnabled: vi.fn() } }))
 
 function createDeferred<T>() {
   let resolve!: (value: T | PromiseLike<T>) => void
@@ -81,6 +84,7 @@ describe('useAppStore', () => {
     vi.useFakeTimers()
     localStorage.clear()
     vi.mocked(getPublicSettings).mockReset()
+    vi.mocked(webAccessGate.setEnabled).mockReset()
     // 清除 window.__APP_CONFIG__
     delete (window as any).__APP_CONFIG__
   })
@@ -327,6 +331,54 @@ describe('useAppStore', () => {
   // --- 公开设置 ---
 
   describe('公开设置加载', () => {
+    it.each([false, undefined, true])('uses only the effective public switch, with legacy missing values disabled (%s)', enabled => {
+      window.__APP_CONFIG__ = createPublicSettings({ web_access_cn_block_enabled: enabled })
+      const store = useAppStore()
+      store.initFromInjectedConfig()
+      expect(webAccessGate.setEnabled).toHaveBeenLastCalledWith(enabled === true)
+      expect(getPublicSettings).not.toHaveBeenCalled()
+    })
+
+    it('disables immediately after an admin save and ignores an older in-flight enabled config', async () => {
+      window.__APP_CONFIG__ = createPublicSettings({ web_access_cn_block_enabled: true })
+      const store = useAppStore()
+      store.initFromInjectedConfig()
+      const previous = createDeferred<PublicSettings>()
+      const refreshed = createDeferred<PublicSettings>()
+      vi.mocked(getPublicSettings).mockReturnValueOnce(previous.promise).mockReturnValueOnce(refreshed.promise)
+      const pending = store.fetchPublicSettings(true)
+      const saveRefresh = store.refreshPublicSettingsAfterWebAccessUpdate(false)
+      expect(webAccessGate.setEnabled).toHaveBeenLastCalledWith(false)
+      expect(store.cachedPublicSettings?.web_access_cn_block_enabled).toBe(false)
+      expect(window.__APP_CONFIG__?.web_access_cn_block_enabled).toBe(false)
+      previous.resolve(createPublicSettings({ web_access_cn_block_enabled: true }))
+      await pending
+      expect(webAccessGate.setEnabled).toHaveBeenLastCalledWith(false)
+      expect(getPublicSettings).toHaveBeenCalledTimes(2)
+      refreshed.resolve(createPublicSettings({ web_access_cn_block_enabled: false }))
+      await saveRefresh
+      expect(webAccessGate.setEnabled).toHaveBeenLastCalledWith(false)
+    })
+
+    it.each([false, true])('waits for a genuinely new effective public config after a persisted enable (effective=%s)', async effective => {
+      window.__APP_CONFIG__ = createPublicSettings({ web_access_cn_block_enabled: false })
+      const store = useAppStore()
+      store.initFromInjectedConfig()
+      const previous = createDeferred<PublicSettings>()
+      const refreshed = createDeferred<PublicSettings>()
+      vi.mocked(getPublicSettings).mockReturnValueOnce(previous.promise).mockReturnValueOnce(refreshed.promise)
+      const pending = store.fetchPublicSettings(true)
+      const saveRefresh = store.refreshPublicSettingsAfterWebAccessUpdate(true)
+      expect(webAccessGate.setEnabled).not.toHaveBeenCalledWith(true)
+      previous.resolve(createPublicSettings({ web_access_cn_block_enabled: true }))
+      await pending
+      expect(webAccessGate.setEnabled).not.toHaveBeenCalledWith(true)
+      expect(getPublicSettings).toHaveBeenCalledTimes(2)
+      refreshed.resolve(createPublicSettings({ web_access_cn_block_enabled: effective }))
+      await saveRefresh
+      expect(webAccessGate.setEnabled).toHaveBeenLastCalledWith(effective)
+    })
+
     it('并发调用复用并等待同一个请求，包括 force 调用', async () => {
       const deferred = createDeferred<PublicSettings>()
       vi.mocked(getPublicSettings).mockReturnValue(deferred.promise)

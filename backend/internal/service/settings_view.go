@@ -24,7 +24,10 @@ type SystemSettings struct {
 	PasskeyEnabled                      bool // Passkey 登录
 	SessionBindingEnabled               bool // 会话 IP/UA 绑定（变更即失效）
 	StepUpEnabled                       bool // 敏感操作 step-up 2FA 门控
-	AuditLogRetentionDays               int  // 审计日志保留天数（<=0 永久保留）
+	WebAccessCNBlockEnabled             bool // 仅限制网页访问，不参与 API 鉴权
+	WebAccessBlockMessage               string
+	WebAccessIPAllowlist                []string
+	AuditLogRetentionDays               int // 审计日志保留天数（<=0 永久保留）
 	LoginAgreementEnabled               bool
 	LoginAgreementMode                  string
 	LoginAgreementUpdatedAt             string
@@ -378,6 +381,7 @@ type PublicSettings struct {
 	WeChatOAuthMPEnabled     bool
 	WeChatOAuthMobileEnabled bool
 	BackendModeEnabled       bool
+	WebAccessCNBlockEnabled  bool
 	PaymentEnabled           bool
 	PaymentBalanceDisabled   bool
 	OIDCOAuthEnabled         bool

@@ -12,7 +12,7 @@ import (
 
 // AvailableChannelHandler 处理用户侧「可用渠道」及自定义模型广场的目录查询。
 //
-// 用户侧接口委托 ChannelService.ListAvailable，并在返回前做四层过滤：
+// 两个入口分别使用可用模型或显式渠道定价目录，并在返回前做四层过滤：
 //  1. 行过滤：只保留状态为 Active 且与当前用户可访问分组有交集的渠道；
 //  2. 分组过滤：渠道的 Groups 只保留用户可访问的那些；
 //  3. 平台过滤：普通分组只保留自身平台模型；Composite 分组按渠道已配置的具体模型平台
@@ -133,6 +133,7 @@ func (h *AvailableChannelHandler) List(c *gin.Context) {
 
 // ListModelSquare 提供独立于「可用渠道」展示开关的模型目录。
 // GET /api/v1/model-square/catalog
+// 模型和价格仅来自渠道显式定价，不包含映射推导或全局价格回落。
 // 与可用渠道共用用户、分组、平台及字段过滤，保持相同的可见范围。
 func (h *AvailableChannelHandler) ListModelSquare(c *gin.Context) {
 	h.list(c, false)
@@ -161,7 +162,12 @@ func (h *AvailableChannelHandler) list(c *gin.Context, requireAvailableChannels 
 		allowedGroupIDs[userGroups[i].ID] = struct{}{}
 	}
 
-	channels, err := h.channelService.ListAvailable(c.Request.Context())
+	var channels []service.AvailableChannel
+	if requireAvailableChannels {
+		channels, err = h.channelService.ListAvailable(c.Request.Context())
+	} else {
+		channels, err = h.channelService.ListModelSquareCatalog(c.Request.Context())
+	}
 	if err != nil {
 		response.ErrorFrom(c, err)
 		return

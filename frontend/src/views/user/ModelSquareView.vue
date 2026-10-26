@@ -1,213 +1,112 @@
 <template>
   <AppLayout>
     <div class="model-square mx-auto max-w-[1600px] space-y-5">
-      <section class="premium-filter-panel">
-        <div class="filter-platform-header flex flex-col gap-2 border-b sm:flex-row sm:items-center">
-          <span class="filter-section-label inline-flex flex-shrink-0 items-center gap-1.5">
+      <section class="premium-filter-panel" :aria-busy="loading">
+        <div class="platform-section">
+          <h2 id="model-platform-label" class="filter-section-label">
             <Icon name="chartBar" size="sm" />
             {{ t('modelSquare.platformLabel') }}
-          </span>
+          </h2>
 
-          <div class="platform-tabs flex min-w-0 gap-2 overflow-x-auto pb-1 sm:pb-0">
+          <div class="platform-tabs" role="group" aria-labelledby="model-platform-label">
             <button
               type="button"
-              class="platform-tab inline-flex flex-shrink-0 items-center gap-2 border px-3 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
-              :class="selectedPlatform === ''
-                ? 'border-blue-600 bg-blue-600 text-white hover:bg-blue-700 dark:border-blue-500 dark:bg-blue-500 dark:hover:bg-blue-400'
-                : 'border-gray-200 bg-gray-50 text-gray-600 hover:border-gray-300 hover:bg-gray-100 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-300 dark:hover:border-dark-500'"
+              class="platform-tab"
+              :class="selectedPlatform === '' ? 'platform-tab--all-active' : 'platform-tab--all'"
+              :aria-pressed="selectedPlatform === ''"
+              data-platform=""
               @click="selectedPlatform = ''"
             >
-              <Icon name="grid" size="xs" />
+              <Icon name="grid" size="sm" />
               <span>{{ t('modelSquare.allPlatforms') }}</span>
-              <span
-                class="rounded px-1.5 py-0.5 text-[10px] font-semibold"
-                :class="selectedPlatform === '' ? 'bg-white/15 dark:bg-gray-900/10' : 'bg-white text-gray-700 dark:bg-dark-700 dark:text-gray-200'"
-              >{{ groupScopedModels.length }}</span>
+              <span class="platform-count">{{ models.length }}</span>
             </button>
-
             <button
               v-for="stat in platformStats"
               :key="stat.platform"
               type="button"
-              class="platform-tab inline-flex flex-shrink-0 items-center gap-2 border px-3 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500"
+              class="platform-tab"
               :class="selectedPlatform === stat.platform
                 ? ['border-transparent', platformButtonClass(stat.platform)]
                 : platformBadgeClass(stat.platform)"
+              :aria-pressed="selectedPlatform === stat.platform"
+              :data-platform="stat.platform"
               @click="selectedPlatform = stat.platform"
             >
-              <PlatformIcon
-                :platform="stat.platform as GroupPlatform"
-                size="xs"
-              />
-              <span class="uppercase">{{ stat.platform }}</span>
-              <span
-                class="rounded px-1.5 py-0.5 text-[10px] font-semibold"
-                :class="selectedPlatform === stat.platform ? 'bg-white/15 dark:bg-gray-900/10' : 'bg-gray-100 text-gray-700 dark:bg-dark-700 dark:text-gray-200'"
-              >{{ stat.count }}</span>
+              <PlatformIcon :platform="stat.platform as GroupPlatform" size="sm" />
+              <span>{{ platformLabel(stat.platform) }}</span>
+              <span class="platform-count">{{ stat.count }}</span>
             </button>
           </div>
-        </div>
-
-        <div class="filter-control-grid">
-          <label class="block">
-            <span class="mb-1.5 block text-xs font-medium text-gray-600 dark:text-gray-300">
-              {{ t('modelSquare.searchLabel') }}
-            </span>
-            <span class="relative block">
-              <Icon name="search" size="sm" class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" />
-              <input
-                v-model="searchQuery"
-                type="search"
-                class="input premium-control pl-9"
-                :placeholder="t('modelSquare.searchPlaceholder')"
-              />
-            </span>
-          </label>
-
-          <label class="block">
-            <span class="mb-1.5 block text-xs font-medium text-gray-600 dark:text-gray-300">
-              {{ t('modelSquare.platformLabel') }}
-            </span>
-            <Select
-              v-model="selectedPlatform"
-              :options="platformSelectOptions"
-              :searchable="false"
-              class="model-square-select"
-            >
-              <template #selected="{ option }">
-                <span class="model-select-content">
-                  <PlatformIcon
-                    v-if="(option as ModelSquareSelectOption)?.platform"
-                    :platform="(option as ModelSquareSelectOption).platform as GroupPlatform"
-                    size="xs"
-                  />
-                  <Icon v-else name="grid" size="xs" class="text-gray-400" />
-                  <span class="truncate">{{ (option as ModelSquareSelectOption)?.label }}</span>
-                </span>
-              </template>
-              <template #option="{ option, selected }">
-                <span class="model-select-option">
-                  <span class="model-select-content">
-                    <PlatformIcon
-                      v-if="(option as ModelSquareSelectOption).platform"
-                      :platform="(option as ModelSquareSelectOption).platform as GroupPlatform"
-                      size="xs"
-                    />
-                    <Icon v-else name="grid" size="xs" class="text-gray-400" />
-                    <span class="truncate">{{ (option as ModelSquareSelectOption).label }}</span>
-                  </span>
-                  <Icon v-if="selected" name="check" size="sm" class="model-select-check" :stroke-width="2" />
-                </span>
-              </template>
-            </Select>
-          </label>
-
-          <label class="block">
-            <span class="mb-1.5 block text-xs font-medium text-gray-600 dark:text-gray-300">
-              {{ t('modelSquare.groupLabel') }}
-            </span>
-            <Select
-              v-model="selectedGroupId"
-              :options="groupSelectOptions"
-              :searchable="false"
-              class="model-square-select"
-            >
-              <template #selected="{ option }">
-                <span class="model-select-content">
-                  <PlatformIcon
-                    v-if="(option as ModelSquareSelectOption)?.platform"
-                    :platform="(option as ModelSquareSelectOption).platform as GroupPlatform"
-                    size="xs"
-                  />
-                  <Icon v-else name="grid" size="xs" class="text-gray-400" />
-                  <span class="truncate">{{ (option as ModelSquareSelectOption)?.label }}</span>
-                </span>
-              </template>
-              <template #option="{ option, selected }">
-                <span class="model-select-option">
-                  <span class="model-select-content">
-                    <PlatformIcon
-                      v-if="(option as ModelSquareSelectOption).platform"
-                      :platform="(option as ModelSquareSelectOption).platform as GroupPlatform"
-                      size="xs"
-                    />
-                    <Icon v-else name="grid" size="xs" class="text-gray-400" />
-                    <span class="truncate">{{ (option as ModelSquareSelectOption).label }}</span>
-                  </span>
-                  <Icon v-if="selected" name="check" size="sm" class="model-select-check" :stroke-width="2" />
-                </span>
-              </template>
-            </Select>
-          </label>
-
-          <label
-            class="multiplier-control flex select-none items-center justify-between gap-3 border px-3 transition-colors"
-            :class="selectedGroup
-              ? 'cursor-pointer border-gray-200 bg-gray-50 dark:border-dark-600 dark:bg-dark-800'
-              : 'cursor-not-allowed border-gray-100 bg-gray-50/60 opacity-60 dark:border-dark-800 dark:bg-dark-900'"
-          >
-            <span class="text-sm font-medium text-gray-700 dark:text-gray-300">
-              {{ t('modelSquare.showMultiplier') }}
-            </span>
-            <span class="relative inline-flex h-6 w-11 flex-shrink-0">
-              <input
-                v-model="showMultiplier"
-                type="checkbox"
-                class="peer sr-only"
-                :disabled="!selectedGroup"
-              />
-              <span class="absolute inset-0 rounded-full bg-gray-300 transition-colors peer-checked:bg-emerald-600 peer-focus-visible:ring-2 peer-focus-visible:ring-emerald-500 peer-focus-visible:ring-offset-2 dark:bg-dark-600"></span>
-              <span class="absolute left-1 top-1 h-4 w-4 rounded-full bg-white shadow-sm transition-transform peer-checked:translate-x-5"></span>
-            </span>
-          </label>
 
           <button
             type="button"
-            class="filter-refresh-button btn btn-secondary justify-center"
+            class="filter-refresh-button"
             :disabled="loading"
+            :aria-label="t('common.refresh')"
             :title="t('common.refresh')"
             @click="loadData"
           >
-            <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
-            <span class="filter-refresh-label">{{ t('common.refresh') }}</span>
+            <Icon name="refresh" size="sm" :class="{ 'animate-spin': loading }" />
+            <span>{{ t('common.refresh') }}</span>
           </button>
         </div>
 
-        <div class="filter-panel-footer flex flex-col gap-3 border-t sm:flex-row sm:items-center sm:justify-between">
-          <div class="flex flex-wrap items-center gap-2 text-xs">
-            <span class="inline-flex items-center gap-1.5 text-gray-600 dark:text-gray-300">
-              <Icon name="grid" size="xs" />
-              {{ t('modelSquare.modelCount', { count: filteredModels.length }) }}
-            </span>
-            <span class="text-gray-300 dark:text-dark-600">|</span>
-            <span class="text-gray-500 dark:text-gray-400">{{ t('modelSquare.rechargeRate') }}</span>
+        <div class="group-section">
+          <div class="filter-section-heading group-section-heading">
+            <div class="group-heading-copy">
+              <h2 id="model-group-label" class="filter-section-label">
+                <Icon name="users" size="sm" />
+                {{ t('modelSquare.groupLabel') }}
+              </h2>
+              <p class="filter-hint">{{ t('modelSquare.groupSelectionHint') }}</p>
+            </div>
+            <label class="multiplier-control" :title="multiplierHint" :class="{ 'multiplier-control--disabled': !selectedGroup || loading }">
+              <span class="multiplier-label">
+                <Icon name="bolt" size="sm" />
+                {{ t('modelSquare.showMultiplier') }}
+              </span>
+              <span class="relative inline-flex h-5 w-9 flex-shrink-0">
+                <input
+                  v-model="showMultiplier"
+                  type="checkbox"
+                  role="switch"
+                  :aria-description="multiplierHint"
+                  class="peer sr-only"
+                  :disabled="!selectedGroup || loading"
+                />
+                <span class="absolute inset-0 rounded-full bg-gray-300 transition-colors peer-checked:bg-emerald-600 peer-focus-visible:ring-2 peer-focus-visible:ring-emerald-500 peer-focus-visible:ring-offset-2 dark:bg-dark-600 dark:peer-focus-visible:ring-offset-dark-900"></span>
+                <span class="absolute left-0.5 top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-transform peer-checked:translate-x-4"></span>
+              </span>
+            </label>
           </div>
 
-          <div v-if="selectedGroup" class="flex flex-wrap items-center gap-2 text-xs">
-            <span class="text-gray-500 dark:text-gray-400">{{ selectedGroup.name }}</span>
-            <span
-              class="filter-status-pill px-2 py-1 font-semibold"
-              :class="showMultiplier
-                ? activeMultiplier?.peakActive
-                  ? 'bg-amber-50 text-amber-700 dark:bg-amber-900/20 dark:text-amber-300'
-                  : 'bg-emerald-50 text-emerald-700 dark:bg-emerald-900/20 dark:text-emerald-300'
-                : 'bg-gray-100 text-gray-600 dark:bg-dark-700 dark:text-gray-300'"
+          <div v-if="visibleGroups.length" class="group-options" role="group" aria-labelledby="model-group-label">
+            <button
+              v-for="group in visibleGroups"
+              :key="group.id"
+              type="button"
+              class="group-option"
+              :class="{ 'group-option--selected': selectedGroupId === String(group.id) }"
+              :aria-pressed="selectedGroupId === String(group.id)"
+              :data-group-id="group.id"
+              @click="selectedGroupId = String(group.id)"
             >
-              {{ showMultiplier
-                ? t('modelSquare.multiplierEnabled', { rate: currentRateLabel })
-                : t('modelSquare.originalPriceActive') }}
-            </span>
-            <span v-if="activeMultiplier?.source === 'user'" class="text-blue-600 dark:text-blue-400">
-              {{ t('modelSquare.customRate') }}
-            </span>
-            <span v-if="activeMultiplier?.peakActive" class="text-amber-700 dark:text-amber-300">
-              {{ t('modelSquare.peakActive', { rate: activeMultiplier.peakFactor }) }}
-            </span>
+              <span class="group-option-heading">
+                <span class="group-option-name">{{ group.name }}</span>
+                <span class="group-check" aria-hidden="true">
+                  <Icon v-if="selectedGroupId === String(group.id)" name="check" size="xs" :stroke-width="2.5" />
+                </span>
+              </span>
+              <span class="group-option-details">
+                <span>{{ t('modelSquare.modelCount', { count: groupModelCounts.get(group.id) ?? 0 }) }}</span>
+                <span class="group-rate">×{{ groupRateLabel(group) }}</span>
+              </span>
+            </button>
           </div>
-          <span v-else class="text-xs text-gray-500 dark:text-gray-400">
-            {{ t('modelSquare.selectGroupHint') }}
-          </span>
+          <p v-else class="group-empty">{{ loading ? t('common.loading') : t('modelSquare.noGroups') }}</p>
         </div>
+
       </section>
 
       <div v-if="loading" class="model-card-grid">
@@ -262,7 +161,6 @@ import { useRoute } from 'vue-router'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
 import PlatformIcon from '@/components/common/PlatformIcon.vue'
-import Select, { type SelectOption } from '@/components/common/Select.vue'
 import modelSquareMessages from '@/i18n/modelSquare'
 import ModelPriceCard from '@/components/models/ModelPriceCard.vue'
 import type { UserAvailableChannel } from '@/api/channels'
@@ -281,11 +179,7 @@ import {
   type ModelSquareModel,
 } from '@/utils/modelSquare'
 import { BILLING_MODE_TOKEN } from '@/constants/channel'
-import { platformBadgeClass, platformButtonClass } from '@/utils/platformColors'
-
-interface ModelSquareSelectOption extends SelectOption {
-  platform?: string
-}
+import { platformBadgeClass, platformButtonClass, platformLabel } from '@/utils/platformColors'
 
 const route = useRoute()
 const { t, locale } = useI18n({ useScope: 'local', messages: modelSquareMessages })
@@ -305,61 +199,53 @@ const groups = ref<Group[]>([])
 const userGroupRates = ref<Record<number, number>>({})
 const loading = ref(false)
 const loaded = ref(false)
-const searchQuery = ref('')
 const selectedPlatform = ref('')
 const selectedGroupId = ref('')
 const showMultiplier = ref(false)
 
 const models = computed(() => buildModelSquareModels(channels.value))
 const availableGroups = computed(() => collectModelSquareGroups(channels.value, groups.value))
-const selectedGroup = computed(() => {
-  if (!selectedGroupId.value) return null
-  const id = Number(selectedGroupId.value)
-  return availableGroups.value.find((group) => group.id === id) ?? null
-})
-const platforms = computed(() => [...new Set(models.value.map((model) => model.platform))].sort())
-const platformSelectOptions = computed<ModelSquareSelectOption[]>(() => [
-  { value: '', label: t('modelSquare.allPlatforms') },
-  ...platforms.value.map((platform) => ({
-    value: platform,
-    label: platform.toUpperCase(),
-    platform,
-  })),
-])
-const groupSelectOptions = computed<ModelSquareSelectOption[]>(() => [
-  { value: '', label: t('modelSquare.allModelsOriginal') },
-  ...availableGroups.value.map((group) => ({
-    value: String(group.id),
-    label: `${group.name} · ×${groupRateLabel(group)}`,
-    platform: group.platform,
-  })),
-])
+const visibleGroups = computed(() =>
+  collectModelSquareGroups(channels.value, groups.value, selectedPlatform.value),
+)
+const selectedGroup = computed(() =>
+  visibleGroups.value.find((group) => String(group.id) === selectedGroupId.value) ?? null,
+)
 
-const groupScopedModels = computed(() => {
-  const groupId = selectedGroup.value?.id
-  if (groupId == null) return models.value
-  return models.value.filter((model) => model.groupIds.includes(groupId))
-})
-
+// Platform choices are based on the catalog, never on the currently selected group.
 const platformStats = computed(() => {
+  const visibleGroupIds = new Set(availableGroups.value.map((group) => group.id))
   const counts = new Map<string, number>()
-  for (const model of groupScopedModels.value) {
-    counts.set(model.platform, (counts.get(model.platform) ?? 0) + 1)
+  for (const channel of channels.value) {
+    for (const section of channel.platforms) {
+      if (section.groups.some((group) => visibleGroupIds.has(group.id))) {
+        counts.set(section.platform, 0)
+      }
+    }
+  }
+  for (const model of models.value) {
+    if (counts.has(model.platform)) counts.set(model.platform, counts.get(model.platform)! + 1)
   }
   return [...counts.entries()]
     .map(([platform, count]) => ({ platform, count }))
     .sort((a, b) => a.platform.localeCompare(b.platform))
 })
 
+const platformModels = computed(() => models.value.filter(
+  (model) => !selectedPlatform.value || model.platform === selectedPlatform.value,
+))
+const groupModelCounts = computed(() => {
+  const counts = new Map<number, number>()
+  for (const model of platformModels.value) {
+    for (const groupId of model.groupIds) counts.set(groupId, (counts.get(groupId) ?? 0) + 1)
+  }
+  return counts
+})
 const filteredModels = computed(() => {
-  const query = searchQuery.value.trim().toLowerCase()
-  const groupId = selectedGroup.value?.id
-  return models.value.filter((model) => {
-    if (groupId != null && !model.groupIds.includes(groupId)) return false
-    if (selectedPlatform.value && model.platform !== selectedPlatform.value) return false
-    if (query && !model.name.toLowerCase().includes(query) && !model.platform.toLowerCase().includes(query)) return false
-    return true
-  })
+  const group = selectedGroup.value
+  // An unselected/removed group must never fall back to another channel's price.
+  if (!group) return []
+  return platformModels.value.filter((model) => model.groupIds.includes(group.id))
 })
 
 const activeMultiplier = computed<EffectiveMultiplier | null>(() => {
@@ -377,6 +263,18 @@ const currentRateLabel = computed(() => {
   return Number(value.toPrecision(8))
 })
 
+const multiplierHint = computed(() => {
+  if (!selectedGroup.value) return t('modelSquare.selectGroupHint')
+  const notes = [showMultiplier.value
+    ? t('modelSquare.multiplierEnabled', { rate: currentRateLabel.value })
+    : t('modelSquare.originalPriceActive')]
+  if (activeMultiplier.value?.source === 'user') notes.push(t('modelSquare.customRate'))
+  if (activeMultiplier.value?.peakActive) {
+    notes.push(t('modelSquare.peakActive', { rate: activeMultiplier.value.peakFactor }))
+  }
+  return notes.join(' · ')
+})
+
 const emptyTitle = computed(() => {
   if (!loaded.value || channels.value.length === 0) return t('modelSquare.emptyUnavailable')
   return t('modelSquare.emptyFiltered')
@@ -391,18 +289,25 @@ watch(selectedGroupId, () => {
   showMultiplier.value = false
 })
 
-watch(availableGroups, (value) => {
-  if (selectedGroupId.value && !value.some((group) => String(group.id) === selectedGroupId.value)) {
-    selectedGroupId.value = ''
+watch(platformStats, (value) => {
+  if (selectedPlatform.value && !value.some((stat) => stat.platform === selectedPlatform.value)) {
+    selectedPlatform.value = ''
   }
 })
 
+watch(visibleGroups, (value) => {
+  if (!value.some((group) => String(group.id) === selectedGroupId.value)) {
+    const initialGroup = value.find((group) => (groupModelCounts.value.get(group.id) ?? 0) > 0) ?? value[0]
+    selectedGroupId.value = initialGroup ? String(initialGroup.id) : ''
+  }
+}, { immediate: true })
+
 function groupRateLabel(group: Group): number {
-  return userGroupRates.value[group.id] ?? group.rate_multiplier
+  return Number((userGroupRates.value[group.id] ?? group.rate_multiplier).toPrecision(8))
 }
 
 function variantFor(model: ModelSquareModel): ModelPricingVariant | null {
-  return resolveModelVariant(model, selectedGroup.value?.id)
+  return selectedGroup.value ? resolveModelVariant(model, selectedGroup.value.id) : null
 }
 
 function multiplierFor(model: ModelSquareModel): EffectiveMultiplier | null {
@@ -450,213 +355,330 @@ onMounted(loadData)
 }
 
 .premium-filter-panel {
-  position: relative;
+  --filter-text: #0f172a;
+  --filter-muted: #64748b;
+  --filter-line: #e9edf2;
+  --filter-soft: #f8fafc;
+  --filter-selected: #f0fdfa;
+  --filter-accent: #0f766e;
+  --filter-accent-line: #5eead4;
   overflow: hidden;
-  padding: 18px 20px;
-  border: 1px solid #e9edf2;
-  border-radius: 14px;
+  border: 1px solid var(--filter-line);
+  border-radius: 16px;
   background: #fff;
+  color: var(--filter-text);
   box-shadow: 0 1px 2px rgba(15, 23, 42, 0.02), 0 7px 20px rgba(15, 23, 42, 0.035);
-  font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
-.filter-platform-header {
-  gap: 18px;
-  margin-bottom: 16px;
-  padding-bottom: 14px;
-  border-color: #edf0f3;
+.platform-section,
+.group-section {
+  padding: 12px 18px;
+}
+
+.platform-section {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 14px;
+  border-bottom: 1px solid var(--filter-line);
+}
+
+.filter-section-heading,
+.filter-section-label,
+.platform-tab,
+.group-option-heading,
+.group-option-details,
+.multiplier-control,
+.multiplier-label,
+.filter-refresh-button {
+  display: flex;
+  align-items: center;
+}
+
+.filter-section-heading {
+  min-width: 0;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
 }
 
 .filter-section-label {
-  color: #475569;
-  font-size: 12px;
+  flex-shrink: 0;
+  gap: 7px;
+  font-size: 13px;
   font-weight: 600;
-  line-height: 1;
 }
 
-.platform-tabs {
-  scrollbar-width: none;
+.filter-section-label > svg {
+  color: var(--filter-muted);
 }
 
-.platform-tabs::-webkit-scrollbar {
-  display: none;
+.platform-tabs,
+.group-options {
+  display: flex;
+  min-width: 0;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .platform-tab {
-  height: 32px;
-  border-radius: 8px;
+  min-height: 32px;
+  min-width: 0;
+  gap: 6px;
+  padding: 5px 10px;
+  border-width: 1px;
+  border-radius: 10px;
   font-size: 12px;
   font-weight: 600;
-  line-height: 1;
-  box-shadow: 0 1px 1px rgba(15, 23, 42, 0.025);
+  transition: background-color 0.2s, border-color 0.2s;
 }
 
-.filter-control-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  align-items: end;
-  gap: 14px;
+.platform-tab--all {
+  border-color: var(--filter-line);
+  background: var(--filter-soft);
+  color: var(--filter-muted);
 }
 
-.filter-control-grid > * {
+.platform-tab--all-active {
+  @apply border-transparent bg-gradient-to-br from-primary-500 to-primary-600 text-white;
+}
+
+.platform-count {
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: rgba(127, 127, 127, 0.1);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+.platform-tab[aria-pressed="true"] .platform-count {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.filter-refresh-button {
+  flex-shrink: 0;
+  justify-content: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 4px 9px;
+  border: 1px solid var(--filter-line);
+  border-radius: 8px;
+  color: var(--filter-muted);
+  font-size: 12px;
+}
+
+.filter-refresh-button:hover:not(:disabled) {
+  background: var(--filter-soft);
+  color: var(--filter-text);
+}
+
+.filter-refresh-button:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+
+.group-heading-copy {
+  display: flex;
   min-width: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px 12px;
 }
 
-.filter-control-grid > label > span:first-child {
-  color: #475569;
+.filter-hint,
+.group-empty {
+  color: var(--filter-muted);
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.group-options {
+  gap: 8px;
+}
+
+.group-option {
+  flex: 0 1 168px;
+  min-width: 0;
+  max-width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--filter-line);
+  border-radius: 12px;
+  background: var(--filter-soft);
+  text-align: left;
+  transition: background-color 0.2s, border-color 0.2s, box-shadow 0.2s;
+}
+
+.group-option:hover {
+  border-color: var(--filter-accent-line);
+}
+
+.group-option--selected {
+  border-color: var(--filter-accent-line);
+  background: var(--filter-selected);
+  box-shadow: inset 0 0 0 1px var(--filter-accent-line);
+}
+
+.group-option-heading {
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.group-option-name {
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.group-check {
+  display: inline-flex;
+  width: 17px;
+  height: 17px;
+  margin-top: 1px;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--filter-line);
+  border-radius: 50%;
+  background: #fff;
+}
+
+.group-option--selected .group-check {
+  @apply border-transparent bg-gradient-to-br from-primary-500 to-primary-600 text-white;
+}
+
+.group-option-details {
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 10px;
+  margin-top: 4px;
+  color: var(--filter-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+.group-rate {
+  color: var(--filter-accent);
+  font-weight: 600;
+}
+
+.group-empty {
+  padding: 14px 0;
+}
+
+.multiplier-control {
+  flex-shrink: 0;
+  justify-content: space-between;
+  gap: 10px;
+  min-height: 32px;
+  padding: 5px 8px;
+  border: 1px solid var(--filter-line);
+  border-radius: 10px;
+  background: #fff;
+  cursor: pointer;
+  user-select: none;
+}
+
+.multiplier-label {
+  gap: 6px;
   font-size: 12px;
   font-weight: 500;
 }
 
-.premium-control {
-  height: 40px;
-  border-color: #e2e8f0;
-  border-radius: 10px;
-  background-color: #f8fafc;
-  color: #0f172a;
-  font-size: 13px;
-  box-shadow: inset 0 1px 1px rgba(15, 23, 42, 0.015);
+.multiplier-label > svg {
+  color: var(--filter-accent);
 }
 
-.premium-control:focus {
-  border-color: #cbd5e1;
-  background-color: #fff;
-  box-shadow: 0 0 0 3px #f1f5f9;
+.multiplier-control--disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
-.model-square-select {
-  width: 100%;
-}
-
-.model-square-select :deep(.select-trigger) {
-  height: 40px;
-  min-height: 40px;
-  padding: 0 12px;
-  border-color: #e2e8f0;
-  border-radius: 10px;
-  background-color: #f8fafc;
-  font-size: 13px;
-  box-shadow: inset 0 1px 1px rgba(15, 23, 42, 0.015);
-}
-
-.model-select-content {
-  display: inline-flex;
-  min-width: 0;
-  align-items: center;
-  gap: 8px;
-}
-
-.model-select-option {
-  display: flex;
-  width: 100%;
-  min-width: 0;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.model-select-check {
-  flex-shrink: 0;
-  color: #14b8a6;
-}
-
-.multiplier-control,
-.filter-refresh-button {
-  min-height: 40px;
-  border-radius: 10px;
-}
-
-.multiplier-control {
-  height: 40px;
-  box-shadow: inset 0 1px 1px rgba(15, 23, 42, 0.015);
-}
-
-.filter-refresh-button {
-  height: 40px;
-}
-
-.filter-panel-footer {
-  margin-top: 16px;
-  padding-top: 14px;
-  border-color: #edf0f3;
-}
-
-.filter-status-pill {
-  border-radius: 6px;
-  line-height: 1.2;
+.platform-tab:focus-visible,
+.group-option:focus-visible,
+.filter-refresh-button:focus-visible {
+  outline: 2px solid var(--filter-accent);
+  outline-offset: 3px;
 }
 
 :global(.dark .premium-filter-panel) {
-  border-color: #334155;
+  --filter-text: #f1f5f9;
+  --filter-muted: #94a3b8;
+  --filter-line: #334155;
+  --filter-soft: #172235;
+  --filter-selected: #143532;
+  --filter-accent: #5eead4;
+  --filter-accent-line: #2b7c72;
   background: #0f172a;
   box-shadow: none;
 }
 
-:global(.dark .premium-filter-panel .filter-platform-header),
-:global(.dark .premium-filter-panel .filter-panel-footer) {
-  border-color: #334155;
-}
-
-:global(.dark .premium-filter-panel .filter-section-label),
-:global(.dark .premium-filter-panel .filter-control-grid > label > span:first-child) {
-  color: #cbd5e1;
-}
-
-:global(.dark .premium-filter-panel .premium-control) {
-  border-color: #334155;
-  background-color: #1e293b;
-  color: #f8fafc;
-  box-shadow: none;
-}
-
-:global(.dark .premium-filter-panel .model-square-select .select-trigger) {
-  border-color: #334155;
-  background-color: #1e293b;
-  color: #f8fafc;
-  box-shadow: none;
-}
-
-:global(.dark .premium-filter-panel .premium-control:focus) {
-  border-color: #475569;
-  background-color: #1e293b;
-  box-shadow: 0 0 0 3px rgba(51, 65, 85, 0.45);
-}
-
-:global(.dark .premium-filter-panel .platform-tab),
+:global(.dark .premium-filter-panel .group-check),
 :global(.dark .premium-filter-panel .multiplier-control) {
-  box-shadow: none;
+  background: #0f172a;
 }
 
-@container (min-width: 640px) {
-  .filter-control-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+:global(.dark .premium-filter-panel .group-option--selected .group-check) {
+  @apply border-transparent bg-gradient-to-br from-primary-500 to-primary-600;
+}
+
+@container (max-width: 680px) {
+  .platform-section {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 10px;
   }
-}
 
-@container (min-width: 1100px) {
-  .filter-control-grid {
-    grid-template-columns: minmax(200px, 1fr) 200px 240px auto auto;
+  .platform-tabs {
+    grid-column: 1 / -1;
+    grid-row: 2;
   }
 
   .filter-refresh-button {
-    width: 40px;
-    min-width: 40px;
-    padding-right: 0;
-    padding-left: 0;
+    grid-column: 2;
+    grid-row: 1;
   }
 
-  .filter-refresh-label {
-    display: none;
+  .group-section-heading {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 6px 10px;
+  }
+
+  .group-heading-copy {
+    display: contents;
+  }
+
+  .group-heading-copy .filter-section-label {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .group-heading-copy .filter-hint {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  .multiplier-control {
+    grid-column: 2;
+    grid-row: 1;
   }
 }
 
-@media (max-width: 640px) {
-  .premium-filter-panel {
-    padding: 16px;
+@container (max-width: 520px) {
+  .platform-section,
+  .group-section {
+    padding: 12px 14px;
   }
 
-  .filter-platform-header {
-    gap: 10px;
+  .group-options {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .multiplier-label > svg {
+    display: none;
   }
 }
 </style>

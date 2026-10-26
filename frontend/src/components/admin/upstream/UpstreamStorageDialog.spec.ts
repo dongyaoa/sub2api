@@ -4,7 +4,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import UpstreamStorageDialog from './UpstreamStorageDialog.vue'
 import Select from '@/components/common/Select.vue'
 import type { UpstreamStoragePolicy } from '@/api/admin/upstreamCenter'
-const api = vi.hoisted(() => ({ storage: vi.fn(), updateStorage: vi.fn(), cleanupStorage: vi.fn(), archives: vi.fn(), purge: vi.fn(), restore: vi.fn() }))
+const api = vi.hoisted(() => ({ storage: vi.fn(), updateStorage: vi.fn(), cleanupStorage: vi.fn(), archives: vi.fn(), purge: vi.fn(), purgeArchives: vi.fn(), restore: vi.fn() }))
 vi.mock('@/api/admin/upstreamCenter', () => ({ upstreamCenterAPI: api }))
 vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (key: string) => key }) }))
 const dialog = defineComponent({ props: ['show'], template: '<div v-if="show"><slot /><slot name="footer" /></div>' })
@@ -14,6 +14,82 @@ function render(realDialog = false) { view = mount(UpstreamStorageDialog, { atta
 beforeEach(() => { vi.clearAllMocks(); api.storage.mockResolvedValue(policy()); api.archives.mockResolvedValue({ items: [], total: 0 }); api.updateStorage.mockImplementation(async input => ({ ...policy(), ...input })); api.purge.mockResolvedValue(undefined) })
 afterEach(() => { view?.unmount(); view = undefined; document.body.innerHTML = ''; document.body.classList.remove('modal-open') })
 describe('upstream storage controls', () => {
+  it('confirms bulk deletion and follows server cursors beyond the visible archive limit', async () => {
+    const item = { kind: 'supplier', id: 8, name: 'Archived supplier', source_type: '', supplier_name: '', deleted_at: '2026-09-26T00:00:00Z' }
+    api.archives.mockResolvedValueOnce({ items: [item], total: 230 }).mockResolvedValueOnce({ items: [], total: 0 })
+    api.purgeArchives.mockResolvedValueOnce({ deleted_count: 25, busy_count: 0, remaining_count: 205, has_more: true, next_cursor: 'page-2' })
+      .mockResolvedValueOnce({ deleted_count: 10, busy_count: 0, remaining_count: 0, has_more: false, next_cursor: '' })
+    const wrapper = render(); await flushPromises()
+    await wrapper.get('[data-testid="purge-all-archives"]').trigger('click')
+    expect(wrapper.get('[data-testid="confirm-purge-all"]').attributes('disabled')).toBeDefined()
+    expect(api.purgeArchives).not.toHaveBeenCalled()
+    await wrapper.get('[data-testid="purge-all-confirmation"]').setValue('upstreamCenter.storage.purgeAllPhrase')
+    await wrapper.get('[data-testid="confirm-purge-all"]').trigger('click'); await flushPromises()
+    expect(api.purgeArchives).toHaveBeenNthCalledWith(1, undefined)
+    expect(api.purgeArchives).toHaveBeenNthCalledWith(2, 'page-2')
+    expect(api.purge).not.toHaveBeenCalled()
+    expect(wrapper.text()).toContain('upstreamCenter.storage.purgeAllDone')
+    expect(wrapper.find('[data-archive]').exists()).toBe(false)
+    expect(wrapper.emitted('changed')).toHaveLength(1)
+  })
+  it('does not retry busy archives endlessly and reports skipped work', async () => {
+    const item = { kind: 'target', id: 8, name: 'Busy monitor', source_type: '', supplier_name: '', deleted_at: '2026-09-26T00:00:00Z' }
+    api.archives.mockResolvedValue({ items: [item], total: 1 })
+    api.purgeArchives.mockResolvedValueOnce({ deleted_count: 0, busy_count: 1, remaining_count: 1, has_more: false, next_cursor: '' })
+    const wrapper = render(); await flushPromises()
+    await wrapper.get('[data-testid="purge-all-archives"]').trigger('click')
+    await wrapper.get('[data-testid="purge-all-confirmation"]').setValue('upstreamCenter.storage.purgeAllPhrase')
+    await wrapper.get('[data-testid="confirm-purge-all"]').trigger('click'); await flushPromises()
+    expect(api.purgeArchives).toHaveBeenCalledTimes(1)
+    expect(wrapper.text()).toContain('upstreamCenter.storage.purgeAllSkipped')
+    expect(wrapper.find('[data-archive="target-8"]').exists()).toBe(true)
+  })
+  it('blocks duplicate bulk deletion and closing during an active batch', async () => {
+    api.archives.mockResolvedValueOnce({ items: [], total: 250 }).mockResolvedValueOnce({ items: [], total: 0 })
+    let finish: (value: unknown) => void = () => undefined
+    api.purgeArchives.mockReturnValueOnce(new Promise(resolve => { finish = resolve }))
+    const wrapper = render(); await flushPromises()
+    await wrapper.get('[data-testid="purge-all-archives"]').trigger('click')
+    await wrapper.get('[data-testid="purge-all-confirmation"]').setValue('upstreamCenter.storage.purgeAllPhrase')
+    await wrapper.get('[data-testid="confirm-purge-all"]').trigger('click')
+    await wrapper.get('[data-testid="confirm-purge-all"]').trigger('click')
+    wrapper.getComponent(dialog).vm.$emit('close'); await flushPromises()
+    expect(api.purgeArchives).toHaveBeenCalledTimes(1)
+    expect(wrapper.emitted('close')).toBeUndefined()
+    expect(wrapper.get('[data-testid="purge-all-progress"]').exists()).toBe(true)
+    finish({ deleted_count: 250, busy_count: 0, remaining_count: 0, has_more: false, next_cursor: '' })
+    await flushPromises()
+    expect(wrapper.find('[data-testid="purge-all-confirmation"]').exists()).toBe(false)
+  })
+  it('refreshes after a partial failure and does not keep deleted items actionable when refresh fails', async () => {
+    const item = { kind: 'supplier', id: 8, name: 'Gone supplier', source_type: '', supplier_name: '', deleted_at: '2026-09-26T00:00:00Z' }
+    api.archives.mockResolvedValueOnce({ items: [item], total: 230 }).mockRejectedValueOnce({ message: 'Refresh failed' })
+    api.purgeArchives.mockResolvedValueOnce({ deleted_count: 25, busy_count: 0, remaining_count: 205, has_more: true, next_cursor: 'page-2' })
+      .mockRejectedValueOnce({ message: 'Batch failed' })
+    const wrapper = render(); await flushPromises()
+    await wrapper.get('[data-testid="purge-all-archives"]').trigger('click')
+    await wrapper.get('[data-testid="purge-all-confirmation"]').setValue('upstreamCenter.storage.purgeAllPhrase')
+    await wrapper.get('[data-testid="confirm-purge-all"]').trigger('click'); await flushPromises()
+    expect(wrapper.text()).toContain('upstreamCenter.storage.purgeAllPartial')
+    expect(wrapper.text()).toContain('Batch failed')
+    expect(wrapper.text()).toContain('Refresh failed')
+    expect(wrapper.find('[data-archive]').exists()).toBe(false)
+    expect(wrapper.emitted('changed')).toHaveLength(1)
+  })
+  it('stops requesting further deletion batches after the dialog session ends', async () => {
+    api.archives.mockResolvedValue({ items: [], total: 230 })
+    let finish: (value: unknown) => void = () => undefined
+    api.purgeArchives.mockReturnValueOnce(new Promise(resolve => { finish = resolve }))
+    const wrapper = render(); await flushPromises()
+    await wrapper.get('[data-testid="purge-all-archives"]').trigger('click')
+    await wrapper.get('[data-testid="purge-all-confirmation"]').setValue('upstreamCenter.storage.purgeAllPhrase')
+    await wrapper.get('[data-testid="confirm-purge-all"]').trigger('click')
+    await wrapper.setProps({ show: false })
+    finish({ deleted_count: 25, busy_count: 0, remaining_count: 205, has_more: true, next_cursor: 'page-2' })
+    await flushPromises()
+    expect(api.purgeArchives).toHaveBeenCalledTimes(1)
+    expect(wrapper.emitted('changed')).toBeUndefined()
+  })
   it('restores a monitoring plan and retained works with an explicit credential setup message', async () => {
     const item = { kind: 'intelligence', id: 7, name: 'Archived external plan', source_type: 'external', supplier_name: '', deleted_at: '2026-09-26T00:00:00Z' }
     api.archives.mockResolvedValueOnce({ items: [item], total: 1 }).mockResolvedValueOnce({ items: [], total: 0 })

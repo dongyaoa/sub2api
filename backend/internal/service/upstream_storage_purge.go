@@ -26,6 +26,26 @@ type UpstreamStoragePurgeRepository interface {
 	PurgeStorage(context.Context, UpstreamStoragePurgeInput) ([]string, error)
 }
 
+type UpstreamStoragePurgeArchivesRepository interface {
+	PurgeArchivedStorage(context.Context, UpstreamStoragePurgeArchivesInput) (*UpstreamStoragePurgeArchivesResult, []string, error)
+}
+
+func (s *UpstreamCenterService) PurgeArchivedStorage(ctx context.Context, in UpstreamStoragePurgeArchivesInput) (*UpstreamStoragePurgeArchivesResult, error) {
+	if len(in.Cursor) > 512 {
+		return nil, ErrUpstreamStorageInvalid
+	}
+	repo, ok := s.repo.(UpstreamStoragePurgeArchivesRepository)
+	if !ok || s.storageKeys == nil {
+		return nil, ErrUpstreamStorageUnavailable
+	}
+	purgeCtx, cancel := context.WithTimeout(ctx, upstreamStoragePurgeTimeout)
+	result, keys, err := repo.PurgeArchivedStorage(purgeCtx, in)
+	cancel()
+	// Earlier roots may have committed even if a later root failed.
+	s.invalidatePurgedStorageKeys(ctx, keys)
+	return result, err
+}
+
 func (s *UpstreamCenterService) ListStorageArchives(ctx context.Context) (*UpstreamStorageArchivePage, error) {
 	repo, ok := s.repo.(UpstreamStoragePurgeRepository)
 	if !ok {
@@ -42,7 +62,7 @@ func (s *UpstreamCenterService) PurgeStorage(ctx context.Context, in UpstreamSto
 		return ErrUpstreamStorageInvalid
 	}
 	repo, ok := s.repo.(UpstreamStoragePurgeRepository)
-	if !ok || (in.Kind == "intelligence" && s.storageKeys == nil) {
+	if !ok || s.storageKeys == nil {
 		return ErrUpstreamStorageUnavailable
 	}
 	// Bound lock waits and the transaction itself below the administrator HTTP
@@ -53,6 +73,11 @@ func (s *UpstreamCenterService) PurgeStorage(ctx context.Context, in UpstreamSto
 	if err != nil {
 		return err
 	}
+	s.invalidatePurgedStorageKeys(ctx, keys)
+	return nil
+}
+
+func (s *UpstreamCenterService) invalidatePurgedStorageKeys(ctx context.Context, keys []string) {
 	if s.storageKeys != nil && len(keys) > 0 {
 		// The database transaction already disabled the dedicated keys. Ensure a
 		// disconnected administrator request cannot skip cache invalidation.
@@ -62,7 +87,6 @@ func (s *UpstreamCenterService) PurgeStorage(ctx context.Context, in UpstreamSto
 			s.storageKeys.InvalidateAuthCacheByKey(cleanupCtx, key)
 		}
 	}
-	return nil
 }
 
 func (s *UpstreamCenterService) SetStorageAPIKeys(keys *APIKeyService) {

@@ -43,6 +43,13 @@ beforeEach(() => {
 afterEach(() => { wrapper?.unmount(); wrapper = undefined; document.body.innerHTML = ''; vi.useRealTimers() })
 
 describe('OAuth intelligence plan dialog', () => {
+  it('saves an external HTTP IP and port endpoint unchanged', async () => {
+    const endpoint = 'http://216.158.77.26:7070/v1'
+    const plan = savedPlan({ source_type: 'external', account_id: null, endpoint })
+    const view = render({ oauthOnly: false, plan }); await flushPromises()
+    await view.get('form').trigger('submit'); await flushPromises()
+    expect(mocks.update).toHaveBeenCalledWith(plan.id, expect.objectContaining({ source_type: 'external', endpoint }))
+  })
   it('saves optional local prompts and clears only channel overrides when choosing another group', async () => {
     mocks.groups.mockResolvedValue([{ id: 5, name: 'Local GPT', platform: 'openai', rate_multiplier: 1 }, { id: 6, name: 'Backup GPT', platform: 'openai', rate_multiplier: 1 }])
     const view = render({ oauthOnly: false, localOnly: true }); await flushPromises()

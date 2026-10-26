@@ -99,7 +99,7 @@ export default {
       rateHint: '这是外部线路备注；自动获取的实际倍率会单独记录。', enabled: '定时检测', interval: '检测间隔', timeout: '单次最长等待', timeoutHint: '可选择 5–15 分钟，默认 10 分钟，为模型思考与生成动画预留时间。',
       customInterval: '自定义', customSeconds: '自定义间隔（秒）', intervalPlaceholder: '例如：45', intervalHint: '支持 30–86400 秒的整数，默认 5 分钟。', validInterval: '请输入 30–86400 之间的整数秒数。',
       scheduleHint: '新计划默认开启，每 5 分钟检测一次；保存后首次自动执行，后续按所选间隔检测。关闭时仍可手动执行。', notesPlaceholder: '记录线路特点、活动信息或需要比较的内容',
-      requiredSource: '请选择检测来源', requiredName: '请输入计划名称', validEndpoint: '请填写有效的公网 HTTPS 地址', requiredKey: '请输入 API Key',
+      requiredSource: '请选择检测来源', requiredName: '请输入计划名称', validEndpoint: '请填写有效的公网 HTTP 或 HTTPS 地址，可包含端口和路径前缀', requiredKey: '请输入 API Key',
       saving: '保存中…', save: '保存计划', fixedPrompt: '每次均使用以下固定提示词与参数', loadGroupsFailed: '无法读取本站分组', noGroups: '没有可选分组',
     },
   },

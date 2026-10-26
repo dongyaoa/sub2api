@@ -35,6 +35,38 @@ async function chooseOption(view: VueWrapper, selector: string, text: string) {
 beforeEach(() => { vi.resetAllMocks(); mocks.accounts.mockResolvedValue({ items: [{ id: 7, name: 'Imported account', platform: 'openai' }] }); mocks.supplierAccounts.mockResolvedValue({ items: [{ id: 7, name: 'Imported account', platform: 'openai', endpoint: 'https://example.com' }], total: 1, page: 1, page_size: 100 }); mocks.account.mockResolvedValue({ id: 7, name: 'Imported account', platform: 'openai', credentials: { base_url: 'https://example.com' } }); mocks.models.mockResolvedValue(['gpt-test']); mocks.create.mockResolvedValue({}); mocks.update.mockResolvedValue({}) })
 afterEach(() => { wrapper?.unmount(); wrapper = undefined; document.body.innerHTML = ''; vi.useRealTimers() })
 
+describe('HTTP upstream endpoints', () => {
+  it.each(['http://216.158.77.26:7070', 'http://[2606:4700:4700::1111]:7070/v1'])('saves and fetches models for %s', async endpoint => {
+    const view = render(null, false, null)
+    await flushPromises()
+    await view.get('#target-name').setValue('HTTP upstream')
+    await view.get('#target-endpoint').setValue(endpoint)
+    await view.get('#target-key').setValue('test-key')
+    await view.findAll('button').find(button => button.text() === 'upstreamCenter.form.fetchModels')!.trigger('click')
+    await flushPromises()
+    expect(mocks.models).toHaveBeenCalledWith(expect.objectContaining({ endpoint, api_key: 'test-key' }))
+    await view.get('form').trigger('submit'); await flushPromises()
+    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ endpoint, api_key: 'test-key' }))
+  })
+  it('saves a linked HTTP IP account using its server-side key', async () => {
+    const endpoint = 'http://216.158.77.26:7070/v1'
+    mocks.account.mockResolvedValue({ id: 7, name: 'HTTP account', platform: 'openai', credentials: { base_url: endpoint } })
+    const view = render(null, false, { ...supplier, website: 'http://216.158.77.26:7070' })
+    await flushPromises()
+    await view.get('.test-accounts').setValue('7')
+    await view.findAll('button').find(button => button.text() === 'upstreamCenter.form.importAccount')!.trigger('click')
+    await flushPromises()
+    await view.get('form').trigger('submit'); await flushPromises()
+    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ endpoint, account_ids: [7], api_key: undefined }))
+  })
+  it('shows a localized address error for a backend endpoint rejection', async () => {
+    const view = render({ ...target(), supplier_id: null, account_ids: [] }, false, null)
+    mocks.update.mockRejectedValue({ message: 'invalid upstream configuration', metadata: { field: 'endpoint' } })
+    await view.get('form').trigger('submit'); await flushPromises()
+    expect(view.get('[role="alert"]').text()).toBe('upstreamCenter.form.validUrl')
+  })
+})
+
 describe('monitor sources from existing upstream groups', () => {
   const sources = () => [{ ...supplier, newapi_access_token_configured: true, targets: [target()] }]
   it('fills the selected group without copying account bindings or requiring console credentials', async () => {

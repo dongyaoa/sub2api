@@ -38,6 +38,33 @@ func (r *storagePurgeRepoStub) PurgeStorage(ctx context.Context, in UpstreamStor
 	return r.keys, r.err
 }
 
+func (r *storagePurgeRepoStub) PurgeArchivedStorage(ctx context.Context, in UpstreamStoragePurgeArchivesInput) (*UpstreamStoragePurgeArchivesResult, []string, error) {
+	r.called = true
+	r.context = ctx
+	if r.afterCommit != nil {
+		r.afterCommit()
+	}
+	return &UpstreamStoragePurgeArchivesResult{DeletedCount: 1}, r.keys, r.err
+}
+
+func TestUpstreamStoragePurgeArchivesInvalidatesCommittedKeysOnPartialFailure(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	cache := &storagePurgeAuthCacheStub{}
+	keys := &APIKeyService{cache: cache}
+	repo := &storagePurgeRepoStub{keys: []string{"committed-key"}, afterCommit: cancel, err: errors.New("later item failed")}
+	svc := &UpstreamCenterService{repo: repo, storageKeys: keys}
+	result, err := svc.PurgeArchivedStorage(ctx, UpstreamStoragePurgeArchivesInput{})
+	require.Error(t, err)
+	require.Equal(t, int64(1), result.DeletedCount)
+	require.Equal(t, []string{keys.authCacheKey("committed-key")}, cache.deleted)
+	require.NoError(t, cache.contextError)
+	repo.called = false
+	_, err = svc.PurgeArchivedStorage(context.Background(), UpstreamStoragePurgeArchivesInput{Cursor: strings.Repeat("a", 513)})
+	require.ErrorIs(t, err, ErrUpstreamStorageInvalid)
+	require.False(t, repo.called)
+}
+
 type storagePurgeAuthCacheStub struct {
 	APIKeyCache
 	deleted, published []string
@@ -82,7 +109,7 @@ func TestUpstreamStoragePurgeRequiresCacheInvalidationCapabilityForPlans(t *test
 
 func TestUpstreamStoragePurgePreservesExactConfirmationAndRepositoryError(t *testing.T) {
 	repo := &storagePurgeRepoStub{err: ErrUpstreamStorageConfirm}
-	svc := &UpstreamCenterService{repo: repo}
+	svc := &UpstreamCenterService{repo: repo, storageKeys: &APIKeyService{}}
 	input := UpstreamStoragePurgeInput{Kind: "supplier", ID: 1, ConfirmName: " exact name "}
 	require.ErrorIs(t, svc.PurgeStorage(context.Background(), input), ErrUpstreamStorageConfirm)
 	require.Equal(t, input, repo.input, "confirmation must never be silently trimmed into a match")
@@ -92,7 +119,7 @@ func TestUpstreamStoragePurgePreservesExactConfirmationAndRepositoryError(t *tes
 
 func TestUpstreamStoragePurgeBoundsRepositoryDeadline(t *testing.T) {
 	repo := &storagePurgeRepoStub{}
-	svc := &UpstreamCenterService{repo: repo}
+	svc := &UpstreamCenterService{repo: repo, storageKeys: &APIKeyService{}}
 	started := time.Now()
 	require.NoError(t, svc.PurgeStorage(context.Background(), UpstreamStoragePurgeInput{Kind: "target", ID: 1, ConfirmName: "target"}))
 	deadline, ok := repo.context.Deadline()
@@ -113,7 +140,7 @@ func TestUpstreamStoragePurgePreservesShorterRequestDeadline(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Millisecond)
 	defer cancel()
 	repo := &storagePurgeRepoStub{awaitCancel: true}
-	svc := &UpstreamCenterService{repo: repo}
+	svc := &UpstreamCenterService{repo: repo, storageKeys: &APIKeyService{}}
 	require.ErrorIs(t, svc.PurgeStorage(ctx, UpstreamStoragePurgeInput{Kind: "target", ID: 1, ConfirmName: "target"}), context.DeadlineExceeded)
 	requestDeadline, _ := ctx.Deadline()
 	purgeDeadline, ok := repo.context.Deadline()

@@ -64,9 +64,9 @@ func TestUpstreamStorageRestoreDoesNotStealOrReopenBindings(t *testing.T) {
 				mock.ExpectQuery(`SELECT EXISTS.*account_id=\$1 AND valid_until IS NULL`).WithArgs(int64(11)).WillReturnRows(sqlmock.NewRows([]string{"bound"}).AddRow(conflict == "occupied"))
 			}
 			if conflict == "none" {
-				mock.ExpectQuery(`SELECT id FROM intelligence_monitor_plans.*FOR UPDATE`).WithArgs(pq.Array([]int64{7})).WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(21))
+				mock.ExpectQuery(`SELECT p.id FROM intelligence_monitor_plans.*FOR UPDATE`).WithArgs(pq.Array([]int64{7})).WillReturnRows(sqlmock.NewRows([]string{"id"}).AddRow(21))
 				mock.ExpectQuery(`SELECT EXISTS.*status IN \('pending','running'\)`).WithArgs(pq.Array([]int64{21})).WillReturnRows(sqlmock.NewRows([]string{"busy"}).AddRow(false))
-				mock.ExpectExec(`UPDATE intelligence_monitor_plans SET enabled=FALSE,next_run_at=NULL,candy_next_run_at=NULL`).WithArgs(pq.Array([]int64{21})).WillReturnResult(sqlmock.NewResult(0, 1))
+				mock.ExpectExec(`UPDATE intelligence_monitor_plans SET deleted_at=NULL,enabled=FALSE,next_run_at=NULL,candy_next_run_at=NULL`).WithArgs(pq.Array([]int64{21})).WillReturnResult(sqlmock.NewResult(0, 1))
 				mock.ExpectExec(`UPDATE upstream_targets SET deleted_at=NULL,enabled=FALSE,next_check_at=NULL.*balance_next_sync_at=clock_timestamp\(\)`).WithArgs(pq.Array([]int64{7})).WillReturnResult(sqlmock.NewResult(0, 1))
 				mock.ExpectExec(`INSERT INTO upstream_account_bindings.*valid_from\).*clock_timestamp\(\)`).WithArgs(int64(7), int64(11)).WillReturnResult(sqlmock.NewResult(0, 1))
 				mock.ExpectCommit()
@@ -94,7 +94,7 @@ func TestUpstreamStorageRestoreDuplicateKeyRollsBackSupplierAndPlans(t *testing.
 	mock.ExpectQuery(`SELECT deleted_at FROM upstream_suppliers.*FOR UPDATE`).WithArgs(int64(3)).WillReturnRows(sqlmock.NewRows([]string{"deleted_at"}).AddRow(archivedAt))
 	mock.ExpectQuery(`SELECT id,COALESCE.*supplier_id=\$1 AND deleted_at=\$2.*FOR UPDATE`).WithArgs(int64(3), archivedAt).WillReturnRows(sqlmock.NewRows([]string{"id", "busy"}).AddRow(7, false))
 	mock.ExpectQuery(`SELECT b.target_id,b.account_id.*b.valid_until=t.deleted_at`).WithArgs(pq.Array([]int64{7})).WillReturnRows(sqlmock.NewRows([]string{"target_id", "account_id", "provider", "fingerprint"}))
-	mock.ExpectQuery(`SELECT id FROM intelligence_monitor_plans.*FOR UPDATE`).WithArgs(pq.Array([]int64{7})).WillReturnRows(sqlmock.NewRows([]string{"id"}))
+	mock.ExpectQuery(`SELECT p.id FROM intelligence_monitor_plans.*FOR UPDATE`).WithArgs(pq.Array([]int64{7})).WillReturnRows(sqlmock.NewRows([]string{"id"}))
 	mock.ExpectExec(`UPDATE upstream_suppliers SET deleted_at=NULL`).WithArgs(int64(3)).WillReturnResult(sqlmock.NewResult(0, 1))
 	mock.ExpectExec(`UPDATE upstream_targets SET deleted_at=NULL`).WithArgs(pq.Array([]int64{7})).WillReturnError(&pq.Error{Code: "23505", Constraint: "idx_upstream_targets_unique_key"})
 	mock.ExpectRollback()

@@ -493,6 +493,9 @@ export interface SystemSettings {
   table_default_page_size: number;
   table_page_size_options: number[];
   backend_mode_enabled: boolean;
+  web_access_cn_block_enabled?: boolean;
+  web_access_block_message?: string;
+  web_access_ip_allowlist?: string[];
   custom_menu_items: CustomMenuItem[];
   custom_endpoints: CustomEndpoint[];
   // SMTP settings
@@ -849,6 +852,9 @@ export interface UpdateSettingsRequest {
   table_default_page_size?: number;
   table_page_size_options?: number[];
   backend_mode_enabled?: boolean;
+  web_access_cn_block_enabled?: boolean;
+  web_access_block_message?: string;
+  web_access_ip_allowlist?: string[];
   custom_menu_items?: CustomMenuItem[];
   custom_endpoints?: CustomEndpoint[];
   smtp_host?: string;

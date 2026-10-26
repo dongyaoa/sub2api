@@ -18,6 +18,7 @@ func TestUpstreamStorageHandlerRejectsInvalidMutationBeforeRepository(t *testing
 	r.PUT("/storage", h.SaveStoragePolicy)
 	r.POST("/purge", h.PurgeStorage)
 	r.POST("/restore", h.RestoreStorage)
+	r.POST("/purge-archives", h.PurgeArchivedStorage)
 	for _, tc := range []struct{ method, path, body string }{
 		{http.MethodPut, "/storage", `{}`},
 		{http.MethodPut, "/storage", `{"enabled":true,"history_retention_days":7,"snapshot_retention_days":7}`},
@@ -30,6 +31,8 @@ func TestUpstreamStorageHandlerRejectsInvalidMutationBeforeRepository(t *testing
 		{http.MethodPost, "/restore", `{"kind":"intelligence","id":0}`},
 		{http.MethodPost, "/restore", `{"kind":"secret-invalid","id":1}`},
 		{http.MethodPost, "/restore", `{"kind":"supplier","id":"secret-invalid"}`},
+		{http.MethodPost, "/purge-archives", `{"cursor":5}`},
+		{http.MethodPost, "/purge-archives", `{"cursor":"` + strings.Repeat("x", 513) + `"}`},
 	} {
 		req := httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
 		req.Header.Set("Content-Type", "application/json")

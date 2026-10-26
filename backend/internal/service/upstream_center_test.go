@@ -145,7 +145,7 @@ func TestUpstreamPrivateEndpointRejected(t *testing.T) {
 	target.Endpoint = "https://127.0.0.1"
 	require.ErrorIs(t, validateUpstreamTargetConfig(target, "key", true), ErrChannelMonitorEndpointPrivate)
 	target.Endpoint = "https://user:password@8.8.8.8"
-	require.ErrorIs(t, validateUpstreamTargetConfig(target, "key", true), ErrChannelMonitorInvalidEndpoint)
+	require.ErrorIs(t, validateUpstreamTargetConfig(target, "key", true), ErrUpstreamInvalid)
 }
 
 func TestUpstreamCanPauseExistingTargetDuringDNSOutage(t *testing.T) {

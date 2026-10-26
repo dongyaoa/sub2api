@@ -1,5 +1,5 @@
 <template>
-  <BaseDialog :show="show" :title="t('upstreamCenter.storage.title')" width="wide" :show-close-button="!busy && !purging" :close-on-escape="!busy && !purging" @close="close">
+  <BaseDialog :show="show" :title="t('upstreamCenter.storage.title')" width="wide" :show-close-button="!busy && !confirming" :close-on-escape="!busy && !confirming" @close="close">
     <p class="text-xs leading-6 text-gray-500 dark:text-dark-300">{{ t('upstreamCenter.storage.description') }}</p>
     <div v-if="loading" class="flex items-center justify-center gap-2 py-10 text-sm text-gray-400" role="status"><Icon name="refresh" size="sm" class="animate-spin" />{{ t('common.loading') }}</div>
     <div v-else-if="loadError" class="mt-4 rounded-xl bg-rose-50 p-4 dark:bg-rose-500/10" role="alert"><p class="text-sm text-rose-600 dark:text-rose-400">{{ loadError }}</p><button type="button" class="btn btn-secondary btn-sm mt-3" @click="load">{{ t('upstreamCenter.retry') }}</button></div>
@@ -19,7 +19,7 @@
         <p v-if="policy.last_result?.has_more" class="mt-2 text-xs leading-5 text-amber-600 dark:text-amber-400" data-testid="cleanup-has-more">{{ t('upstreamCenter.storage.hasMore') }}</p>
       </section>
       <section class="mt-5">
-        <div class="flex items-center justify-between gap-3"><h3 class="text-sm font-semibold text-gray-800 dark:text-gray-100">{{ t('upstreamCenter.storage.archives') }} <span class="ml-1 text-xs font-normal tabular-nums text-gray-400">{{ archiveTotal }}</span></h3><button type="button" class="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 disabled:opacity-50 dark:hover:bg-dark-700" :disabled="busy || archivesLoading" :aria-label="t('upstreamCenter.refresh')" @click="loadArchives"><Icon name="refresh" size="sm" :class="archivesLoading && 'animate-spin'" /></button></div>
+        <div class="flex flex-wrap items-center justify-between gap-3"><h3 class="text-sm font-semibold text-gray-800 dark:text-gray-100">{{ t('upstreamCenter.storage.archives') }} <span class="ml-1 text-xs font-normal tabular-nums text-gray-400">{{ archiveTotal }}</span></h3><div class="flex items-center gap-2"><button type="button" class="rounded-lg px-2 py-1.5 text-xs text-rose-600 hover:bg-rose-50 disabled:opacity-50 dark:text-rose-400 dark:hover:bg-rose-500/10" :disabled="busy || archivesLoading || archiveTotal === 0" data-testid="purge-all-archives" @click="openBulkConfirmation">{{ t('upstreamCenter.storage.purgeAll') }}</button><button type="button" class="rounded-lg p-1.5 text-gray-400 hover:bg-gray-100 disabled:opacity-50 dark:hover:bg-dark-700" :disabled="busy || archivesLoading" :aria-label="t('upstreamCenter.refresh')" @click="loadArchives"><Icon name="refresh" size="sm" :class="archivesLoading && 'animate-spin'" /></button></div></div>
         <p class="mt-1 text-xs leading-5 text-gray-400 dark:text-dark-400">{{ t('upstreamCenter.storage.archivesHint') }}</p>
         <p v-if="archivesError" role="alert" class="mt-3 text-xs text-rose-600 dark:text-rose-400">{{ archivesError }}</p>
         <div class="mt-3 max-h-[320px] divide-y divide-gray-100 overflow-y-auto rounded-xl border border-gray-200 dark:divide-dark-700 dark:border-dark-700" :aria-busy="archivesLoading">
@@ -37,9 +37,20 @@
       <p v-if="actionError" role="alert" class="mt-4 rounded-xl bg-rose-50 p-3 text-sm text-rose-600 dark:bg-rose-500/10 dark:text-rose-400">{{ actionError }}</p>
       <p v-if="success" role="status" class="mt-4 text-xs text-emerald-600 dark:text-emerald-400">{{ success }}</p>
     </template>
-    <template #footer><button type="button" class="btn btn-secondary" :disabled="busy || !!purging" @click="close">{{ t('common.close') }}</button></template>
+    <template #footer><button type="button" class="btn btn-secondary" :disabled="busy || confirming" @click="close">{{ t('common.close') }}</button></template>
   </BaseDialog>
   <UpstreamDeleteDialog v-if="purging" :show="true" :item="purging" :busy="deleting" :error="purgeError" :archive-allowed="false" @close="purging = null" @confirm="purge" />
+  <BaseDialog :show="bulkConfirm" :title="t('upstreamCenter.storage.purgeAll')" width="narrow" :show-close-button="!purgingAll" :close-on-escape="!purgingAll" @close="!purgingAll && (bulkConfirm = false)">
+    <p class="text-sm leading-6 text-gray-600 dark:text-dark-300">{{ t('upstreamCenter.storage.purgeAllHint', { count: archiveTotal }) }}</p>
+    <label for="purge-all-confirmation" class="mb-2 mt-4 block text-xs font-medium text-rose-700 dark:text-rose-300">{{ t('upstreamCenter.storage.purgeAllConfirm', { phrase: t('upstreamCenter.storage.purgeAllPhrase') }) }}</label>
+    <input id="purge-all-confirmation" v-model="bulkConfirmation" :disabled="purgingAll" autocomplete="off" spellcheck="false" class="input text-sm" data-testid="purge-all-confirmation" @keydown.enter.prevent="purgeAll" />
+    <p v-if="purgingAll" class="mt-4 text-xs leading-5 text-gray-500 dark:text-dark-300" role="status" data-testid="purge-all-progress">{{ t('upstreamCenter.storage.purgeAllProgress', { count: bulkDeleted }) }}</p>
+    <p v-if="bulkError" class="mt-4 text-sm text-rose-600 dark:text-rose-400" role="alert">{{ bulkError }}</p>
+    <template #footer>
+      <button type="button" class="btn btn-secondary" :disabled="purgingAll" @click="bulkConfirm = false">{{ t('common.cancel') }}</button>
+      <button type="button" class="btn bg-rose-600 text-white hover:bg-rose-700 disabled:opacity-50" :disabled="!canPurgeAll" data-testid="confirm-purge-all" @click="purgeAll"><Icon v-if="purgingAll" name="refresh" size="sm" class="mr-1.5 animate-spin" />{{ t('upstreamCenter.storage.purgeAll') }}</button>
+    </template>
+  </BaseDialog>
 </template>
 <script setup lang="ts">
 import { computed, nextTick, onBeforeUnmount, reactive, ref, watch } from 'vue'
@@ -61,7 +72,10 @@ const loading = ref(false), saving = ref(false), cleaning = ref(false), deleting
 const restoring = ref('')
 const loadError = ref(''), actionError = ref(''), archivesError = ref(''), success = ref(''), purgeError = ref('')
 const archives = ref<UpstreamArchiveItem[]>([]), archiveTotal = ref(0), archivesLoading = ref(false), purging = ref<UpstreamArchiveItem | null>(null)
-const busy = computed(() => saving.value || cleaning.value || deleting.value || !!restoring.value)
+const bulkConfirm = ref(false), bulkConfirmation = ref(''), bulkError = ref(''), purgingAll = ref(false), bulkDeleted = ref(0)
+const confirming = computed(() => !!purging.value || bulkConfirm.value)
+const busy = computed(() => saving.value || cleaning.value || deleting.value || purgingAll.value || !!restoring.value)
+const canPurgeAll = computed(() => bulkConfirm.value && !busy.value && bulkConfirmation.value === t('upstreamCenter.storage.purgeAllPhrase'))
 const dirty = computed(() => !!policy.value && (form.enabled !== policy.value.enabled || Number(form.history_retention_days) !== policy.value.history_retention_days || Number(form.snapshot_retention_days) !== policy.value.snapshot_retention_days))
 const historyOptions = computed(() => [30, 60, 90, 180, 365].map(value => ({ value, label: t('upstreamCenter.storage.days', { days: value }) })))
 const snapshotOptions = computed(() => [1, 3, 7, 30, 90].map(value => ({ value, label: t('upstreamCenter.storage.days', { days: value }) })))
@@ -72,7 +86,7 @@ const cleanupMetrics = computed(() => [
 ])
 let session = 0, archiveRequest = 0
 let controller: AbortController | undefined
-function close() { if (!busy.value && !purging.value) emit('close') }
+function close() { if (!busy.value && !confirming.value) emit('close') }
 function assignPolicy(value: UpstreamStoragePolicy) { policy.value = value; Object.assign(form, { enabled: value.enabled, history_retention_days: value.history_retention_days, snapshot_retention_days: value.snapshot_retention_days }) }
 async function loadArchives() {
   const generation = session, request = ++archiveRequest
@@ -121,6 +135,48 @@ async function purge() {
   catch (error) { if (generation === session) purgeError.value = extractApiErrorMessage(error, t('upstreamCenter.storage.actionFailed')) }
   finally { if (generation === session) deleting.value = false }
 }
+function openBulkConfirmation() {
+  if (busy.value || archivesLoading.value || archiveTotal.value === 0) return
+  bulkConfirmation.value = ''; bulkError.value = ''; bulkDeleted.value = 0; bulkConfirm.value = true
+}
+async function purgeAll() {
+  if (!canPurgeAll.value) return
+  const generation = session
+  purgingAll.value = true; bulkError.value = ''; actionError.value = ''; success.value = ''; bulkDeleted.value = 0
+  let cursor: string | undefined, skipped = 0, completedBatch = false
+  const seenCursors = new Set<string>()
+  try {
+    // Bounded server batches keep large archives responsive and bypass the
+    // display limit. A cursor excludes newly archived items and skips busy ones.
+    while (generation === session) {
+      const result = await upstreamCenterAPI.purgeArchives(cursor)
+      if (generation !== session) return
+      completedBatch = true
+      bulkDeleted.value += result.deleted_count
+      skipped += result.busy_count
+      archiveTotal.value = result.remaining_count
+      // The batch can remove parents and children outside the visible page.
+      // Do not retain stale restore/delete controls if the final refresh fails.
+      archives.value = []
+      if (!result.has_more) {
+        success.value = t(skipped > 0 ? 'upstreamCenter.storage.purgeAllSkipped' : 'upstreamCenter.storage.purgeAllDone', { count: bulkDeleted.value, busy: skipped, remaining: result.remaining_count })
+        bulkConfirm.value = false
+        break
+      }
+      if (!result.next_cursor || seenCursors.has(result.next_cursor)) throw new Error(t('upstreamCenter.storage.purgeAllInterrupted'))
+      cursor = result.next_cursor
+      seenCursors.add(cursor)
+    }
+  } catch (error) {
+    if (generation === session) bulkError.value = `${t('upstreamCenter.storage.purgeAllPartial', { count: bulkDeleted.value })} ${extractApiErrorMessage(error, t('upstreamCenter.storage.actionFailed'))}`
+  } finally {
+    if (generation === session) {
+      if (completedBatch) emit('changed')
+      await loadArchives()
+      if (generation === session) purgingAll.value = false
+    }
+  }
+}
 async function restore(item: UpstreamArchiveItem) {
   if (busy.value || archivesLoading.value) return
   const generation = session
@@ -149,9 +205,9 @@ async function restore(item: UpstreamArchiveItem) {
 }
 watch(() => props.show, show => {
   if (show) { void load(); return }
-  session++; archiveRequest++; controller?.abort(); loading.value = false; archivesLoading.value = false; saving.value = false; cleaning.value = false; deleting.value = false; purging.value = null; restoring.value = ''
+  session++; archiveRequest++; controller?.abort(); loading.value = false; archivesLoading.value = false; saving.value = false; cleaning.value = false; deleting.value = false; purging.value = null; restoring.value = ''; bulkConfirm.value = false; purgingAll.value = false
 }, { immediate: true })
-watch(purging, async (item, previous) => {
+watch(confirming, async (item, previous) => {
   if (!previous || item) return
   await nextTick()
   // BaseDialog releases its body lock on unmount; the parent remains open.

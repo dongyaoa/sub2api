@@ -32,6 +32,9 @@ INSERT INTO intelligence_monitor_runs(plan_id,plan_name,status,trigger,model,rea
 	require.NoError(t, err)
 	repo := &upstreamCenterRepository{db: db}
 	require.NoError(t, repo.ArchiveSupplier(ctx, 1))
+	var archivedPlanCount int
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT COUNT(*) FROM intelligence_monitor_plans p JOIN upstream_targets t ON t.id=p.upstream_target_id WHERE p.id=21 AND p.deleted_at=t.deleted_at AND NOT p.enabled`).Scan(&archivedPlanCount))
+	require.Equal(t, 1, archivedPlanCount, "archiving an upstream also archives and pauses its intelligence monitor")
 	var archiveAt time.Time
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT deleted_at FROM upstream_suppliers WHERE id=1`).Scan(&archiveAt))
 	_, err = repo.RestoreStorage(ctx, service.UpstreamStorageRestoreInput{Kind: "target", ID: 1})
@@ -57,7 +60,7 @@ INSERT INTO intelligence_monitor_runs(plan_id,plan_name,status,trigger,model,rea
 	require.Equal(t, int64(1), count(`SELECT COUNT(*) FROM upstream_targets WHERE id=4 AND deleted_at IS NOT NULL`), "an earlier independently archived group must remain archived")
 	require.Equal(t, int64(1), count(`SELECT COUNT(*) FROM upstream_account_bindings WHERE target_id=1 AND account_id=10 AND valid_until=$1`, archiveAt), "the old financial interval remains closed")
 	require.Equal(t, int64(1), count(`SELECT COUNT(*) FROM upstream_account_bindings WHERE target_id=1 AND account_id=10 AND valid_until IS NULL AND valid_from>$1`, archiveAt), "restored binding starts a new financial interval")
-	require.Equal(t, int64(1), count(`SELECT COUNT(*) FROM intelligence_monitor_plans WHERE id=21 AND NOT enabled AND next_run_at IS NULL AND candy_next_run_at IS NULL`))
+	require.Equal(t, int64(1), count(`SELECT COUNT(*) FROM intelligence_monitor_plans WHERE id=21 AND deleted_at IS NULL AND NOT enabled AND next_run_at IS NULL AND candy_next_run_at IS NULL`))
 	result, err = repo.RestoreStorage(ctx, service.UpstreamStorageRestoreInput{Kind: "intelligence", ID: 23})
 	require.NoError(t, err)
 	require.Equal(t, &service.UpstreamStorageRestoreResult{PlansRestored: 1, RequiresConfiguration: true}, result)

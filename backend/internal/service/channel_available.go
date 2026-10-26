@@ -52,6 +52,17 @@ type AvailableChannel struct {
 // 前置条件：s.groupRepo 必须非 nil（由 wire DI 保证）。直接 nil-deref 用于 fail-fast，
 // 避免静默掩盖注入缺失。
 func (s *ChannelService) ListAvailable(ctx context.Context) ([]AvailableChannel, error) {
+	return s.listAvailable(ctx, false)
+}
+
+// ListModelSquareCatalog 返回模型广场目录，仅展示渠道显式配置的模型定价。
+// 不加入仅在模型映射中出现的模型，也不以全局价格补全未配置的价格字段。
+// 分组关联和返回结构与 ListAvailable 保持一致，由 handler 执行用户可见范围过滤。
+func (s *ChannelService) ListModelSquareCatalog(ctx context.Context) ([]AvailableChannel, error) {
+	return s.listAvailable(ctx, true)
+}
+
+func (s *ChannelService) listAvailable(ctx context.Context, configuredPricingOnly bool) ([]AvailableChannel, error) {
 	channels, err := s.repo.ListAll(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("list channels: %w", err)
@@ -92,8 +103,16 @@ func (s *ChannelService) ListAvailable(ctx context.Context) ([]AvailableChannel,
 
 		ch.normalizeBillingModelSource()
 
-		supported := ch.SupportedModels()
-		fillGlobalPricingFallback(s.pricingService, supported)
+		var supported []SupportedModel
+		if configuredPricingOnly {
+			// 只提供定价列表，复用具体模型展开、大小写去重和稳定排序，
+			// 同时避免模型映射把显式定价替换成目标模型的价格。
+			pricingOnlyChannel := Channel{ModelPricing: ch.ModelPricing}
+			supported = pricingOnlyChannel.SupportedModels()
+		} else {
+			supported = ch.SupportedModels()
+			fillGlobalPricingFallback(s.pricingService, supported)
+		}
 
 		out = append(out, AvailableChannel{
 			ID:                 ch.ID,
@@ -121,7 +140,7 @@ func (s *ChannelService) ListAvailable(ctx context.Context) ([]AvailableChannel,
 //  2. Pricing 非 nil 但所有价格字段为空（admin UI 建了条目但没填价格）
 //
 // 当 pricingService 为 nil（测试场景），跳过价格回落。
-// 可用渠道与模型广场共用。
+// 模型广场不使用此回落，始终保留渠道显式配置。
 func fillGlobalPricingFallback(pricingService *PricingService, models []SupportedModel) {
 	for i := range models {
 		if pricingService != nil && pricingNeedsFallback(models[i].Pricing) {

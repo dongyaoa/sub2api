@@ -99,10 +99,43 @@ func TestUpstreamFinanceEndpointNormalization(t *testing.T) {
 	got, err := upstreamUsageURL("https://example.com/prefix/v1/messages")
 	require.NoError(t, err)
 	require.Equal(t, "https://example.com/prefix/v1/usage", got)
-	for _, endpoint := range []string{"http://example.com", "https://user:secret@example.com", "https://example.com?key=secret", "https://example.com#fragment"} {
+	for endpoint, want := range map[string]string{
+		"http://example.com/v1/":                       "http://example.com/v1/usage",
+		"http://216.158.77.26:7070/prefix/v1/messages": "http://216.158.77.26:7070/prefix/v1/usage",
+		"https://216.158.77.26:8443/v1/responses":      "https://216.158.77.26:8443/v1/usage",
+		"http://[2606:4700:4700::1111]:7070/v1":        "http://[2606:4700:4700::1111]:7070/v1/usage",
+	} {
+		got, err := upstreamUsageURL(endpoint)
+		require.NoError(t, err)
+		require.Equal(t, want, got)
+	}
+	for _, endpoint := range []string{"ftp://example.com", "http://example.com:0", "http://example.com:65536", "https://user:secret@example.com", "https://example.com?key=secret", "https://example.com#fragment"} {
 		_, err := upstreamUsageURL(endpoint)
 		require.Error(t, err)
 	}
+}
+
+func TestUpstreamFinanceHTTPPublicIPWithPort(t *testing.T) {
+	svc := NewUpstreamFinanceService(nil, financeTestCipher{}, nil, nil, nil)
+	calls := 0
+	svc.client.Transport = financeRoundTrip(func(req *http.Request) (*http.Response, error) {
+		calls++
+		require.Equal(t, "http", req.URL.Scheme)
+		require.Equal(t, "216.158.77.26:7070", req.URL.Host)
+		require.Equal(t, "/prefix/v1/usage", req.URL.Path)
+		require.Equal(t, "Bearer test-secret", req.Header.Get("Authorization"))
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(`{"balance":33.66,"usage":{"today":{"actual_cost":1}},"daily_usage":[{"actual_cost":2}]}`))}, nil
+	})
+	got := svc.fetchSub2APIBalance(context.Background(), &UpstreamFinanceTarget{ID: 1, Endpoint: "http://216.158.77.26:7070/prefix/v1", APIKeyEncrypted: "test-secret"})
+	require.Equal(t, "ok", got.Status)
+	require.Equal(t, 33.66, *got.Balance)
+	require.Equal(t, 1.0, *got.DayUsed)
+	require.Equal(t, 2.0, *got.Last30DaysUsed)
+	for _, endpoint := range []string{"http://127.0.0.1:7070", "http://169.254.169.254", "http://[::1]:7070"} {
+		blocked := svc.fetchSub2APIBalance(context.Background(), &UpstreamFinanceTarget{ID: 1, Endpoint: endpoint, APIKeyEncrypted: "test-secret"})
+		require.Equal(t, "endpoint_unavailable", blocked.Error)
+	}
+	require.Equal(t, 1, calls, "private endpoints must fail before any request")
 }
 
 type financeTestCipher struct{}

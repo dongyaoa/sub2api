@@ -77,6 +77,7 @@ import { upstreamCenterAPI, type UpstreamSupplier, type UpstreamTarget, type Ups
 import * as accountsAPI from '@/api/admin/accounts'
 import type { AccountListItem } from '@/types'
 import { extractApiErrorMessage } from '@/utils/apiError'
+import { isValidUpstreamEndpoint, upstreamEndpointErrorKey } from './upstreamEndpoint'
 const props = withDefaults(defineProps<{ show: boolean; target: UpstreamTarget | null; supplier: UpstreamSupplier | null; suppliers?: UpstreamSupplier[] }>(), { suppliers: () => [] })
 const emit = defineEmits<{ close: []; saved: [] }>()
 const { t } = useI18n()
@@ -216,6 +217,7 @@ async function importAccount() {
   finally { if (generation === dialogGeneration && request === importRequest) importing.value = false }
 }
 async function fetchModels() {
+  if (!isValidUpstreamEndpoint(form.endpoint)) { modelError.value = t('upstreamCenter.form.validUrl'); return }
   const generation = dialogGeneration, request = ++modelRequest
   modelsLoading.value = true; modelError.value = ''
   try {
@@ -223,7 +225,7 @@ async function fetchModels() {
     if (generation !== dialogGeneration || request !== modelRequest) return
     discoveredModels.value = [...new Set(models || [])].sort()
     if (!models?.length) modelError.value = t('upstreamCenter.form.noModels')
-  } catch (err) { if (generation === dialogGeneration && request === modelRequest) modelError.value = extractApiErrorMessage(err, t('upstreamCenter.form.fetchFailed')) }
+  } catch (err) { if (generation === dialogGeneration && request === modelRequest) { const endpointError = upstreamEndpointErrorKey(err); modelError.value = endpointError ? t(endpointError) : extractApiErrorMessage(err, t('upstreamCenter.form.fetchFailed')) } }
   finally { if (generation === dialogGeneration && request === modelRequest) modelsLoading.value = false }
 }
 async function save() {
@@ -233,7 +235,7 @@ async function save() {
   if (!models.length) { error.value = t('upstreamCenter.form.requiredModels'); return }
   if (models.length > 8) { error.value = t('upstreamCenter.form.maxModels'); return }
   if (!canKeepSavedKey.value && !form.api_key?.trim() && !sourceAccount.value && !sourceTarget.value && !(props.supplier && form.account_ids.length)) { error.value = t('upstreamCenter.form.requiredKey'); return }
-  try { const url = new URL(form.endpoint); if (url.protocol !== 'https:') throw new Error() } catch { error.value = t('upstreamCenter.form.validUrl'); return }
+  if (!isValidUpstreamEndpoint(form.endpoint)) { error.value = t('upstreamCenter.form.validUrl'); return }
   if (newapiEnabled.value && (!Number.isSafeInteger(form.newapi_user_id) || Number(form.newapi_user_id) <= 0)) { error.value = t('upstreamCenter.newapi.requiredUserId'); return }
   if (newapiEnabled.value && !form.newapi_access_token?.trim() && !canKeepNewapiToken.value) { error.value = t('upstreamCenter.newapi.requiredToken'); return }
   saving.value = true
@@ -242,7 +244,7 @@ async function save() {
     if (props.target) await upstreamCenterAPI.updateTarget(props.target.id, input)
     else await upstreamCenterAPI.createTarget(input)
     form.newapi_access_token = ''; emit('saved'); emit('close')
-  } catch (err) { error.value = extractApiErrorMessage(err, t('upstreamCenter.saveFailed')) }
+  } catch (err) { const endpointError = upstreamEndpointErrorKey(err); error.value = endpointError ? t(endpointError) : extractApiErrorMessage(err, t('upstreamCenter.saveFailed')) }
   finally { saving.value = false }
 }
 onBeforeUnmount(() => { clearTimeout(searchTimer); accountController?.abort(); accountRequest++; dialogGeneration++ })

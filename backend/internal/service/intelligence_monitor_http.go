@@ -46,8 +46,8 @@ func (s *IntelligenceMonitorService) generate(ctx context.Context, run *Intellig
 	}
 	client, endpoint := s.clientAndEndpoint(run)
 	if run.SourceType != "local_group" {
-		if err := validateEndpoint(endpoint); err != nil {
-			return nil, "", "upstream endpoint is unavailable or rejected by the public HTTPS policy"
+		if err := validateUpstreamEndpoint(endpoint); err != nil {
+			return nil, "", "upstream endpoint is unavailable or rejected by the public HTTP/HTTPS policy"
 		}
 	}
 	path := "/v1/responses"

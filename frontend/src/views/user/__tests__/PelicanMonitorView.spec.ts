@@ -34,19 +34,19 @@ function renderWithRealArtwork() {
   return wrapper
 }
 describe('read-only user pelican page', () => {
-  it('autoplays the first ten completed artworks per group and loads the rest on demand', async () => {
+  it('autoplays the first eight completed artworks per group and loads the rest on demand', async () => {
     const recent = Array.from({ length: 20 }, (_, index) => ({ ...run, id: 40 - index }))
     state.list.mockResolvedValue(snapshot([{ ...group, latest_run: { ...run, id: 41, status: 'running' }, recent_runs: recent }]))
     state.artwork.mockImplementation(async (item: PelicanRun) => `<svg>Artwork ${item.id}</svg>`)
     const view = renderWithRealArtwork(); await flushPromises()
     expect(view.findAll('.pelican-work')).toHaveLength(21)
-    expect(state.artwork.mock.calls.map(([item]) => item.id)).toEqual(recent.slice(0, 10).map(item => item.id))
-    expect(view.findAll('.pelican-work iframe')).toHaveLength(10)
-    const older = view.get('[data-run-id="30"]')
+    expect(state.artwork.mock.calls.map(([item]) => item.id)).toEqual(recent.slice(0, 8).map(item => item.id))
+    expect(view.findAll('.pelican-work iframe')).toHaveLength(8)
+    const older = view.get('[data-run-id="32"]')
     expect(older.find('iframe').exists()).toBe(false)
     await older.get('[aria-busy]').trigger('mouseenter'); await flushPromises()
-    expect(older.get('iframe').attributes('srcdoc')).toContain('Artwork 30')
-    expect(state.artwork).toHaveBeenCalledTimes(11)
+    expect(older.get('iframe').attributes('srcdoc')).toContain('Artwork 32')
+    expect(state.artwork).toHaveBeenCalledTimes(9)
   })
 
   it('shows separate live rows for both models of a group and filters by the display model name', async () => {
@@ -80,7 +80,7 @@ describe('read-only user pelican page', () => {
     const playback = vi.spyOn(oldFrame.contentWindow!, 'postMessage')
     await view.get('.preview-open').trigger('click'); await flushPromises()
     oldFrame.dispatchEvent(new Event('load')); await flushPromises()
-    expect(playback).toHaveBeenLastCalledWith({ type: 'intelligence-preview-playback', playing: true }, '*')
+    expect(playback).toHaveBeenLastCalledWith({ type: 'intelligence-preview-playback', playing: false }, '*')
     const dialog = document.querySelector('[role="dialog"]')
     const gallery = view.get<HTMLElement>('[data-testid="pelican-gallery"]')
     gallery.element.scrollLeft = 180
@@ -97,10 +97,14 @@ describe('read-only user pelican page', () => {
     expect(view.get('.pelican-work [role="img"]').attributes('aria-label')).toBe('pelicanMonitor.status.running')
     state.list.mockResolvedValue(snapshot([{ ...group, latest_run: { ...next, status: 'succeeded' }, recent_runs: [run] }]))
     vi.advanceTimersByTime(1500); await flushPromises()
-    expect(view.get('.pelican-work iframe').attributes('srcdoc')).toContain('Artwork 9')
+    expect(view.get('.pelican-work').find('iframe').exists()).toBe(false)
     expect(view.get('.pelican-work [role="img"]').classes()).toContain('bg-emerald-500')
     expect(view.get('[data-run-id="8"] iframe').element).toBe(oldFrame)
     expect(document.querySelector('[role="dialog"]')).toBe(dialog)
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' })); await flushPromises()
+    expect(view.get('.pelican-work iframe').attributes('srcdoc')).toContain('Artwork 9')
+    expect(view.get('[data-run-id="8"] iframe').element).toBe(oldFrame)
+    expect(playback).toHaveBeenLastCalledWith({ type: 'intelligence-preview-playback', playing: true }, '*')
   })
 
   it('labels the latest failed run and distinguishes historical status with colored dots', async () => {

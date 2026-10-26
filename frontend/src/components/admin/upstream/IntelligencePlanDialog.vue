@@ -90,6 +90,7 @@ import { getAll } from '@/api/admin/groups'
 import type { AdminGroup, AccountListItem } from '@/types'
 import { getById as getAccount, list as listAccounts } from '@/api/admin/accounts'
 import { extractApiErrorCode, extractApiErrorMessage, extractApiErrorMetadata } from '@/utils/apiError'
+import { isValidUpstreamEndpoint, upstreamEndpointErrorKey } from './upstreamEndpoint'
 import { intelligenceRateLabel } from './intelligencePreview'
 import { domain } from './format'
 import IntelligenceLocalSource from './IntelligenceLocalSource.vue'
@@ -318,7 +319,7 @@ async function save() {
   }
   if (!Number.isInteger(form.interval_seconds) || form.interval_seconds < 30 || form.interval_seconds > 86400) { intervalError.value = t('intelligenceMonitor.form.validInterval'); return }
   if (form.source_type==='external') {
-    try { const parsed = new URL(form.endpoint || ''); if (parsed.protocol !== 'https:' || parsed.username || parsed.password) throw new Error() } catch { error.value=t('intelligenceMonitor.form.validEndpoint'); return }
+    if (!isValidUpstreamEndpoint(form.endpoint)) { error.value=t('intelligenceMonitor.form.validEndpoint'); return }
     if (!form.api_key?.trim() && (!props.plan || props.plan.source_type !== 'external')) { error.value=t('intelligenceMonitor.form.requiredKey'); return }
   }
   saving.value=true
@@ -333,7 +334,8 @@ async function save() {
     const detail = metadata?.detail
     const detailText = typeof detail === 'string' ? detail.trim() : ''
     const code = extractApiErrorCode(err)
-    error.value = code === 'INTELLIGENCE_OAUTH_PLAN_EXISTS'
+    const endpointError = upstreamEndpointErrorKey(err)
+    error.value = endpointError ? t(endpointError) : code === 'INTELLIGENCE_OAUTH_PLAN_EXISTS'
       ? t('intelligenceMonitor.oauth.alreadyAdded')
       : code === 'INTELLIGENCE_OAUTH_COOLING_DOWN'
       ? t('intelligenceMonitor.oauth.cooldownHint')

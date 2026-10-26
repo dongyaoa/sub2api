@@ -27,27 +27,32 @@
   </div>
 </template>
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import HelpTooltip from '@/components/common/HelpTooltip.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { useClipboard } from '@/composables/useClipboard'
 import type { UpstreamHistoryRecord } from '@/api/admin/upstreamCenter'
 import { dateTime, latency, recentHistory } from './format'
+import { useUpstreamHistoryClock } from './useUpstreamHistoryClock'
 const props = withDefaults(defineProps<{ records?: UpstreamHistoryRecord[]; lastCheckedAt?: string | null; legend?: boolean }>(), { records: () => [], lastCheckedAt: null, legend: false })
 const emit = defineEmits<{ select: [record: UpstreamHistoryRecord] }>()
 const { t, locale } = useI18n()
 const { copyToClipboard } = useClipboard()
 const bars = computed(() => recentHistory(props.records))
 const lastChecked = computed(() => props.lastCheckedAt || bars.value[bars.value.length - 1]?.checked_at)
-const now = ref(Date.now())
+const now = useUpstreamHistoryClock()
 const updatedLabel = computed(() => {
   const timestamp = lastChecked.value ? Date.parse(lastChecked.value) : NaN
-  return Number.isFinite(timestamp) ? t('upstreamCenter.history.updatedAgo', { seconds: Math.max(0, Math.floor((now.value - timestamp) / 1000)).toLocaleString() }) : t('upstreamCenter.history.waiting')
+  if (!Number.isFinite(timestamp)) return t('upstreamCenter.history.waiting')
+  // The shared clock invalidates once a minute; changed server timestamps also
+  // recompute immediately using wall time, without adding another timer.
+  const minutes = Math.max(0, Math.floor((Math.max(now.value, Date.now()) - timestamp) / 60_000))
+  if (minutes < 1) return t('upstreamCenter.history.updatedJustNow')
+  if (minutes < 60) return t('upstreamCenter.history.updatedMinutesAgo', { count: minutes })
+  if (minutes < 1440) return t('upstreamCenter.history.updatedHoursAgo', { count: Math.floor(minutes / 60) })
+  return t('upstreamCenter.history.updatedDaysAgo', { count: Math.floor(minutes / 1440) })
 })
-let timer: ReturnType<typeof setInterval> | undefined
-onMounted(() => { timer = setInterval(() => { now.value = Date.now() }, 1000) })
-onBeforeUnmount(() => clearInterval(timer))
 const colors: Record<string, string> = { operational: 'history-bar--success', degraded: 'history-bar--degraded', error: 'history-bar--failure', failed: 'history-bar--failure' }
 function barClass(record: UpstreamHistoryRecord) { return colors[record.status] || 'history-bar--empty' }
 function recordLabel(record: UpstreamHistoryRecord) { return `${dateTime(record.checked_at)} · ${record.model} · ${t(`upstreamCenter.status.${record.status}`)} · ${latency(record.latency_ms)}${record.http_status ? ` · HTTP ${record.http_status}` : ''}${record.message ? ` · ${record.message}` : ''}` }

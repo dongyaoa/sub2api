@@ -55,6 +55,20 @@ type UpstreamStoragePurgeInput struct {
 	ConfirmName string `json:"confirm_name"`
 }
 
+type UpstreamStoragePurgeArchivesInput struct {
+	Cursor string `json:"cursor"`
+}
+
+// Counts deleted/busy roots; each root includes all dependent records.
+// RemainingCount counts the entries still visible in the archive list.
+type UpstreamStoragePurgeArchivesResult struct {
+	DeletedCount   int64  `json:"deleted_count"`
+	RemainingCount int64  `json:"remaining_count"`
+	BusyCount      int64  `json:"busy_count"`
+	HasMore        bool   `json:"has_more"`
+	NextCursor     string `json:"next_cursor"`
+}
+
 // Optional capability keeps ordinary monitoring repository consumers isolated.
 type UpstreamStorageRepository interface {
 	GetStoragePolicy(context.Context) (*UpstreamStoragePolicy, error)

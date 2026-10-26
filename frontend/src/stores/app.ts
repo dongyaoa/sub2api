@@ -13,6 +13,7 @@ import {
   type ReleaseInfo
 } from '@/api/admin/system'
 import { getPublicSettings as fetchPublicSettingsAPI } from '@/api/auth'
+import { webAccessGate } from '@/services/webAccess'
 
 export const useAppStore = defineStore('app', () => {
   // ==================== State ====================
@@ -286,10 +287,16 @@ export const useAppStore = defineStore('app', () => {
 
   // ==================== Public Settings Management ====================
 
-  /**
-   * Apply settings to store state (internal helper to avoid code duplication)
-   */
-  function applySettings(config: PublicSettings): void {
+  let webAccessRevision = 0
+  let webAccessEnabled = false
+
+  /** Apply public settings without letting a pre-save response undo a saved switch. */
+  function applySettings(config: PublicSettings, requestRevision = webAccessRevision): PublicSettings {
+    if (requestRevision === webAccessRevision) {
+      webAccessEnabled = config.web_access_cn_block_enabled === true
+    } else {
+      config = { ...config, web_access_cn_block_enabled: webAccessEnabled }
+    }
     if (typeof window !== 'undefined') {
       window.__APP_CONFIG__ = { ...config }
     }
@@ -301,6 +308,25 @@ export const useAppStore = defineStore('app', () => {
     apiBaseUrl.value = config.api_base_url || ''
     docUrl.value = config.doc_url || ''
     publicSettingsLoaded.value = true
+    webAccessGate.setEnabled(webAccessEnabled)
+    return config
+  }
+
+  /** Only public settings include the emergency override; admin settings are persisted values. */
+  async function refreshPublicSettingsAfterWebAccessUpdate(persistedEnabled: boolean): Promise<PublicSettings | null> {
+    webAccessRevision++
+    if (!persistedEnabled) {
+      webAccessEnabled = false
+      if (cachedPublicSettings.value) {
+        cachedPublicSettings.value = { ...cachedPublicSettings.value, web_access_cn_block_enabled: false }
+      }
+      if (window.__APP_CONFIG__) window.__APP_CONFIG__ = { ...window.__APP_CONFIG__, web_access_cn_block_enabled: false }
+      webAccessGate.setEnabled(false)
+    }
+    // A pre-save request must not undo the immediate disable or stand in for a
+    // post-save effective configuration. Wait for it, then make one fresh request.
+    if (publicSettingsRequest) await publicSettingsRequest
+    return fetchPublicSettings(true)
   }
 
   /**
@@ -363,6 +389,7 @@ export const useAppStore = defineStore('app', () => {
         github_oauth_enabled: false,
         google_oauth_enabled: false,
         backend_mode_enabled: false,
+        web_access_cn_block_enabled: false,
         passkey_enabled: false,
         version: siteVersion.value,
         balance_low_notify_enabled: false,
@@ -385,6 +412,7 @@ export const useAppStore = defineStore('app', () => {
     }
 
     publicSettingsLoading.value = true
+    const requestWebAccessRevision = webAccessRevision
     let apiRequest: Promise<PublicSettings>
     try {
       apiRequest = fetchPublicSettingsAPI()
@@ -396,8 +424,7 @@ export const useAppStore = defineStore('app', () => {
 
     const request = apiRequest
       .then((data) => {
-        applySettings(data)
-        return data
+        return applySettings(data, requestWebAccessRevision)
       })
       .catch((error) => {
         console.error('Failed to fetch public settings:', error)
@@ -491,6 +518,7 @@ export const useAppStore = defineStore('app', () => {
 
     // Public settings actions
     fetchPublicSettings,
+    refreshPublicSettingsAfterWebAccessUpdate,
     clearPublicSettingsCache,
     initFromInjectedConfig
   }

@@ -461,14 +461,14 @@ func validateUpstreamTargetConfig(t *UpstreamTarget, key string, validateNetwork
 	if key == "" || len(key) > 2000 || strings.ContainsAny(key, "\r\n") {
 		return ErrChannelMonitorMissingAPIKey
 	}
-	if u, err := url.Parse(t.Endpoint); err != nil || u.User != nil {
-		return ErrChannelMonitorInvalidEndpoint
+	if _, err := parseUpstreamEndpointURL(t.Endpoint); err != nil {
+		return err
 	}
 	// An existing target must remain pausable during an upstream DNS outage.
 	// Unchanged endpoints were validated on creation and every actual HTTP dial
 	// still enforces the SSRF policy.
 	if validateNetwork {
-		return validateEndpoint(t.Endpoint)
+		return validateUpstreamEndpoint(t.Endpoint)
 	}
 	return nil
 }
@@ -666,7 +666,7 @@ func (s *UpstreamCenterService) Models(ctx context.Context, in UpstreamModelsInp
 	if key == "" || len(key) > 2000 || strings.ContainsAny(key, "\r\n") {
 		return nil, ErrChannelMonitorMissingAPIKey
 	}
-	if err := validateEndpoint(endpoint); err != nil {
+	if err := validateUpstreamEndpoint(endpoint); err != nil {
 		return nil, err
 	}
 	u, err := url.Parse(endpoint)

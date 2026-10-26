@@ -13,6 +13,7 @@ type RequestEntry = {
   controller: AbortController
   consumers: Set<Consumer>
   started: boolean
+  priority: 'preview' | 'interactive'
 }
 
 const cache = new Map<string, CacheEntry>()
@@ -117,7 +118,7 @@ async function runRequest(entry: RequestEntry) {
 }
 
 /** Load a completed run; share requests and cache successful HTML for this login. */
-export function loadPelicanArtwork(run: PelicanRun, signal?: AbortSignal): Promise<string> {
+export function loadPelicanArtwork(run: PelicanRun, signal?: AbortSignal, priority: 'preview' | 'interactive' = 'preview'): Promise<string> {
   if (signal?.aborted) return Promise.reject(abortError())
   if (run.status !== 'succeeded') return Promise.reject(new Error('Artwork is not complete'))
   const scope = currentNamespace()
@@ -127,9 +128,18 @@ export function loadPelicanArtwork(run: PelicanRun, signal?: AbortSignal): Promi
 
   let entry = requests.get(key)
   if (!entry || entry.controller.signal.aborted) {
-    entry = { key, run, namespace: scope, controller: new AbortController(), consumers: new Set(), started: false }
+    entry = { key, run, namespace: scope, controller: new AbortController(), consumers: new Set(), started: false, priority }
     requests.set(key, entry)
     queue.push(entry)
+  }
+  if (priority === 'interactive' && !entry.started) {
+    entry.priority = priority
+    // An explicitly opened artwork goes ahead of background thumbnails while
+    // sharing any existing request and retaining the same concurrency bound.
+    const index = queue.indexOf(entry)
+    if (index >= 0) queue.splice(index, 1)
+    const firstPreview = queue.findIndex(item => item.priority === 'preview')
+    queue.splice(firstPreview < 0 ? queue.length : firstPreview, 0, entry)
   }
   const request = entry
   return new Promise<string>((resolve, reject) => {

@@ -120,7 +120,7 @@ func (s *UpstreamFinanceService) fetchNewAPIBalance(ctx context.Context, target 
 		return snapshot, false
 	}
 	usageURL, err := upstreamUsageURL(target.Endpoint)
-	if err != nil || validateEndpoint(target.Endpoint) != nil {
+	if err != nil || validateUpstreamEndpoint(target.Endpoint) != nil {
 		return fail("endpoint_unavailable")
 	}
 	if s.encryptor == nil {

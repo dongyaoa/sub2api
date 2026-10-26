@@ -30,7 +30,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useMonitorRefresh } from '@/composables/useMonitorRefresh'
 import PelicanGroupCard from '@/components/pelican/PelicanGroupCard.vue'
 import PelicanArtworkDialog from '@/components/pelican/PelicanArtworkDialog.vue'
-import { pelicanPageActiveKey, pelicanPreviewRefreshKey } from '@/components/pelican/pelicanContext'
+import { pelicanDialogOpenKey, pelicanPageActiveKey, pelicanPreviewRefreshKey } from '@/components/pelican/pelicanContext'
 import { pelicanModelLabel } from '@/utils/pelicanModels'
 import { pelicanWorks } from '@/components/pelican/pelicanFormat'
 import { resetPelicanArtworkAccess, retainPelicanArtworks } from '@/components/pelican/pelicanArtworkLoader'
@@ -47,6 +47,7 @@ const visibleGroups = computed(() => groups.value.filter(group => `${group.group
 const updatedSeconds = computed(() => Math.max(0, Math.floor((now.value - updatedAt.value) / 1000)))
 provide(pelicanPageActiveKey, computed(() => auth.isAuthenticated && settings.enabled && pageVisible.value))
 provide(pelicanPreviewRefreshKey, previewRevision)
+provide(pelicanDialogOpenKey, computed(() => Boolean(selectedRun.value)))
 function clearVisibleData() { groups.value = []; selected.value = null; resetPelicanArtworkAccess() }
 const { loading, refresh } = useMonitorRefresh({
   active: () => auth.isAuthenticated && polling.value,

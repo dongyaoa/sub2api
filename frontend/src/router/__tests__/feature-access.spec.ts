@@ -10,6 +10,9 @@ const routerHarness = vi.hoisted(() => ({
   guard: null as NavigationGuard | null,
 }))
 
+const accessGate = vi.hoisted(() => ({ check: vi.fn().mockResolvedValue(true), state: { enabled: true, setupRequired: false } }))
+vi.mock('@/services/webAccess', () => ({ webAccessGate: accessGate }))
+
 const authStore = vi.hoisted(() => ({
   checkAuth: vi.fn(),
   isAuthenticated: true,
@@ -113,12 +116,40 @@ describe('feature route guard', () => {
   })
 
   beforeEach(() => {
+    accessGate.check.mockReset().mockResolvedValue(true)
+    accessGate.state.enabled = true
+    accessGate.state.setupRequired = false
     authStore.isAuthenticated = true
     authStore.isAdmin = false
     authStore.isSimpleMode = false
     appStore.publicSettingsLoaded = false
     appStore.cachedPublicSettings = null
     appStore.fetchPublicSettings.mockReset()
+  })
+
+  it.each(['/home', '/login', '/admin/settings', '/dashboard'])('does not bypass denied web access for %s, even as admin', async path => {
+    accessGate.check.mockResolvedValue(false)
+    authStore.isAdmin = true
+    const { navigation, next } = runGuard({ requiresAuth: false }, path)
+    await navigation
+    expect(next).toHaveBeenCalledWith(false)
+    expect(appStore.fetchPublicSettings).not.toHaveBeenCalled()
+  })
+
+  it('does not consult the access gate when the public switch is disabled', async () => {
+    accessGate.state.enabled = false
+    accessGate.check.mockResolvedValue(false)
+    const { navigation, next } = runGuard({ requiresAuth: false }, '/home')
+    await navigation
+    expect(accessGate.check).not.toHaveBeenCalled()
+    expect(next).toHaveBeenCalledWith()
+  })
+
+  it('only routes to the installer when setup was confirmed by the server', async () => {
+    accessGate.state.setupRequired = true
+    const { navigation, next } = runGuard({ requiresAuth: false }, '/home')
+    await navigation
+    expect(next).toHaveBeenCalledWith('/setup')
   })
 
   it('waits for the first public-settings request before deciding payment access', async () => {

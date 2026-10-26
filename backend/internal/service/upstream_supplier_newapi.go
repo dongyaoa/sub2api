@@ -1,16 +1,15 @@
 package service
 
 import (
-	"net/url"
 	"strings"
 )
 
-// Keep this normalization in sync with upstream_newapi_base in migration 269.
+// Keep this normalization in sync with upstream_newapi_base in migration 273.
 // Matching includes the API path prefix; sharing a host alone is insufficient.
 func upstreamNewAPIBase(endpoint string) string {
 	endpoint = strings.TrimSpace(endpoint)
-	u, err := url.Parse(endpoint)
-	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" ||
+	u, err := parseUpstreamEndpointURL(endpoint)
+	if err != nil ||
 		strings.ContainsAny(endpoint, "%\\\r\n\t ") || strings.Contains(u.Path, "//") {
 		return ""
 	}
@@ -20,7 +19,9 @@ func upstreamNewAPIBase(endpoint string) string {
 		}
 	}
 	host := strings.ToLower(u.Host)
-	host = strings.TrimSuffix(host, ":443")
+	if u.Scheme == "https" && u.Port() == "443" || u.Scheme == "http" && u.Port() == "80" {
+		host = strings.TrimSuffix(host, ":"+u.Port())
+	}
 	path := strings.TrimRight(u.Path, "/")
 	for _, suffix := range []string{"/v1/chat/completions", "/v1/responses", "/v1/messages", "/v1/models", "/v1/usage", "/v1beta/models", "/v1beta", "/v1"} {
 		if strings.HasSuffix(path, suffix) {
@@ -28,7 +29,7 @@ func upstreamNewAPIBase(endpoint string) string {
 			break
 		}
 	}
-	return "https://" + host + path
+	return u.Scheme + "://" + host + path
 }
 
 func (s *UpstreamCenterService) applySupplierNewAPICredentials(v *UpstreamSupplier, in UpstreamSupplierNewAPIInput, oldWebsite, oldBase string) error {
@@ -41,7 +42,7 @@ func (s *UpstreamCenterService) applySupplierNewAPICredentials(v *UpstreamSuppli
 	if v.NewAPIAPIBase != "" {
 		v.NewAPIAPIBase = upstreamNewAPIBase(v.NewAPIAPIBase)
 		if v.NewAPIAPIBase == "" || len(v.NewAPIAPIBase) > 500 {
-			return ErrUpstreamInvalid.WithMetadata(map[string]string{"field": "newapi_api_base", "detail": "provide an HTTPS New API site URL, including its API path prefix if any"})
+			return ErrUpstreamInvalid.WithMetadata(map[string]string{"field": "newapi_api_base", "detail": "provide an HTTP or HTTPS New API site URL, including its port and API path prefix if any"})
 		}
 	}
 	changed := oldBase != v.NewAPIAPIBase || normalizeEndpoint(oldWebsite) != normalizeEndpoint(v.Website)

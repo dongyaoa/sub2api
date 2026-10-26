@@ -26,7 +26,7 @@
         <time :datetime="group.latest_run?.started_at || group.last_run_at || undefined" class="tabular-nums text-gray-500 dark:text-gray-400">{{ pelicanDate(group.latest_run?.started_at || group.last_run_at, locale) }}</time>
       </div>
     </aside>
-    <section class="min-w-0 flex-1 p-3.5 lg:p-4">
+    <section v-memo="[works, locale]" class="min-w-0 flex-1 p-3.5 lg:p-4">
       <div class="mb-2 flex flex-wrap items-center justify-between gap-2"><div class="flex items-center gap-2"><h3 class="text-xs font-semibold text-gray-800 dark:text-gray-100">{{ t('pelicanMonitor.recentWorks') }}</h3><span class="text-[10px] text-gray-400">{{ t('pelicanMonitor.newestFirst') }}</span></div><span class="text-[10px] tabular-nums text-gray-400">{{ works.filter(run => !pelicanActive(run)).length }}/20</span></div>
       <div v-if="works.length" ref="gallery" class="pelican-gallery" data-testid="pelican-gallery">
         <div v-for="(run, index) in works" :key="run.id" class="pelican-work" :class="index === 0 && 'pelican-work-latest'" :data-run-id="run.id">
@@ -61,7 +61,7 @@ const emit = defineEmits<{ open: [run: PelicanRun] }>()
 const { t, locale } = useI18n()
 const gallery = ref<HTMLElement | null>(null)
 const works = computed(() => pelicanWorks(props.group))
-const autoplayWorks = computed(() => new Set(works.value.filter(run => !pelicanActive(run)).slice(0, 10).map(run => run.id)))
+const autoplayWorks = computed(() => new Set(works.value.filter(run => !pelicanActive(run)).slice(0, 8).map(run => run.id)))
 watch(() => works.value[0]?.id, async (id, previous) => {
   if (!id || !previous || id === previous) return
   await nextTick()

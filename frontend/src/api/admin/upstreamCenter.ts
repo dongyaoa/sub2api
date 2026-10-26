@@ -208,6 +208,13 @@ export interface UpstreamArchiveItem {
   supplier_name: string
 }
 export interface UpstreamPurgeInput { kind: UpstreamArchiveKind; id: number; confirm_name: string }
+export interface UpstreamPurgeArchivesResult {
+  deleted_count: number
+  remaining_count: number
+  busy_count: number
+  has_more: boolean
+  next_cursor: string
+}
 export interface UpstreamRestoreInput { kind: UpstreamArchiveKind; id: number }
 export interface UpstreamRestoreResult { suppliers_restored: number; targets_restored: number; bindings_restored: number; plans_restored?: number; requires_configuration?: boolean }
 const base = '/admin/upstream-center'
@@ -236,6 +243,9 @@ export const upstreamCenterAPI = {
   },
   async purge(input: UpstreamPurgeInput): Promise<void> {
     await apiClient.post(`${base}/storage/purge`, input, { timeout: 60000 })
+  },
+  async purgeArchives(cursor?: string): Promise<UpstreamPurgeArchivesResult> {
+    return (await apiClient.post<UpstreamPurgeArchivesResult>(`${base}/storage/purge-archives`, cursor ? { cursor } : {}, { timeout: 60000 })).data
   },
   async restore(input: UpstreamRestoreInput): Promise<UpstreamRestoreResult> {
     return (await apiClient.post<UpstreamRestoreResult>(`${base}/storage/restore`, input, { timeout: 60000 })).data

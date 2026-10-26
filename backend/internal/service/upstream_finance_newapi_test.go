@@ -22,17 +22,25 @@ func newAPIFixtures() map[string]string {
 	}
 }
 
-func newAPIFinanceFixture(t *testing.T, responses map[string]string, authorized bool) (*UpstreamFinanceService, *UpstreamFinanceTarget, *[]string) {
+func newAPIFinanceFixture(t *testing.T, responses map[string]string, authorized bool, endpoint ...string) (*UpstreamFinanceService, *UpstreamFinanceTarget, *[]string) {
 	t.Helper()
 	svc := NewUpstreamFinanceService(nil, financeTestCipher{}, nil, nil, nil)
 	target := &UpstreamFinanceTarget{ID: 7, Endpoint: "https://8.8.8.8/prefix/v1/responses", Provider: "openai", WalletRef: "default", APIKeyEncrypted: "sk-inference-secret"}
+	if len(endpoint) > 0 {
+		target.Endpoint = endpoint[0]
+	}
 	if authorized {
 		target.NewAPIUserID, target.NewAPIAccessTokenEncrypted = 42, "console-secret"
 	}
 	paths := []string{}
 	svc.client.Transport = financeRoundTrip(func(req *http.Request) (*http.Response, error) {
 		require.Equal(t, http.MethodGet, req.Method)
-		require.Equal(t, "8.8.8.8", req.URL.Host)
+		if len(endpoint) > 0 {
+			require.Equal(t, "http", req.URL.Scheme)
+			require.Equal(t, "216.158.77.26:7070", req.URL.Host)
+		} else {
+			require.Equal(t, "8.8.8.8", req.URL.Host)
+		}
 		require.True(t, strings.HasPrefix(req.URL.Path, "/prefix/"))
 		path := strings.TrimPrefix(req.URL.Path, "/prefix")
 		paths = append(paths, path)
@@ -58,6 +66,23 @@ func newAPIFinanceFixture(t *testing.T, responses map[string]string, authorized 
 		return &http.Response{StatusCode: status, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(body)), Request: req}, nil
 	})
 	return svc, target, &paths
+}
+
+func TestUpstreamFinanceNewAPIHTTPPublicIPWithPort(t *testing.T) {
+	for _, authorized := range []bool{false, true} {
+		svc, target, paths := newAPIFinanceFixture(t, newAPIFixtures(), authorized, "http://216.158.77.26:7070/prefix/v1")
+		got := svc.fetchBalance(context.Background(), target)
+		require.Equal(t, "ok", got.Status)
+		require.Equal(t, 3.0, *got.QuotaRemaining)
+		require.Contains(t, *paths, "/api/status")
+		if authorized {
+			require.Equal(t, "wallet", got.Kind)
+			require.Equal(t, 20.0, *got.Balance)
+			require.Equal(t, 0.35, *got.Billing.EffectiveRateMultiplier)
+		} else {
+			require.Equal(t, "key_quota", got.Kind)
+		}
+	}
 }
 
 func TestUpstreamFinanceNewAPIAutoDetectionKeyQuota(t *testing.T) {

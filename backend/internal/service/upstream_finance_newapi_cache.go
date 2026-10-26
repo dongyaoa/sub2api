@@ -174,13 +174,13 @@ func newAPIOriginIdentity(base string) string {
 }
 
 func newAPIURLIdentity(base string, originOnly bool) string {
-	u, err := url.Parse(strings.TrimSpace(base))
-	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+	u, err := parseUpstreamEndpointURL(base)
+	if err != nil {
 		return ""
 	}
 	u.Host = strings.ToLower(u.Host)
-	if u.Port() == "443" {
-		u.Host = strings.TrimSuffix(u.Host, ":443")
+	if u.Scheme == "https" && u.Port() == "443" || u.Scheme == "http" && u.Port() == "80" {
+		u.Host = strings.TrimSuffix(u.Host, ":"+u.Port())
 	}
 	u.Path, u.RawPath = strings.TrimRight(u.Path, "/"), ""
 	if originOnly {

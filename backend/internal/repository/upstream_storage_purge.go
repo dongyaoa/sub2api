@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"errors"
+	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/lib/pq"
@@ -44,6 +45,10 @@ func (r *upstreamCenterRepository) ListStorageArchives(ctx context.Context) (*se
 // Purge holds the same membership lock as inventory changes, then locks targets
 // and plans before checking workers. A busy operation is rejected, never killed.
 func (r *upstreamCenterRepository) PurgeStorage(ctx context.Context, in service.UpstreamStoragePurgeInput) ([]string, error) {
+	return r.purgeStorage(ctx, in, nil)
+}
+
+func (r *upstreamCenterRepository) purgeStorage(ctx context.Context, in service.UpstreamStoragePurgeInput, archivedBefore *time.Time) ([]string, error) {
 	if in.ID <= 0 || (in.Kind != "supplier" && in.Kind != "target" && in.Kind != "intelligence") {
 		return nil, service.ErrUpstreamStorageInvalid
 	}
@@ -60,6 +65,15 @@ func (r *upstreamCenterRepository) PurgeStorage(ctx context.Context, in service.
 	if _, err = tx.ExecContext(ctx, `SELECT pg_advisory_xact_lock(254,0)`); err != nil {
 		return nil, err
 	}
+	if archivedBefore != nil {
+		// Recheck under the membership lock: a restored item must not be
+		// deleted from a stale batch, nor an item archived after this batch began.
+		table := map[string]string{"supplier": "upstream_suppliers", "target": "upstream_targets", "intelligence": "intelligence_monitor_plans"}[in.Kind]
+		var id int64
+		if err = tx.QueryRowContext(ctx, `SELECT id FROM `+table+` WHERE id=$1 AND deleted_at IS NOT NULL AND deleted_at<=$2 FOR UPDATE`, in.ID, *archivedBefore).Scan(&id); err != nil {
+			return nil, upstreamStorageQueryError(err)
+		}
+	}
 	if in.Kind == "intelligence" {
 		keys, err := purgeIntelligenceStorage(ctx, tx, in)
 		if err != nil {
@@ -74,7 +88,13 @@ func (r *upstreamCenterRepository) PurgeStorage(ctx context.Context, in service.
 	if err != nil {
 		return nil, err
 	}
-	if err = detachUpstreamIntelligencePlans(ctx, tx, targetIDs); err != nil {
+	if archivedBefore != nil {
+		if err = rejectChangedArchiveChildren(ctx, tx, "upstream_targets", "id", targetIDs, *archivedBefore); err != nil {
+			return nil, err
+		}
+	}
+	keys, err := purgeUpstreamIntelligencePlans(ctx, tx, targetIDs, archivedBefore)
+	if err != nil {
 		return nil, err
 	}
 	where, args := "target_id=ANY($1)", []any{pq.Array(targetIDs)}
@@ -82,12 +102,9 @@ func (r *upstreamCenterRepository) PurgeStorage(ctx context.Context, in service.
 		where += " OR supplier_id=$2"
 		args = append(args, in.ID)
 	}
-	// Financial aggregates survive, with the supplier identity at check time.
-	// The helper atomically deletes raw records while accumulating their costs.
-	if _, err = rollupUpstreamMonitorHistory(ctx, tx, where, args...); err != nil {
-		return nil, err
-	}
-	for _, table := range []string{"upstream_account_bindings", "upstream_balance_snapshots"} {
+	// Delete bindings first so their history jobs cannot repopulate the ledger.
+	// Permanent deletion differs from retention: summaries are removed too.
+	for _, table := range []string{"upstream_account_bindings", "upstream_monitor_history", "upstream_monitor_cost_rollups", "upstream_finance_ledger", "upstream_balance_snapshots"} {
 		if _, err = tx.ExecContext(ctx, `DELETE FROM `+table+` WHERE `+where, args...); err != nil {
 			return nil, err
 		}
@@ -103,7 +120,10 @@ func (r *upstreamCenterRepository) PurgeStorage(ctx context.Context, in service.
 			return nil, err
 		}
 	}
-	return nil, tx.Commit()
+	if err = tx.Commit(); err != nil {
+		return nil, err
+	}
+	return keys, nil
 }
 
 func upstreamStorageQueryError(err error) error {
@@ -160,36 +180,54 @@ func lockUpstreamPurgeTargets(ctx context.Context, tx *sql.Tx, in service.Upstre
 	return ids, nil
 }
 
-func detachUpstreamIntelligencePlans(ctx context.Context, tx *sql.Tx, targetIDs []int64) error {
+func purgeUpstreamIntelligencePlans(ctx context.Context, tx *sql.Tx, targetIDs []int64, archivedBefore *time.Time) ([]string, error) {
 	if len(targetIDs) == 0 {
-		return nil
+		return nil, nil
 	}
 	rows, err := tx.QueryContext(ctx, `SELECT id FROM intelligence_monitor_plans WHERE upstream_target_id=ANY($1) ORDER BY id FOR UPDATE`, pq.Array(targetIDs))
 	if err != nil {
-		return err
+		return nil, err
 	}
 	planIDs := []int64{}
 	for rows.Next() {
 		var id int64
 		if err = rows.Scan(&id); err != nil {
 			_ = rows.Close()
-			return err
+			return nil, err
 		}
 		planIDs = append(planIDs, id)
 	}
 	err = rows.Err()
 	_ = rows.Close()
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if len(planIDs) == 0 {
-		return nil
+		return nil, nil
+	}
+	if archivedBefore != nil {
+		if err = rejectChangedArchiveChildren(ctx, tx, "intelligence_monitor_plans", "id", planIDs, *archivedBefore); err != nil {
+			return nil, err
+		}
 	}
 	if err = rejectActiveIntelligenceRuns(ctx, tx, planIDs); err != nil {
+		return nil, err
+	}
+	return deleteIntelligencePlans(ctx, tx, planIDs)
+}
+
+// Called only after all selected rows are locked. A restore or fresh archive
+// during the batch takes precedence over the initial delete-all selection.
+func rejectChangedArchiveChildren(ctx context.Context, tx *sql.Tx, table, column string, ids []int64, before time.Time) error {
+	var changed bool
+	err := tx.QueryRowContext(ctx, `SELECT EXISTS(SELECT 1 FROM `+table+` WHERE `+column+`=ANY($1) AND (deleted_at>$2 OR (deleted_at IS NULL AND updated_at>$2)))`, pq.Array(ids), before).Scan(&changed)
+	if err != nil {
 		return err
 	}
-	_, err = tx.ExecContext(ctx, `UPDATE intelligence_monitor_plans SET enabled=FALSE,next_run_at=NULL,candy_next_run_at=NULL,upstream_target_id=NULL,api_key_encrypted='',updated_at=clock_timestamp() WHERE id=ANY($1)`, pq.Array(planIDs))
-	return err
+	if changed {
+		return service.ErrUpstreamStorageBusy
+	}
+	return nil
 }
 
 func rejectActiveIntelligenceRuns(ctx context.Context, tx *sql.Tx, planIDs []int64) error {
@@ -232,21 +270,41 @@ func purgeIntelligenceStorage(ctx context.Context, tx *sql.Tx, in service.Upstre
 	if err := rejectActiveIntelligenceRuns(ctx, tx, []int64{in.ID}); err != nil {
 		return nil, err
 	}
-	keys := []string{}
-	if keyID != nil && ownerID != nil && !borrowed {
-		var key string
-		err := tx.QueryRowContext(ctx, `UPDATE api_keys SET status='disabled',updated_at=NOW() WHERE id=$1 AND user_id=$2 AND deleted_at IS NULL RETURNING key`, *keyID, *ownerID).Scan(&key)
-		if err != nil && !errors.Is(err, sql.ErrNoRows) {
-			return nil, err
-		}
-		if err == nil && key != "" {
-			keys = append(keys, key)
-		}
-	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM intelligence_monitor_runs WHERE plan_id=$1`, in.ID); err != nil {
+	return deleteIntelligencePlans(ctx, tx, []int64{in.ID})
+}
+
+func deleteIntelligencePlans(ctx context.Context, tx *sql.Tx, ids []int64) ([]string, error) {
+	// Revoke only keys created for these plans. Keep the minimal identity row:
+	// accounting writes may still be queued after a run finishes, and deleting
+	// the key would either cascade existing usage or reject a delayed FK write.
+	rows, err := tx.QueryContext(ctx, `UPDATE api_keys k SET status='disabled',deleted_at=COALESCE(k.deleted_at,NOW()),updated_at=NOW()
+WHERE EXISTS(SELECT 1 FROM intelligence_monitor_plans p WHERE p.id=ANY($1) AND p.local_api_key_id=k.id AND p.local_key_owner_id=k.user_id AND NOT p.local_api_key_borrowed)
+AND NOT EXISTS(SELECT 1 FROM intelligence_monitor_plans p WHERE p.local_api_key_id=k.id AND NOT(p.id=ANY($1))) RETURNING k.key`, pq.Array(ids))
+	if err != nil {
 		return nil, err
 	}
-	if _, err := tx.ExecContext(ctx, `DELETE FROM intelligence_monitor_plans WHERE id=$1`, in.ID); err != nil {
+	keys := []string{}
+	for rows.Next() {
+		var key string
+		if err = rows.Scan(&key); err != nil {
+			_ = rows.Close()
+			return nil, err
+		}
+		keys = append(keys, key)
+	}
+	err = rows.Err()
+	_ = rows.Close()
+	if err != nil {
+		return nil, err
+	}
+	// Public display keeps an explicit plan allowlist, not a foreign key.
+	if _, err = tx.ExecContext(ctx, `UPDATE settings SET value=jsonb_set(value::jsonb,'{plan_ids}',COALESCE((SELECT jsonb_agg(v) FROM jsonb_array_elements(value::jsonb->'plan_ids') v WHERE NOT(v::text::bigint=ANY($2))),'[]'::jsonb))::text,updated_at=NOW() WHERE key=$1`, service.IntelligencePublicDisplaySettingKey, pq.Array(ids)); err != nil {
+		return nil, err
+	}
+	if _, err = tx.ExecContext(ctx, `DELETE FROM intelligence_monitor_runs WHERE plan_id=ANY($1)`, pq.Array(ids)); err != nil {
+		return nil, err
+	}
+	if _, err = tx.ExecContext(ctx, `DELETE FROM intelligence_monitor_plans WHERE id=ANY($1)`, pq.Array(ids)); err != nil {
 		return nil, err
 	}
 	return keys, nil

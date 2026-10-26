@@ -22,6 +22,28 @@ func newAPICacheFixture(t *testing.T) (*UpstreamFinanceService, *UpstreamFinance
 	return svc, target, &now
 }
 
+func TestNewAPIHTTPIdentityKeepsSchemesPortsAndPrefixesSeparate(t *testing.T) {
+	for _, pair := range [][2]string{
+		{"http://EXAMPLE.com:80/prefix/", "http://example.com/prefix"},
+		{"https://EXAMPLE.com:443/prefix/", "https://example.com/prefix"},
+		{"http://[2606:4700:4700::1111]:80/prefix", "http://[2606:4700:4700::1111]/prefix"},
+	} {
+		require.NotEmpty(t, newAPIURLIdentity(pair[0], false))
+		require.Equal(t, newAPIURLIdentity(pair[0], false), newAPIURLIdentity(pair[1], false))
+	}
+	base := "http://216.158.77.26:7070/prefix"
+	for _, other := range []string{"https://216.158.77.26:7070/prefix", "http://216.158.77.26:7071/prefix", "http://216.158.77.26:7070/other"} {
+		require.NotEqual(t, newAPIURLIdentity(base, false), newAPIURLIdentity(other, false), other)
+	}
+	svc, _, _ := newAPICacheFixture(t)
+	require.True(t, svc.allowNewAPIQuota(base))
+	require.False(t, svc.allowNewAPIQuota("http://216.158.77.26:7070/other"), "paths share the origin's rate limit")
+	require.True(t, svc.allowNewAPIQuota("http://216.158.77.26:7071/prefix"))
+	for _, invalid := range []string{"http://example.com:0", "http://example.com:65536", "http://user@example.com", "http://example.com?key=secret"} {
+		require.Empty(t, newAPIURLIdentity(invalid, false), invalid)
+	}
+}
+
 func newAPICacheResponse(req *http.Request, status int, body string) *http.Response {
 	return &http.Response{StatusCode: status, Header: http.Header{}, Body: io.NopCloser(strings.NewReader(body)), Request: req}
 }

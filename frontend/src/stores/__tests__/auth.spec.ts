@@ -65,6 +65,23 @@ describe('useAuthStore', () => {
 
   // --- login ---
 
+  it('pauses webpage background refresh without clearing the signed-in session', async () => {
+    mockLogin.mockResolvedValue(fakeAuthResponse)
+    mockGetCurrentUser.mockResolvedValue({ data: fakeUser })
+    const store = useAuthStore()
+    await store.login({ email: 'test@example.com', password: '123456' })
+    store.pauseBackgroundRefresh()
+    mockGetCurrentUser.mockClear()
+    await vi.advanceTimersByTimeAsync(120000)
+    expect(mockGetCurrentUser).not.toHaveBeenCalled()
+    expect(store.isAuthenticated).toBe(true)
+    expect(localStorage.getItem('auth_token')).toBe('test-token-123')
+    store.resumeBackgroundRefresh()
+    await vi.advanceTimersByTimeAsync(60000)
+    expect(mockGetCurrentUser).toHaveBeenCalledOnce()
+    store.pauseBackgroundRefresh()
+  })
+
   describe('login', () => {
     it('成功登录后设置 token 和 user', async () => {
       mockLogin.mockResolvedValue(fakeAuthResponse)

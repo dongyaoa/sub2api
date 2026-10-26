@@ -199,7 +199,7 @@ func pauseRestoredUpstreamPlans(ctx context.Context, tx *sql.Tx, targetIDs []int
 	if len(targetIDs) == 0 {
 		return nil
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT id FROM intelligence_monitor_plans WHERE upstream_target_id=ANY($1) AND deleted_at IS NULL ORDER BY id FOR UPDATE`, pq.Array(targetIDs))
+	rows, err := tx.QueryContext(ctx, `SELECT p.id FROM intelligence_monitor_plans p JOIN upstream_targets t ON t.id=p.upstream_target_id WHERE p.upstream_target_id=ANY($1) AND (p.deleted_at IS NULL OR p.deleted_at=t.deleted_at) ORDER BY p.id FOR UPDATE OF p`, pq.Array(targetIDs))
 	if err != nil {
 		return err
 	}
@@ -220,6 +220,6 @@ func pauseRestoredUpstreamPlans(ctx context.Context, tx *sql.Tx, targetIDs []int
 	if err = rejectActiveIntelligenceRuns(ctx, tx, planIDs); err != nil {
 		return err
 	}
-	_, err = tx.ExecContext(ctx, `UPDATE intelligence_monitor_plans SET enabled=FALSE,next_run_at=NULL,candy_next_run_at=NULL,updated_at=clock_timestamp() WHERE id=ANY($1)`, pq.Array(planIDs))
+	_, err = tx.ExecContext(ctx, `UPDATE intelligence_monitor_plans SET deleted_at=NULL,enabled=FALSE,next_run_at=NULL,candy_next_run_at=NULL,updated_at=clock_timestamp() WHERE id=ANY($1)`, pq.Array(planIDs))
 	return err
 }

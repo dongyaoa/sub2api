@@ -176,6 +176,113 @@ func TestListAvailable_DefaultsEmptyBillingModelSource(t *testing.T) {
 	require.Equal(t, BillingModelSourceUpstream, byName["explicit"])
 }
 
+func TestListModelSquareCatalog_UsesConfiguredModelsAndOwnPrices(t *testing.T) {
+	channels := []Channel{{
+		ID: 1, Name: "configured", GroupIDs: []int64{10},
+		ModelMapping: map[string]map[string]string{
+			"openai": {
+				"mapping-only": "priced-target",
+				"Direct":       "priced-target",
+				"wild-*":       "wild-*",
+			},
+		},
+		ModelPricing: []ChannelModelPricing{
+			{Platform: "openai", Models: []string{"Direct"}, InputPrice: testPtrFloat64(0.1)},
+			{Platform: "openai", Models: []string{"priced-target"}, InputPrice: testPtrFloat64(0.2)},
+			{Platform: "openai", Models: []string{"DIRECT", "wild-*"}, InputPrice: testPtrFloat64(0.3)},
+			{Platform: "anthropic", Models: []string{"Direct"}, InputPrice: testPtrFloat64(0.4)},
+		},
+	}}
+	svc := newAvailableChannelService(channels, &stubGroupRepoForAvailable{
+		activeGroups: []Group{{ID: 10, Name: "group", Platform: "openai", RateMultiplier: 1.5}},
+	})
+
+	catalog, err := svc.ListModelSquareCatalog(context.Background())
+	require.NoError(t, err)
+	require.Len(t, catalog, 1)
+	require.Len(t, catalog[0].SupportedModels, 3)
+	require.Equal(t, []SupportedModel{
+		{Name: "Direct", Platform: "anthropic", Pricing: &channels[0].ModelPricing[3]},
+		{Name: "Direct", Platform: "openai", Pricing: &channels[0].ModelPricing[0]},
+		{Name: "priced-target", Platform: "openai", Pricing: &channels[0].ModelPricing[1]},
+	}, catalog[0].SupportedModels)
+	require.Equal(t, int64(10), catalog[0].Groups[0].ID)
+	require.Equal(t, 1.5, catalog[0].Groups[0].RateMultiplier)
+
+	// 可用渠道仍包含映射名称，并按映射目标取价；模型广场的独立读取不改变源配置。
+	available, err := svc.ListAvailable(context.Background())
+	require.NoError(t, err)
+	require.Len(t, available[0].SupportedModels, 4)
+	for _, model := range available[0].SupportedModels {
+		if model.Platform == "openai" && (model.Name == "Direct" || model.Name == "mapping-only") {
+			require.Equal(t, testPtrFloat64(0.2), model.Pricing.InputPrice)
+		}
+	}
+	require.Equal(t, "priced-target", channels[0].ModelMapping["openai"]["Direct"])
+	catalog[0].SupportedModels[1].Pricing.InputPrice = testPtrFloat64(99)
+	require.Equal(t, testPtrFloat64(0.1), channels[0].ModelPricing[0].InputPrice)
+}
+
+func TestListModelSquareCatalog_KeepsUnconfiguredPricesWithoutGlobalFallback(t *testing.T) {
+	configured := ChannelModelPricing{
+		Platform: "openai", Models: []string{"empty-image"}, BillingMode: BillingModeImage,
+		Intervals: []PricingInterval{{TierLabel: "1K"}, {TierLabel: "2K"}, {TierLabel: "4K"}},
+	}
+	svc := newAvailableChannelService([]Channel{{
+		Name: "configured", ModelPricing: []ChannelModelPricing{configured},
+		ModelMapping: map[string]map[string]string{"openai": {"global-only": "global-only"}},
+	}}, &stubGroupRepoForAvailable{})
+	svc.pricingService = newStubPricingServiceFromMap(map[string]*LiteLLMModelPricing{
+		"empty-image": {Mode: "image_generation", OutputCostPerImage: 0.4},
+		"global-only": {Mode: "chat", InputCostPerToken: 1e-6},
+	})
+
+	catalog, err := svc.ListModelSquareCatalog(context.Background())
+	require.NoError(t, err)
+	require.Len(t, catalog[0].SupportedModels, 1)
+	require.Equal(t, "empty-image", catalog[0].SupportedModels[0].Name)
+	require.Equal(t, &configured, catalog[0].SupportedModels[0].Pricing)
+
+	available, err := svc.ListAvailable(context.Background())
+	require.NoError(t, err)
+	require.Len(t, available[0].SupportedModels, 2)
+	require.Equal(t, testPtrFloat64(0.4), available[0].SupportedModels[0].Pricing.PerRequestPrice)
+	require.Equal(t, testPtrFloat64(1e-6), available[0].SupportedModels[1].Pricing.InputPrice)
+
+	// 普通目录使用回落后，模型广场仍返回原始空价格及分辨率层级。
+	catalogAgain, err := svc.ListModelSquareCatalog(context.Background())
+	require.NoError(t, err)
+	require.Equal(t, catalog, catalogAgain)
+}
+
+func TestListModelSquareCatalog_KeepsEachChannelsGroupsAndPrices(t *testing.T) {
+	svc := newAvailableChannelService([]Channel{
+		{Name: "B", GroupIDs: []int64{20}, ModelPricing: []ChannelModelPricing{
+			{Platform: "openai", Models: []string{"shared-model"}, InputPrice: testPtrFloat64(0.2)},
+		}},
+		{Name: "A", GroupIDs: []int64{10, 99}, ModelPricing: []ChannelModelPricing{
+			{Platform: "openai", Models: []string{"shared-model", "only-a"}, InputPrice: testPtrFloat64(0.1)},
+		}},
+	}, &stubGroupRepoForAvailable{activeGroups: []Group{
+		{ID: 10, Name: "group-a", Platform: "openai"},
+		{ID: 20, Name: "group-b", Platform: "openai"},
+	}})
+
+	catalog, err := svc.ListModelSquareCatalog(context.Background())
+	require.NoError(t, err)
+	require.Len(t, catalog, 2)
+	require.Equal(t, "A", catalog[0].Name)
+	require.Len(t, catalog[0].Groups, 1)
+	require.Equal(t, int64(10), catalog[0].Groups[0].ID)
+	require.Len(t, catalog[0].SupportedModels, 2)
+	require.Equal(t, testPtrFloat64(0.1), catalog[0].SupportedModels[1].Pricing.InputPrice)
+	require.Equal(t, "B", catalog[1].Name)
+	require.Equal(t, int64(20), catalog[1].Groups[0].ID)
+	require.Len(t, catalog[1].SupportedModels, 1)
+	require.Equal(t, "shared-model", catalog[1].SupportedModels[0].Name)
+	require.Equal(t, testPtrFloat64(0.2), catalog[1].SupportedModels[0].Pricing.InputPrice)
+}
+
 func TestPricingNeedsFallback(t *testing.T) {
 	tests := []struct {
 		name string

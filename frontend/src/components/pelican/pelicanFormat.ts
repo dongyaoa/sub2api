@@ -19,10 +19,19 @@ export function pelicanDuration(run: PelicanRun) {
   const seconds = Math.round(value / 1000)
   return seconds >= 60 ? `${Math.floor(seconds / 60)}m ${seconds % 60}s` : `${(value / 1000).toFixed(1)}s`
 }
+const dateFormatters = new Map<string, Intl.DateTimeFormat>()
 export function pelicanDate(value?: string | null, locale = 'zh-CN', includeYear = false) {
   if (!value) return '—'
   const time = new Date(value)
-  return Number.isFinite(time.getTime()) ? new Intl.DateTimeFormat(locale, { year: includeYear ? 'numeric' : undefined, month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false }).format(time) : '—'
+  if (!Number.isFinite(time.getTime())) return '—'
+  const key = `${locale}:${includeYear}`
+  let formatter = dateFormatters.get(key)
+  if (!formatter) {
+    formatter = new Intl.DateTimeFormat(locale, { year: includeYear ? 'numeric' : undefined, month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false })
+    if (dateFormatters.size >= 8) dateFormatters.delete(dateFormatters.keys().next().value!)
+    dateFormatters.set(key, formatter)
+  }
+  return formatter.format(time)
 }
 export function pelicanCountdown(value: string | null, now: number) {
   const remaining = value ? Math.ceil((Date.parse(value) - now) / 1000) : 0

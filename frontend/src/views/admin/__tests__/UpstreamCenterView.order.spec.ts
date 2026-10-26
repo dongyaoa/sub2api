@@ -24,13 +24,13 @@ const overview = (): UpstreamOverview => ({ suppliers: [supplier(1,'Alpha'),supp
 let wrapper: VueWrapper | undefined
 function render() {
   wrapper = mount(UpstreamCenterView, { global: { stubs: {
-    AppLayout: { template: '<div><slot /></div>' }, Icon: true, BaseDialog: true, EmptyState: true,
+    AppLayout: { template: '<div><slot /></div>' }, Icon: true, BaseDialog: { props: ['show'], template: '<div v-if="show"><slot /><slot name="footer" /></div>' }, EmptyState: true,
     IntelligenceMonitorPanel: true, UpstreamIntelligenceDialog: defineComponent({ name: 'UpstreamIntelligenceDialog', props: ['target', 'overview'], emits: ['close', 'changed', 'refreshOverview'], template: '<div data-gallery>{{ target.name }}</div>' }), UpstreamSupplierCard: supplierCard, UpstreamTargetCard: targetCard,
     UpstreamOrderDialog: orderDialog, UpstreamSupplierDialog: true, UpstreamTargetDialog: true, UpstreamDetailDialog: true, UpstreamStorageDialog: true,
   } } })
   return wrapper
 }
-beforeEach(() => { vi.resetAllMocks(); vi.useFakeTimers({ toFake: ['setInterval','clearInterval'] }); vi.spyOn(document,'hidden','get').mockReturnValue(false); mocks.overview.mockResolvedValue(overview()) })
+beforeEach(() => { vi.resetAllMocks(); localStorage.removeItem('upstream-supplier-navigation-side'); localStorage.removeItem('upstream-supplier-navigation-visible'); vi.useFakeTimers({ toFake: ['setInterval','clearInterval'] }); vi.spyOn(document,'hidden','get').mockReturnValue(false); mocks.overview.mockResolvedValue(overview()) })
 afterEach(() => { wrapper?.unmount(); wrapper=undefined; vi.useRealTimers(); vi.restoreAllMocks() })
 
 describe('upstream center manual ordering', () => {
@@ -205,6 +205,48 @@ describe('upstream center manual ordering', () => {
     await vi.advanceTimersByTimeAsync(30000); await flushPromises()
     expect(view.get('#supplier-filter-all').attributes('aria-selected')).toBe('true')
     expect(view.findAll('[data-supplier] h2').map(item => item.text())).toEqual(['Alpha'])
+  })
+
+  it('keeps navigation expanded and remembers visibility and position from the general settings', async () => {
+    vi.spyOn(window, 'matchMedia').mockReturnValue({ matches: false } as MediaQueryList)
+    const view = render(); await flushPromises()
+    const scrollIntoView = vi.fn()
+    Object.defineProperty(view.get('#supplier-results').element, 'scrollIntoView', { value: scrollIntoView, configurable: true })
+    expect(view.find('[data-testid="floating-supplier-toggle"]').exists()).toBe(false)
+    expect(view.get('[data-testid="supplier-browse"]').attributes('data-navigation-side')).toBe('left')
+    await view.get('#supplier-filter-2').trigger('click'); await flushPromises()
+    expect(view.findAll('[data-supplier] h2').map(item => item.text())).toEqual(['Beta'])
+    expect(view.get('#supplier-filter-2').attributes('aria-selected')).toBe('true')
+    expect(scrollIntoView).toHaveBeenCalledWith({ block: 'start', behavior: 'smooth' })
+    expect(view.get('[data-testid="supplier-navigation"]').isVisible()).toBe(true)
+    expect(view.get('[data-testid="supplier-navigation"]').find('[data-navigation-side]').exists()).toBe(false)
+    await view.get('[data-testid="upstream-settings"]').trigger('click')
+    await view.get('[data-navigation-side="right"][aria-pressed]').trigger('click')
+    expect(localStorage.getItem('upstream-supplier-navigation-side')).toBe('right')
+    expect(view.get('[data-testid="supplier-browse"]').attributes('data-navigation-side')).toBe('right')
+    await view.get('[data-testid="upstream-settings-close"]').trigger('click')
+    await view.get('#supplier-filter-1').trigger('click')
+    expect(view.get('#supplier-filter-1').attributes('aria-selected')).toBe('true')
+    await view.get('[data-testid="upstream-settings"]').trigger('click')
+    await view.get('[data-testid="upstream-navigation-visible"]').trigger('click')
+    expect(localStorage.getItem('upstream-supplier-navigation-visible')).toBe('false')
+    expect(view.find('[data-testid="supplier-navigation"]').exists()).toBe(false)
+    expect(view.get('[data-testid="supplier-browse"]').classes()).not.toContain('supplier-browse-with-navigation')
+    expect(view.get('#supplier-results').attributes('aria-labelledby')).toBeUndefined()
+    expect(view.findAll('[data-supplier] h2').map(item => item.text())).toEqual(['Alpha', 'Beta'])
+    await view.get('[data-testid="upstream-settings-close"]').trigger('click')
+    view.unmount(); wrapper = undefined
+    const reopened = render(); await flushPromises()
+    expect(reopened.get('[data-testid="supplier-browse"]').attributes('data-navigation-side')).toBe('right')
+    expect(reopened.find('[data-testid="supplier-navigation"]').exists()).toBe(false)
+    await reopened.get('[data-testid="upstream-settings"]').trigger('click')
+    await reopened.get('[data-testid="upstream-navigation-visible"]').trigger('click')
+    expect(localStorage.getItem('upstream-supplier-navigation-visible')).toBe('true')
+    expect(reopened.get('[data-testid="supplier-navigation"]').isVisible()).toBe(true)
+    expect(reopened.get('[data-testid="supplier-browse"]').classes()).toContain('supplier-browse-with-navigation')
+    await reopened.get('[data-testid="upstream-settings-close"]').trigger('click')
+    await reopened.get('#upstream-tab-monitors').trigger('click')
+    expect(reopened.find('[data-testid="supplier-navigation"]').exists()).toBe(false)
   })
 
   it('supports keyboard switching in the supplier tab row', async () => {

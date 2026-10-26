@@ -128,8 +128,33 @@ func TestUpstreamSupplierNewAPIWalletDeduplicatesGroups(t *testing.T) {
 }
 
 func TestUpstreamSupplierNewAPIBaseRejectsAmbiguousRecipient(t *testing.T) {
-	for _, endpoint := range []string{"http://example.com", "https://example.com/%2fprivate", "https://example.com/a/../b", "https://example.com//b", "https://user@example.com", "https://example.com?q=x", "https://example.com/#a"} {
+	for _, endpoint := range []string{"ftp://example.com", "http://example.com:0", "http://example.com:65536", "https://example.com/%2fprivate", "https://example.com/a/../b", "https://example.com//b", "https://user@example.com", "https://example.com?q=x", "https://example.com/#a"} {
 		require.Empty(t, upstreamNewAPIBase(endpoint), endpoint)
+	}
+}
+
+func TestUpstreamSupplierNewAPIHTTPPortNormalization(t *testing.T) {
+	for endpoint, want := range map[string]string{
+		"http://EXAMPLE.com:80/prefix/v1/messages":     "http://example.com/prefix",
+		"http://216.158.77.26:7070/v1":                 "http://216.158.77.26:7070",
+		"https://216.158.77.26:7070/v1":                "https://216.158.77.26:7070",
+		"http://example.com:443/v1":                    "http://example.com:443",
+		"https://example.com:80/v1":                    "https://example.com:80",
+		"http://[2606:4700:4700::1111]:80/v1":          "http://[2606:4700:4700::1111]",
+		"http://[2606:4700:4700::1111]:7070/prefix/v1": "http://[2606:4700:4700::1111]:7070/prefix",
+	} {
+		require.Equal(t, want, upstreamNewAPIBase(endpoint), endpoint)
+	}
+	site := &UpstreamSupplier{NewAPIUserID: 42, NewAPIAccessTokenEncrypted: "site-secret", NewAPIAPIBase: "http://216.158.77.26:7070/prefix"}
+	for endpoint, want := range map[string]bool{
+		"http://216.158.77.26:7070/prefix/v1":  true,
+		"https://216.158.77.26:7070/prefix/v1": false,
+		"http://216.158.77.26:7071/prefix/v1":  false,
+		"http://216.158.77.26:7070/other/v1":   false,
+	} {
+		target := &UpstreamTarget{Endpoint: endpoint}
+		inheritSupplierNewAPICredentials(target, site)
+		require.Equal(t, want, target.NewAPICredentialsInherited, endpoint)
 	}
 }
 

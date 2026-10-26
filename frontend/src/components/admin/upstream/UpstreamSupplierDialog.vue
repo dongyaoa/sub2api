@@ -64,6 +64,7 @@ import { upstreamCenterAPI, type UpstreamProvider, type UpstreamSupplier, type U
 import * as accountsAPI from '@/api/admin/accounts'
 import type { AccountListItem } from '@/types'
 import { extractApiErrorMessage } from '@/utils/apiError'
+import { isValidUpstreamEndpoint, upstreamEndpointErrorKey } from './upstreamEndpoint'
 const props = defineProps<{ show: boolean; supplier: UpstreamSupplier | null }>()
 const emit = defineEmits<{ close: []; saved: []; changed: [] }>()
 const { t } = useI18n()
@@ -161,7 +162,7 @@ async function save() {
   if (newapiEnabled.value && !createdSupplierId.value) {
     if (!Number.isSafeInteger(form.newapiUserID) || Number(form.newapiUserID) <= 0) { error.value = t('upstreamCenter.newapi.requiredUserId'); return }
     if (!form.newapiAccessToken.trim() && !canKeepNewapiToken.value) { error.value = t('upstreamCenter.newapi.requiredToken'); return }
-    try { const address = new URL(form.newapiAPIBase.trim() || form.website.trim()); if (address.protocol !== 'https:' || address.username || address.password) throw new Error() } catch { error.value = t('upstreamCenter.form.validUrl'); return }
+    if (!isValidUpstreamEndpoint(form.newapiAPIBase.trim() || form.website.trim())) { error.value = t('upstreamCenter.form.validUrl'); return }
   }
   for (const item of selected.value.filter(item => item.status !== 'done')) {
     const models = parsedModels(item.modelsText)
@@ -180,11 +181,11 @@ async function save() {
       try {
         await upstreamCenterAPI.createTarget({ supplier_id: id, name: item.targetName.trim(), provider: item.provider, api_mode: 'chat_completions', endpoint: item.endpoint || form.website.trim(), models: parsedModels(item.modelsText), enabled: enabled.value, interval_seconds: item.intervalSeconds, timeout_seconds: 45, degraded_threshold_ms: 6000, account_ids: [item.id], wallet_ref: 'default', notes: '' })
         item.status = 'done'; emit('changed')
-      } catch (err) { item.status = 'error'; item.error = extractApiErrorMessage(err, t('upstreamCenter.saveFailed')) }
+      } catch (err) { const endpointError = upstreamEndpointErrorKey(err); item.status = 'error'; item.error = endpointError ? t(endpointError) : extractApiErrorMessage(err, t('upstreamCenter.saveFailed')) }
     }
     if (selected.value.some(item => item.status !== 'done')) { error.value = t('upstreamCenter.import.partial'); return }
     draftPending = false; form.newapiAccessToken = ''; emit('saved'); emit('close')
-  } catch (err) { error.value = extractApiErrorMessage(err, t('upstreamCenter.saveFailed')) }
+  } catch (err) { const endpointError = upstreamEndpointErrorKey(err); error.value = endpointError ? t(endpointError) : extractApiErrorMessage(err, t('upstreamCenter.saveFailed')) }
   finally { saving.value = false }
 }
 onBeforeUnmount(() => { clearTimeout(searchTimer); accountRequest++; generation++ })

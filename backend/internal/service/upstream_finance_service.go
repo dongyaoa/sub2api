@@ -249,8 +249,8 @@ func (s *UpstreamFinanceService) SyncDueBalances(ctx context.Context) {
 }
 
 func upstreamUsageURL(endpoint string) (string, error) {
-	u, err := url.Parse(strings.TrimSpace(endpoint))
-	if err != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+	u, err := parseUpstreamEndpointURL(endpoint)
+	if err != nil {
 		return "", errors.New("invalid endpoint")
 	}
 	path := strings.TrimRight(u.Path, "/")
@@ -290,7 +290,7 @@ func (s *UpstreamFinanceService) fetchSub2APIBalance(ctx context.Context, target
 	requestURL = request.String()
 	// The dialer rechecks DNS at connection time. Validation also disallows URL
 	// userinfo/query fields and known metadata hostnames before decryption.
-	if err = validateEndpoint(target.Endpoint); err != nil {
+	if err = validateUpstreamEndpoint(target.Endpoint); err != nil {
 		return fail("endpoint_unavailable")
 	}
 	if s.encryptor == nil {

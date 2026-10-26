@@ -36,7 +36,7 @@ func (s *FrontendServer) Middleware() gin.HandlerFunc {
 	}
 }
 
-func ServeEmbeddedFrontend() gin.HandlerFunc {
+func ServeEmbeddedFrontend(_ ...WebAccessProvider) gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.String(http.StatusNotFound, "Frontend not embedded. Build with -tags embed to include frontend.")
 		c.Abort()

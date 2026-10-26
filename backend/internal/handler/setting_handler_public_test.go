@@ -79,6 +79,39 @@ func TestSettingHandler_GetPublicSettings_ExposesRechargePromotionSwitch(t *test
 	}
 }
 
+func TestSettingHandler_GetPublicSettings_ExposesEffectiveWebAccessSwitch(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	for _, test := range []struct {
+		name, stored, forceDisabled string
+		want                        bool
+	}{
+		{name: "disabled", stored: "false"},
+		{name: "enabled", stored: "true", want: true},
+		{name: "emergency override", stored: "true", forceDisabled: "true"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			t.Setenv("WEB_ACCESS_FORCE_DISABLED", test.forceDisabled)
+			h := NewSettingHandler(service.NewSettingService(&settingHandlerPublicRepoStub{values: map[string]string{
+				service.SettingKeyWebAccessCNBlockEnabled: test.stored,
+				service.SettingKeyWebAccessIPAllowlist:    `["192.0.2.1"]`,
+			}}, &config.Config{}), "test-version")
+			recorder := httptest.NewRecorder()
+			c, _ := gin.CreateTestContext(recorder)
+			c.Request = httptest.NewRequest(http.MethodGet, "/api/v1/settings/public", nil)
+			h.GetPublicSettings(c)
+			require.Equal(t, http.StatusOK, recorder.Code)
+			var payload struct {
+				Data map[string]any `json:"data"`
+			}
+			require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &payload))
+			require.Equal(t, test.want, payload.Data[service.SettingKeyWebAccessCNBlockEnabled])
+			for _, privateKey := range []string{service.SettingKeyWebAccessIPAllowlist, service.SettingKeyWebAccessBlockMessage, "blocked", "country_code", "location_source"} {
+				require.NotContains(t, payload.Data, privateKey)
+			}
+		})
+	}
+}
+
 func TestSettingHandler_GetPublicSettings_ExposesForceEmailOnThirdPartySignup(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

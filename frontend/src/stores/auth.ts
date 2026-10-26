@@ -85,6 +85,7 @@ export const useAuthStore = defineStore('auth', () => {
   const pendingAuthSession = ref<PendingAuthSessionSummary | null>(null)
   let refreshIntervalId: ReturnType<typeof setInterval> | null = null
   let tokenRefreshTimeoutId: ReturnType<typeof setTimeout> | null = null
+  let backgroundRefreshPaused = false
 
   // ==================== Computed ====================
 
@@ -147,6 +148,7 @@ export const useAuthStore = defineStore('auth', () => {
   function startAutoRefresh(): void {
     // Clear existing interval if any
     stopAutoRefresh()
+    if (backgroundRefreshPaused) return
 
     refreshIntervalId = setInterval(() => {
       if (token.value) {
@@ -177,6 +179,7 @@ export const useAuthStore = defineStore('auth', () => {
       clearTimeout(tokenRefreshTimeoutId)
       tokenRefreshTimeoutId = null
     }
+    if (backgroundRefreshPaused) return
 
     // Calculate remaining time until refresh (buffer time before expiry)
     const now = Date.now()
@@ -486,6 +489,23 @@ export const useAuthStore = defineStore('auth', () => {
     clearPendingAuthSessionStorage()
   }
 
+  // Pausing the webpage must not revoke a session or remove credentials.
+  function pauseBackgroundRefresh(): void {
+    backgroundRefreshPaused = true
+    stopAutoRefresh()
+    stopTokenRefresh()
+  }
+
+  function resumeBackgroundRefresh(): void {
+    if (!backgroundRefreshPaused) return
+    backgroundRefreshPaused = false
+    if (!token.value) return
+    startAutoRefresh()
+    if (refreshTokenValue.value && tokenExpiresAt.value !== null) {
+      scheduleTokenRefreshAt(tokenExpiresAt.value)
+    }
+  }
+
   // ==================== Return Store API ====================
 
   return {
@@ -510,6 +530,8 @@ export const useAuthStore = defineStore('auth', () => {
     logout,
     checkAuth,
     refreshUser,
+    pauseBackgroundRefresh,
+    resumeBackgroundRefresh,
     setPendingAuthSession,
     clearPendingAuthSession
   }

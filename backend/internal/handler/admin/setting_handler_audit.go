@@ -68,6 +68,15 @@ func diffSettings(before *service.SystemSettings, after *service.SystemSettings,
 	if before.StepUpEnabled != after.StepUpEnabled {
 		changed = append(changed, "step_up_enabled")
 	}
+	if before.WebAccessCNBlockEnabled != after.WebAccessCNBlockEnabled {
+		changed = append(changed, "web_access_cn_block_enabled")
+	}
+	if before.WebAccessBlockMessage != after.WebAccessBlockMessage {
+		changed = append(changed, "web_access_block_message")
+	}
+	if !equalStringSlice(before.WebAccessIPAllowlist, after.WebAccessIPAllowlist) {
+		changed = append(changed, "web_access_ip_allowlist")
+	}
 	if before.LoginAgreementEnabled != after.LoginAgreementEnabled {
 		changed = append(changed, "login_agreement_enabled")
 	}

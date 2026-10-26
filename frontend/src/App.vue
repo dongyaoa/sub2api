@@ -20,6 +20,9 @@ const subscriptionStore = useSubscriptionStore()
 const announcementStore = useAnnouncementStore()
 const adminComplianceStore = useAdminComplianceStore()
 const adminSettingsStore = useAdminSettingsStore()
+let announcementTimer: ReturnType<typeof setTimeout> | undefined
+let appActive = true
+authStore.resumeBackgroundRefresh()
 
 function updateDocumentTitle() {
   const customMenuItems = [
@@ -123,7 +126,7 @@ watch(
       // Announcements: new login vs page refresh restore
       if (oldValue === false) {
         // New login: delay 3s then force fetch
-        setTimeout(() => announcementStore.fetchAnnouncements(true), 3000)
+        announcementTimer = setTimeout(() => announcementStore.fetchAnnouncements(true), 3000)
       } else {
         // Page refresh restore (oldValue was undefined)
         announcementStore.fetchAnnouncements()
@@ -143,13 +146,18 @@ watch(
 )
 
 // Route change trigger (throttled by store)
-router.afterEach(() => {
+const removeAnnouncementNavigationHook = router.afterEach(() => {
   if (authStore.isAuthenticated) {
     announcementStore.fetchAnnouncements()
   }
 })
 
 onBeforeUnmount(() => {
+  appActive = false
+  if (announcementTimer) clearTimeout(announcementTimer)
+  removeAnnouncementNavigationHook()
+  subscriptionStore.clear()
+  authStore.pauseBackgroundRefresh()
   document.removeEventListener('visibilitychange', onVisibilityChange)
   window.removeEventListener('admin-compliance-required', onAdminComplianceRequired)
 })
@@ -160,6 +168,7 @@ onMounted(async () => {
   // Check if setup is needed
   try {
     const status = await getSetupStatus()
+    if (!appActive) return
     if (status.needs_setup && route.path !== '/setup') {
       router.replace('/setup')
       return
@@ -169,6 +178,7 @@ onMounted(async () => {
   }
 
   // Load public settings into appStore (will be cached for other components)
+  if (!appActive) return
   await appStore.fetchPublicSettings()
 
   // Re-resolve document title now that site settings are available

@@ -99,7 +99,7 @@ export default {
       rateHint: 'A note for this external source. The automatically fetched effective rate is recorded separately.', enabled: 'Scheduled testing', interval: 'Interval', timeout: 'Maximum wait per run', timeoutHint: 'Choose 5–15 minutes; the default is 10 minutes to allow reasoning and animation generation.',
       customInterval: 'Custom', customSeconds: 'Custom interval (seconds)', intervalPlaceholder: 'For example: 45', intervalHint: 'Enter a whole number from 30 to 86400 seconds. The default is 5 minutes.', validInterval: 'Enter a whole number from 30 to 86400 seconds.',
       scheduleHint: 'New plans default to testing every 5 minutes. Saving starts the first run; later runs follow the selected interval. Manual tests remain available when disabled.', notesPlaceholder: 'Route characteristics, promotions or aspects to compare',
-      requiredSource: 'Choose a source', requiredName: 'Enter a plan name', validEndpoint: 'Enter a valid public HTTPS endpoint', requiredKey: 'Enter an API key',
+      requiredSource: 'Choose a source', requiredName: 'Enter a plan name', validEndpoint: 'Enter a valid public HTTP or HTTPS endpoint, with an optional port and path prefix', requiredKey: 'Enter an API key',
       saving: 'Saving…', save: 'Save plan', fixedPrompt: 'Every test uses this exact prompt and these parameters', loadGroupsFailed: 'Unable to load local groups', noGroups: 'No groups available',
     },
   },

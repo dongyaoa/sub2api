@@ -2,6 +2,23 @@ export default {
     settings: {
       title: 'System Settings',
       description: 'Manage registration, email verification, default values, and SMTP settings',
+      webAccess: {
+        title: 'Website regional access',
+        description: 'Control webpage access by visitor IP region. API calls, payment notifications and server callbacks are unaffected.',
+        enabled: 'Restrict webpage access from mainland China',
+        enabledHint: 'Visitors with mainland China IP addresses see an access restriction page. Hong Kong, Macao, Taiwan and other regions are not included.',
+        recoveryHint: 'Administrator webpages are also restricted. Add your fixed public IP to the allowlist and keep a server-side recovery method before enabling this setting.',
+        allowlist: 'Webpage IP allowlist',
+        allowlistHint: 'One IPv4 address, IPv6 address or CIDR range per line. These addresses may access webpages. Leave empty for no exceptions.',
+        proxyHint: 'Behind a reverse proxy or CDN, configure server.trusted_proxies to identify visitor IP addresses. Website regional checks use the strict trusted-proxy chain, independent of the legacy forwarded-header compatibility switch.',
+        localPreviewTitle: 'Previewing on localhost',
+        localPreviewHint: 'localhost, 127.0.0.1 and ::1 are loopback addresses and do not identify a region. For local testing, enable WEB_ACCESS_LOCAL_NETWORK_CHECK=true with the backend listening only on loopback. This checks the machine’s actual public egress IP. The mode is disabled by default in production, where the real visitor IP is used.',
+        message: 'Restriction message',
+        messageHint: 'Plain text only, up to 500 characters. Leave empty to use the default message.',
+        preview: 'Preview restriction page',
+        previewTitle: 'Restriction page preview',
+        previewHint: 'This preview displays the current message without saving settings or changing access permissions.',
+      },
       tabs: {
         general: 'General',
         agreement: 'Agreement',

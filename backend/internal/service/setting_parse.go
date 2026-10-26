@@ -66,6 +66,9 @@ func (s *SettingService) InitializeDefaultSettings(ctx context.Context) error {
 		SettingKeyLoginAgreementDocuments:                   loginAgreementDocumentsJSON,
 		SettingKeyAPIKeyACLTrustForwardedIP:                 "true",
 		SettingKeyForwardedClientIPHeaders:                  string(forwardedClientIPHeadersJSON),
+		SettingKeyWebAccessCNBlockEnabled:                   "false",
+		SettingKeyWebAccessBlockMessage:                     DefaultWebAccessBlockMessage,
+		SettingKeyWebAccessIPAllowlist:                      "[]",
 		settingKeyForwardedClientIPModeV2:                   "true",
 		SettingKeySiteName:                                  "Sub2API",
 		SettingKeySiteLogo:                                  "",
@@ -333,6 +336,9 @@ func (s *SettingService) parseSettings(settings map[string]string) *SystemSettin
 		PasskeyEnabled:                         s.passkeySettingEnabled(settings),
 		SessionBindingEnabled:                  settings[SettingKeySessionBindingEnabled] == "true", // 默认关闭
 		StepUpEnabled:                          settings[SettingKeyStepUpEnabled] == "true",         // 默认关闭
+		WebAccessCNBlockEnabled:                settings[SettingKeyWebAccessCNBlockEnabled] == "true",
+		WebAccessBlockMessage:                  normalizedWebAccessMessage(settings[SettingKeyWebAccessBlockMessage]),
+		WebAccessIPAllowlist:                   parseWebAccessIPAllowlistForAdmin(settings[SettingKeyWebAccessIPAllowlist]),
 		AuditLogRetentionDays:                  parseAuditLogRetentionDays(settings[SettingKeyAuditLogRetentionDays]),
 		LoginAgreementEnabled:                  settings[SettingKeyLoginAgreementEnabled] == "true",
 		LoginAgreementMode:                     normalizeLoginAgreementMode(settings[SettingKeyLoginAgreementMode]),

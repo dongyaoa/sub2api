@@ -343,7 +343,7 @@ func (s *IntelligenceMonitorService) SavePlan(ctx context.Context, id, actorID i
 			return nil, ErrChannelMonitorInvalidEndpoint
 		}
 		if old == nil || old.SourceType != "external" || old.Endpoint != p.Endpoint {
-			if err = validateEndpoint(p.Endpoint); err != nil {
+			if err = validateUpstreamEndpoint(p.Endpoint); err != nil {
 				return nil, err
 			}
 		}

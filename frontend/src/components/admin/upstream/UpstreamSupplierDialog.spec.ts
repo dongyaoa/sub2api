@@ -26,6 +26,17 @@ afterEach(() => { wrapper?.unmount(); wrapper = undefined; document.body.innerHT
 async function choose(view: VueWrapper, id: number) { await view.get(`input[aria-label="Account ${id}"]`).setValue(true); await flushPromises() }
 
 describe('upstream account batch import', () => {
+  it('saves New API site authorization for an HTTP IP and port', async () => {
+    const view = render(); await flushPromises()
+    await view.get('#supplier-name').setValue('HTTP supplier')
+    await view.get('#supplier-website').setValue('http://216.158.77.26:7070')
+    await view.get('#supplier-newapi-enabled').trigger('click')
+    await view.get('#supplier-newapi-user').setValue('42')
+    await view.get('#supplier-newapi-base').setValue('http://216.158.77.26:7070/prefix')
+    await view.get('#supplier-newapi-token').setValue('personal-access-token')
+    await view.get('form').trigger('submit'); await flushPromises()
+    expect(mocks.createSupplier).toHaveBeenCalledWith(expect.objectContaining({ website: 'http://216.158.77.26:7070', newapi_user_id: 42, newapi_api_base: 'http://216.158.77.26:7070/prefix', newapi_access_token: 'personal-access-token' }))
+  })
   it('saves authorization once on the site while importing multiple key groups', async () => {
     const view = render(); await flushPromises()
     await choose(view, 1); await choose(view, 2)

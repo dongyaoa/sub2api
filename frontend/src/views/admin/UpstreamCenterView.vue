@@ -3,7 +3,10 @@
     <div class="mx-auto w-full min-w-0 max-w-[1600px] space-y-4 pb-6">
       <div class="flex flex-wrap items-center justify-between gap-3 border-b border-gray-200 dark:border-dark-700">
         <div class="flex min-w-0 gap-3 overflow-x-auto sm:gap-5" role="tablist" :aria-label="t('upstreamCenter.title')"><button v-for="item in tabs" :id="`upstream-tab-${item}`" :key="item" type="button" role="tab" :aria-selected="tab === item" aria-controls="upstream-panel" class="relative flex shrink-0 items-center gap-1.5 border-b-2 pb-3 pt-1 text-sm transition-colors" :class="tab === item ? 'border-primary-600 font-semibold text-primary-700 dark:border-primary-400 dark:text-primary-300' : 'border-transparent text-gray-500 hover:text-gray-700 dark:text-dark-400 dark:hover:text-dark-200'" @click="tab = item"><Icon :name="item === 'suppliers' ? 'server' : item === 'monitors' ? 'chart' : item === 'oauth' ? 'shield' : item === 'local' ? 'grid' : 'lightbulb'" size="sm" />{{ item === 'oauth' ? t('intelligenceMonitor.oauth.title') : t(`upstreamCenter.tabs.${item}`) }}<span v-if="item === 'suppliers' || item === 'monitors'" class="rounded bg-gray-100 px-1.5 py-0.5 text-[10px] font-normal text-gray-500 dark:bg-dark-800 dark:text-dark-400">{{ item === 'suppliers' ? overview?.suppliers.length || 0 : overview?.monitors.length || 0 }}</span></button></div>
-        <div class="mb-2 flex items-center gap-2"><button type="button" class="btn btn-secondary btn-sm" data-testid="intelligence-concurrency" @click="concurrencyDialog = true"><Icon name="cog" size="sm" class="mr-1.5" />{{ t('intelligenceMonitor.concurrency.title') }}</button><button type="button" class="btn btn-secondary btn-sm" data-testid="upstream-storage" @click="storageDialog = true"><Icon name="database" size="sm" class="mr-1.5" />{{ t('upstreamCenter.storage.title') }}</button><button v-if="tab === 'suppliers' || tab === 'monitors'" type="button" class="btn btn-primary btn-sm" @click="tab === 'suppliers' ? openSupplier() : openTarget()"><Icon name="plus" size="sm" class="mr-1.5" />{{ t(tab === 'suppliers' ? 'upstreamCenter.addSupplier' : 'upstreamCenter.addMonitor') }}</button></div>
+        <div class="mb-2 flex flex-wrap items-center gap-2">
+          <button type="button" class="btn btn-secondary btn-sm" data-testid="upstream-settings" @click="settingsDialog = true"><Icon name="cog" size="sm" class="mr-1.5" />{{ t('upstreamCenter.navigation.settings') }}</button>
+          <button type="button" class="btn btn-secondary btn-sm" data-testid="intelligence-concurrency" @click="concurrencyDialog = true"><Icon name="cog" size="sm" class="mr-1.5" />{{ t('intelligenceMonitor.concurrency.title') }}</button><button type="button" class="btn btn-secondary btn-sm" data-testid="upstream-storage" @click="storageDialog = true"><Icon name="database" size="sm" class="mr-1.5" />{{ t('upstreamCenter.storage.title') }}</button><button v-if="tab === 'suppliers' || tab === 'monitors'" type="button" class="btn btn-primary btn-sm" @click="tab === 'suppliers' ? openSupplier() : openTarget()"><Icon name="plus" size="sm" class="mr-1.5" />{{ t(tab === 'suppliers' ? 'upstreamCenter.addSupplier' : 'upstreamCenter.addMonitor') }}</button>
+        </div>
       </div>
       <div v-if="error" role="alert" class="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-rose-100 bg-rose-50 px-4 py-3 text-sm text-rose-600 dark:border-rose-900 dark:bg-rose-500/10 dark:text-rose-400"><span>{{ error }}</span><button type="button" class="font-medium underline" @click="reload()">{{ t('upstreamCenter.retry') }}</button></div>
       <div id="upstream-panel" role="tabpanel" :aria-labelledby="`upstream-tab-${tab}`" :aria-busy="loading" class="space-y-4">
@@ -15,15 +18,6 @@
             <div v-for="metric in tab === 'suppliers' ? supplierMetrics : monitorMetrics" :key="metric.key" class="card flex min-w-0 items-center gap-3 px-3 py-3 sm:px-4"><div class="shrink-0 rounded-lg bg-primary-50 p-2 text-primary-600 dark:bg-primary-500/10 dark:text-primary-400"><Icon :name="metric.icon" size="md" :stroke-width="2" /></div><div class="min-w-0"><p class="text-[11px] font-medium text-gray-500 dark:text-dark-400">{{ t(metric.key) }}</p><p class="mt-0.5 truncate text-xl font-bold tabular-nums text-gray-900 dark:text-white" :class="metric.color">{{ metric.value }}</p><p v-if="metric.note" class="mt-0.5 truncate text-[10px] text-gray-400 dark:text-dark-400">{{ metric.note }}</p></div></div>
           </section>
           <UpstreamFinanceNotice v-if="overview && tab === 'suppliers'" :summary="overview.summary" />
-          <div v-if="tab === 'suppliers' && overview?.suppliers.length" class="rounded-xl border border-gray-200/80 bg-white p-1.5 dark:border-dark-700 dark:bg-dark-800">
-            <div class="flex min-w-0 flex-wrap items-center gap-1" role="tablist" :aria-label="t('upstreamCenter.quickSwitch')" data-testid="supplier-quick-tabs" @keydown="navigateSupplierTabs">
-              <button v-for="item in supplierTabs" :id="`supplier-filter-${item.id ?? 'all'}`" :key="item.id ?? 'all'" type="button" role="tab" :aria-selected="selectedSupplierId === item.id" :tabindex="selectedSupplierId === item.id ? 0 : -1" aria-controls="supplier-results" :title="item.name" class="flex shrink-0 items-center gap-2 rounded-lg px-3 py-2 text-xs transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-500" :class="selectedSupplierId === item.id ? 'bg-primary-50 font-semibold text-primary-700 dark:bg-primary-500/15 dark:text-primary-300' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900 dark:text-dark-300 dark:hover:bg-dark-700 dark:hover:text-white'" @click="selectedSupplierId = item.id">
-                <Icon v-if="item.id === null" name="server" size="sm" />
-                <span class="max-w-[180px] truncate">{{ item.name }}</span>
-                <span class="rounded-md px-1.5 py-0.5 text-[10px] font-medium tabular-nums" :class="selectedSupplierId === item.id ? 'bg-primary-100/70 text-primary-700 dark:bg-primary-500/20 dark:text-primary-300' : 'bg-gray-100 text-gray-400 dark:bg-dark-700 dark:text-dark-400'">{{ item.count }}</span>
-              </button>
-            </div>
-          </div>
           <div class="flex flex-wrap items-center justify-between gap-2">
             <div class="relative w-full sm:max-w-[280px]"><Icon name="search" size="sm" class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" /><input v-model="search" class="input !py-2 !pl-9 !text-xs" :aria-label="t('upstreamCenter.search')" :placeholder="t('upstreamCenter.search')" /></div>
             <div class="flex w-full flex-wrap items-center justify-between gap-3 sm:w-auto">
@@ -36,17 +30,22 @@
             </div>
           </div>
           <div v-if="!overview && loading" class="space-y-3"><div v-for="n in 2" :key="n" class="card grid animate-pulse gap-6 p-5 lg:grid-cols-[220px_1fr]"><div class="h-28 rounded-lg bg-gray-100 dark:bg-dark-700"></div><div class="space-y-3"><div class="h-12 rounded-lg bg-gray-100 dark:bg-dark-700"></div><div class="h-12 rounded-lg bg-gray-100 dark:bg-dark-700"></div></div></div></div>
-          <div v-else-if="overview" :id="tab === 'suppliers' ? 'supplier-results' : undefined" :role="tab === 'suppliers' ? 'tabpanel' : undefined" :aria-labelledby="tab === 'suppliers' ? `supplier-filter-${selectedSupplierId ?? 'all'}` : undefined">
+          <div v-else-if="overview" class="supplier-browse grid min-w-0 gap-4" :class="{ 'supplier-browse-with-navigation': showSupplierNavigation }" :data-navigation-side="navigationSide" data-testid="supplier-browse">
+            <UpstreamSupplierNavigation v-if="showSupplierNavigation" :items="supplierTabs" :selected-id="selectedSupplierId" @select="selectSupplier" />
+            <div ref="supplierResults" class="supplier-results min-w-0" :class="showSupplierNavigation ? 'scroll-mt-[13rem] xl:scroll-mt-20' : 'scroll-mt-20'" :id="tab === 'suppliers' ? 'supplier-results' : undefined" :role="showSupplierNavigation ? 'tabpanel' : undefined" :aria-labelledby="showSupplierNavigation ? `supplier-filter-${selectedSupplierId ?? 'all'}` : undefined">
             <div v-if="tab === 'suppliers' && filteredSuppliers.length" class="space-y-4"><UpstreamSupplierCard v-for="supplier in filteredSuppliers" :key="supplier.id" :supplier="supplier" :busy-ids="busyIds" :running-ids="runningIds" @edit="openSupplier" @delete="confirmSupplierDelete" @add-target="supplier => openTarget(null, supplier)" @order-groups="openGroupOrder" @edit-target="item => openTarget(item)" @delete-target="confirmTargetDelete" @intelligence="openGroupIntelligence" @target-details="showTargetDetails" @finance="showSupplierDetails" @run="runTarget" @toggle="toggleTarget" @sync="syncBalance" /></div>
             <div v-else-if="tab === 'monitors' && filteredMonitors.length" class="grid grid-cols-[repeat(auto-fill,minmax(min(100%,22rem),1fr))] items-start gap-3"><UpstreamTargetCard v-for="target in filteredMonitors" :key="target.id" :target="target" :busy="busyIds.has(target.id)" :running="runningIds.has(target.id)" @edit="item => openTarget(item)" @delete="confirmTargetDelete" @details="showTargetDetails" @run="runTarget" @toggle="toggleTarget" /></div>
             <EmptyState v-else-if="search" class="card py-12" :title="t('upstreamCenter.noMatches')" />
             <EmptyState v-else class="card py-12" :title="t(tab === 'suppliers' ? 'upstreamCenter.emptySuppliers' : 'upstreamCenter.emptyMonitors')" :description="t(tab === 'suppliers' ? 'upstreamCenter.emptySuppliersHint' : 'upstreamCenter.emptyMonitorsHint')" :action-text="t(tab === 'suppliers' ? 'upstreamCenter.addSupplier' : 'upstreamCenter.addMonitor')" @action="tab === 'suppliers' ? openSupplier() : openTarget()"><template #icon><Icon :name="tab === 'suppliers' ? 'server' : 'chart'" size="xl" class="text-primary-500" /></template></EmptyState>
+            </div>
           </div>
           <p v-if="overview && tab === 'suppliers'" class="text-[10px] leading-5 text-gray-400 dark:text-dark-400">{{ t(overview.summary.history_sync_pending ? profitPendingKey(overview.summary) : actualProfit(overview.summary) == null ? 'upstreamCenter.financeUnavailable' : 'upstreamCenter.finance.note') }}<span class="ml-1">{{ t('upstreamCenter.finance.accountingDate', { from: dateTime(overview.summary.from), to: dateTime(overview.summary.to) }) }}</span><span v-if="actualProfit(overview.summary) != null && overview.summary.remote_synced_at" class="ml-1">{{ t('upstreamCenter.wallet.syncedAt', { time: dateTime(overview.summary.remote_synced_at) }) }}</span></p>
           <p v-else-if="overview" class="text-[10px] leading-5 text-gray-400 dark:text-dark-400">{{ t('upstreamCenter.latencyHint') }}</p>
         </template>
       </div>
     </div>
+    <UpstreamBackToTop :mobile-open="app.mobileOpen" />
+    <UpstreamSettingsDialog v-if="settingsDialog" :show="true" :visible="navigationVisible" :side="navigationSide" @close="settingsDialog = false" @update:visible="setNavigationVisible" @update:side="setNavigationSide" />
     <UpstreamIntelligenceDialog v-if="intelligenceTarget" :key="intelligenceTarget.id" :target="intelligenceTarget" :overview="overview" @close="intelligenceTargetId = null" @changed="storageRevision++" @refresh-overview="reload()" />
     <UpstreamOrderDialog :show="!!ordering" :scope="ordering?.scope || 'suppliers'" :supplier-id="ordering?.supplierId" :supplier-name="ordering?.supplierName" @close="ordering = null" @saved="orderSaved" />
     <UpstreamSupplierDialog :show="supplierDialog" :supplier="editingSupplier" @close="supplierDialog = false" @saved="saved" @changed="reload()" />
@@ -58,7 +57,7 @@
   </AppLayout>
 </template>
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
@@ -66,6 +65,9 @@ import EmptyState from '@/components/common/EmptyState.vue'
 import UpstreamDeleteDialog from '@/components/admin/upstream/UpstreamDeleteDialog.vue'
 import UpstreamStorageDialog from '@/components/admin/upstream/UpstreamStorageDialog.vue'
 import UpstreamFinanceNotice from '@/components/admin/upstream/UpstreamFinanceNotice.vue'
+import UpstreamSupplierNavigation from '@/components/admin/upstream/UpstreamSupplierNavigation.vue'
+import UpstreamSettingsDialog from '@/components/admin/upstream/UpstreamSettingsDialog.vue'
+import UpstreamBackToTop from '@/components/admin/upstream/UpstreamBackToTop.vue'
 import IntelligenceMonitorPanel from '@/components/admin/upstream/IntelligenceMonitorPanel.vue'
 import UpstreamSupplierCard from '@/components/admin/upstream/UpstreamSupplierCard.vue'
 import UpstreamTargetCard from '@/components/admin/upstream/UpstreamTargetCard.vue'
@@ -92,22 +94,37 @@ watch(tab, value => {
 })
 const overview = ref<UpstreamOverview | null>(null), error = ref(''), updatedAt = ref('')
 const selectedSupplierId = ref<number | null>(null)
+const supplierResults = ref<HTMLElement>()
+const navigationSideKey = 'upstream-supplier-navigation-side'
+const navigationVisibleKey = 'upstream-supplier-navigation-visible'
+const navigationSide = ref<'left' | 'right'>(readNavigationSide())
+const navigationVisible = ref(readNavigationVisible())
+const settingsDialog = ref(false)
+const showSupplierNavigation = computed(() => navigationVisible.value && tab.value === 'suppliers' && !!overview.value?.suppliers.length)
+function readNavigationSide(): 'left' | 'right' {
+  try { return localStorage.getItem(navigationSideKey) === 'right' ? 'right' : 'left' } catch { return 'left' }
+}
+function readNavigationVisible() {
+  try { return localStorage.getItem(navigationVisibleKey) !== 'false' } catch { return true }
+}
+function setNavigationVisible(visible: boolean) {
+  navigationVisible.value = visible
+  if (!visible) selectedSupplierId.value = null
+  try { localStorage.setItem(navigationVisibleKey, String(visible)) } catch { /* Keep the selected layout even if storage is unavailable. */ }
+}
+function setNavigationSide(side: 'left' | 'right') {
+  navigationSide.value = side
+  try { localStorage.setItem(navigationSideKey, side) } catch { /* Keep the selected layout even if storage is unavailable. */ }
+}
+async function selectSupplier(id: number | null) {
+  selectedSupplierId.value = id
+  await nextTick()
+  supplierResults.value?.scrollIntoView?.({ block: 'start', behavior: globalThis.matchMedia?.('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth' })
+}
 const supplierTabs = computed(() => [
   { id: null as number | null, name: t('upstreamCenter.allSuppliers'), count: overview.value?.suppliers.length || 0 },
   ...(overview.value?.suppliers.map(supplier => ({ id: supplier.id, name: supplier.name, count: supplier.targets.length })) || []),
 ])
-function navigateSupplierTabs(event: KeyboardEvent) {
-  if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return
-  const buttons = Array.from((event.currentTarget as HTMLElement).querySelectorAll<HTMLButtonElement>('[role="tab"]'))
-  const index = buttons.indexOf(event.target as HTMLButtonElement)
-  if (index < 0) return
-  event.preventDefault()
-  const nextIndex = event.key === 'Home' ? 0 : event.key === 'End' ? buttons.length - 1 : (index + (event.key === 'ArrowRight' ? 1 : -1) + buttons.length) % buttons.length
-  const next = buttons[nextIndex]
-  next?.click()
-  next?.focus({ preventScroll: true })
-  next?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' })
-}
 watch(() => overview.value?.suppliers, suppliers => {
   if (suppliers && selectedSupplierId.value !== null && !suppliers.some(supplier => supplier.id === selectedSupplierId.value)) selectedSupplierId.value = null
 })
@@ -213,3 +230,11 @@ async function deleteConfirmed(mode: 'archive' | 'purge') {
 }
 onBeforeUnmount(() => { disposed = true })
 </script>
+<style scoped>
+@media (min-width: 1280px) {
+  .supplier-browse-with-navigation { grid-template-columns: 184px minmax(0, 1fr); }
+  .supplier-browse-with-navigation[data-navigation-side="right"] { grid-template-columns: minmax(0, 1fr) 184px; }
+  .supplier-browse-with-navigation[data-navigation-side="right"] > .supplier-navigation { grid-column: 2; grid-row: 1; }
+  .supplier-browse-with-navigation[data-navigation-side="right"] > .supplier-results { grid-column: 1; grid-row: 1; }
+}
+</style>

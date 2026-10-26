@@ -13,6 +13,7 @@ import { useRoutePrefetch } from '@/composables/useRoutePrefetch'
 import { getSetupStatus } from '@/api/setup'
 import { resolveCompletedSetupRedirectPath } from './setupRedirect'
 import { resolveRouteDocumentTitle } from './title'
+import { webAccessGate } from '@/services/webAccess'
 
 /**
  * Route definitions with lazy loading
@@ -899,6 +900,15 @@ router.beforeEach(async (to, _from, next) => {
   // 开始导航加载状态
   navigationLoading.startNavigation()
 
+  if (webAccessGate.state.enabled && !await webAccessGate.check()) {
+    next(false)
+    return
+  }
+  if (webAccessGate.state.setupRequired && to.path !== '/setup') {
+    next('/setup')
+    return
+  }
+
   const authStore = useAuthStore()
 
   // Restore auth state from localStorage on first navigation (page refresh)
@@ -1106,6 +1116,7 @@ router.beforeEach(async (to, _from, next) => {
 router.afterEach((to) => {
   // 结束导航加载状态
   navigationLoading.endNavigation()
+  if (webAccessGate.state.enabled && webAccessGate.state.phase !== 'allowed') return
 
   // 懒初始化预加载（首次导航时创建，传入 router 实例）
   if (!routePrefetch) {

@@ -23,7 +23,7 @@ import Icon from '@/components/icons/Icon.vue'
 import type { PelicanRun } from '@/api/pelicanMonitor'
 import { intelligencePreviewContent } from '@/components/admin/upstream/intelligencePreview'
 import PelicanWaitingScene from './PelicanWaitingScene.vue'
-import { pelicanPageActiveKey, pelicanPreviewRefreshKey } from './pelicanContext'
+import { pelicanDialogOpenKey, pelicanPageActiveKey, pelicanPreviewRefreshKey } from './pelicanContext'
 import { loadPelicanArtwork } from './pelicanArtworkLoader'
 const props = withDefaults(defineProps<{ run: PelicanRun | null; large?: boolean; autoplay?: boolean }>(), { large: false, autoplay: true })
 const emit = defineEmits<{ open: [] }>()
@@ -32,11 +32,12 @@ const container = ref<HTMLElement | null>(null), loading = ref(false), error = r
 const frame = ref<HTMLIFrameElement | null>(null)
 const previewReady = ref(false)
 const panelActive = inject(pelicanPageActiveKey, ref(true))
+const dialogOpen = inject(pelicanDialogOpenKey, ref(false))
 const pageVisible = ref(!document.hidden)
 const refreshRevision = inject(pelicanPreviewRefreshKey, ref(0))
 const intersecting = ref(typeof IntersectionObserver === 'undefined')
 const hovered = ref(false), focused = ref(false)
-const playing = computed(() => panelActive.value && pageVisible.value && (props.large || (intersecting.value && (props.autoplay || hovered.value || focused.value))))
+const playing = computed(() => panelActive.value && pageVisible.value && (props.large || (!dialogOpen.value && intersecting.value && (props.autoplay || hovered.value || focused.value))))
 const canvasWidth = 960
 const canvasHeight = 600
 const viewport = ref({ width: 0, height: 0 })
@@ -102,13 +103,14 @@ watch(fittedViewport, (current, previous) => {
 })
 watch([preview, replay], () => { previewReady.value = false })
 watch(panelActive, async active => {
-  if (!active) return
+  if (!active || !playing.value) return
   await nextTick()
   measureViewport()
   syncPreview()
 })
 let controller: AbortController | undefined, resizeObserver: ResizeObserver | undefined, intersectionObserver: IntersectionObserver | undefined
 let mounted = false, retryCount = 0
+let observingViewport = false
 let retryTimer: ReturnType<typeof setTimeout> | undefined
 let loadedIdentity = ''
 let loadingIdentity = ''
@@ -130,6 +132,19 @@ function measureViewport() {
   const width = style.width.endsWith('px') ? Number.parseFloat(style.width) : element.clientWidth
   const height = style.height.endsWith('px') ? Number.parseFloat(style.height) : element.clientHeight
   updateViewport(width, height)
+}
+function observeViewport() {
+  if (observingViewport || !mounted || !playing.value) return
+  observingViewport = true
+  measureViewport()
+  // Older hover-only and offscreen cards need no layout work until first use.
+  if (typeof ResizeObserver !== 'undefined') {
+    resizeObserver = new ResizeObserver(entries => {
+      const entry = entries.find(item => item.target === container.value)
+      if (entry) updateViewport(entry.contentRect.width, entry.contentRect.height)
+    })
+    if (container.value) resizeObserver.observe(container.value)
+  } else window.addEventListener('resize', measureViewport)
 }
 function updateViewport(width: number, height: number) {
   // A v-show tab reports zero when hidden. Preserve its last layout so opening
@@ -165,12 +180,12 @@ async function load() {
     }
     let artwork: string
     try {
-      artwork = await loadPelicanArtwork(props.run, current.signal)
+      artwork = await loadPelicanArtwork(props.run, current.signal, props.large ? 'interactive' : 'preview')
     } catch (cause) {
       // The shared loader also cancels when authorization changes, including a
       // token refresh. Retry once with the new authorization if still visible.
       if (current.signal.aborted || (cause as Error)?.name !== 'AbortError') throw cause
-      artwork = await loadPelicanArtwork(props.run, current.signal)
+      artwork = await loadPelicanArtwork(props.run, current.signal, props.large ? 'interactive' : 'preview')
     }
     if (!current.signal.aborted && runIdentity.value === identity) {
       html.value = artwork
@@ -208,11 +223,18 @@ watch(runIdentity, identity => {
   previewReady.value = false
   void load()
 })
-watch(playing, enabled => {
+watch(playing, async enabled => {
   // Offscreen or hover-only cards do not compete with visible artwork for the
   // shared request queue. Keep a loaded frame paused for a seamless return.
-  if (!enabled) cancelLoad()
-  else void load()
+  if (!enabled) {
+    // Let the new dialog subscribe to an existing thumbnail request before
+    // cancelling background consumers, preserving that in-flight download.
+    if (dialogOpen.value) await nextTick()
+    if (!playing.value) cancelLoad()
+  } else {
+    observeViewport()
+    void load()
+  }
 })
 function retryLoad() { cancelLoad(); retryCount = 0; void load() }
 watch(refreshRevision, () => {
@@ -224,7 +246,7 @@ onMounted(() => {
   mounted = true
   window.addEventListener('message', onPreviewMessage)
   document.addEventListener('visibilitychange', updatePageVisibility)
-  measureViewport()
+  observeViewport()
   if (!props.large && typeof IntersectionObserver !== 'undefined') {
     intersectionObserver = new IntersectionObserver(entries => {
       const entry = entries.find(item => item.target === container.value)
@@ -237,13 +259,6 @@ onMounted(() => {
     }, { threshold: 0.01 })
     if (container.value) intersectionObserver.observe(container.value)
   }
-  if (typeof ResizeObserver !== 'undefined') {
-    resizeObserver = new ResizeObserver(entries => {
-      const entry = entries.find(item => item.target === container.value)
-      if (entry) updateViewport(entry.contentRect.width, entry.contentRect.height)
-    })
-    if (container.value) resizeObserver.observe(container.value)
-  } else window.addEventListener('resize', measureViewport)
   void load()
 })
 onBeforeUnmount(() => { mounted = false; cancelLoad(); resizeObserver?.disconnect(); intersectionObserver?.disconnect(); window.removeEventListener('resize', measureViewport); window.removeEventListener('message', onPreviewMessage); document.removeEventListener('visibilitychange', updatePageVisibility) })

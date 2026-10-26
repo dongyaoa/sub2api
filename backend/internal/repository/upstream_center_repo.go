@@ -124,6 +124,9 @@ func (r *upstreamCenterRepository) ArchiveSupplier(ctx context.Context, id int64
 	if _, err = tx.ExecContext(ctx, `UPDATE upstream_targets SET deleted_at=NOW(),enabled=FALSE,next_check_at=NULL,check_token='',lease_until=NULL,updated_at=NOW() WHERE supplier_id=$1 AND deleted_at IS NULL`, id); err != nil {
 		return err
 	}
+	if err = archiveUpstreamIntelligencePlans(ctx, tx, `SELECT id FROM upstream_targets WHERE supplier_id=$1`, id); err != nil {
+		return err
+	}
 	if _, err = tx.ExecContext(ctx, `UPDATE upstream_account_bindings SET valid_until=NOW() WHERE target_id IN (SELECT id FROM upstream_targets WHERE supplier_id=$1) AND valid_until IS NULL`, id); err != nil {
 		return err
 	}
@@ -294,10 +297,39 @@ func (r *upstreamCenterRepository) ArchiveTarget(ctx context.Context, id int64) 
 	if err != nil {
 		return upstreamPersistenceError(err)
 	}
+	if err = archiveUpstreamIntelligencePlans(ctx, tx, `SELECT id FROM upstream_targets WHERE id=$1`, id); err != nil {
+		return err
+	}
 	if _, err = tx.ExecContext(ctx, `UPDATE upstream_account_bindings SET valid_until=NOW() WHERE target_id=$1 AND valid_until IS NULL`, id); err != nil {
 		return err
 	}
 	return tx.Commit()
+}
+
+func archiveUpstreamIntelligencePlans(ctx context.Context, tx *sql.Tx, targetQuery string, id int64) error {
+	rows, err := tx.QueryContext(ctx, `SELECT id FROM intelligence_monitor_plans WHERE upstream_target_id IN (`+targetQuery+`) AND deleted_at IS NULL ORDER BY id FOR UPDATE`, id)
+	if err != nil {
+		return err
+	}
+	ids := []int64{}
+	for rows.Next() {
+		var planID int64
+		if err = rows.Scan(&planID); err != nil {
+			_ = rows.Close()
+			return err
+		}
+		ids = append(ids, planID)
+	}
+	err = rows.Err()
+	_ = rows.Close()
+	if err != nil || len(ids) == 0 {
+		return err
+	}
+	if err = rejectActiveIntelligenceRuns(ctx, tx, ids); err != nil {
+		return err
+	}
+	_, err = tx.ExecContext(ctx, `UPDATE intelligence_monitor_plans SET deleted_at=NOW(),enabled=FALSE,next_run_at=NULL,candy_next_run_at=NULL,updated_at=NOW() WHERE id=ANY($1)`, pq.Array(ids))
+	return err
 }
 
 const upstreamHistoryColumns = `id,target_id,model,status,latency_ms,ping_latency_ms,http_status,message,checked_at,cost,cost_source`

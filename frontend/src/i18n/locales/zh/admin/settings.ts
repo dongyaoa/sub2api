@@ -2,6 +2,23 @@ export default {
     settings: {
       title: '系统设置',
       description: '管理注册、邮箱验证、默认值和 SMTP 设置',
+      webAccess: {
+        title: '网页地区访问限制',
+        description: '按访问者 IP 所属地区控制网页访问。API 调用、支付通知和服务端回调不受影响。',
+        enabled: '限制中国大陆 IP 访问网页',
+        enabledHint: '开启后，中国大陆 IP 打开网站将显示访问受限页面。港澳台及其他地区不在此限制范围。',
+        recoveryHint: '管理员网页同样受限制。开启前请将自己的固定出口 IP 加入白名单，并保留服务器侧关闭开关的方式，避免无法进入后台。',
+        allowlist: '网页访问 IP 白名单',
+        allowlistHint: '每行一个 IPv4、IPv6 或 CIDR 网段；这些地址可正常访问网页。留空表示不设置例外。',
+        proxyHint: '使用反向代理或 CDN 时，需正确配置 server.trusted_proxies 以识别真实访客 IP；网页地区判断使用严格可信代理链，不使用旧版转发头兼容开关。',
+        localPreviewTitle: 'localhost 本地预览说明',
+        localPreviewHint: 'localhost、127.0.0.1 和 ::1 是环回地址，本身不能判断所在地区。本地测试需启用 WEB_ACCESS_LOCAL_NETWORK_CHECK=true，且后端仅监听环回地址，此时按本机实际公网出口识别地区。线上默认关闭此模式，仍按真实访客 IP 判断。',
+        message: '访问受限提示文案',
+        messageHint: '仅支持纯文本，最多 500 字；留空使用默认文案。',
+        preview: '预览访问受限页面',
+        previewTitle: '访问受限页面预览',
+        previewHint: '预览仅展示当前文案，不保存设置，也不改变当前访问权限。',
+      },
       tabs: {
         general: '通用设置',
         agreement: '登录条款',

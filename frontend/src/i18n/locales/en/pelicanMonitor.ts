@@ -6,6 +6,6 @@ export default {
     recentWorks: 'Recent artwork', newestFirst: 'Newest first', latest: 'Latest', duration: 'Generation time', search: 'Search groups or models', groupCount: '{count} monitors', updated: 'Updated {seconds}s ago',
     status: { pending: 'Waiting', running: 'Drawing', succeeded: 'Completed', failed: 'Generation failed', idle: 'Not checked yet' },
     refresh: 'Refresh', preview: 'Pelican animation preview', open: 'View artwork', reloadPreview: 'Replay', loadingPreview: 'Loading artwork…', hoverPreview: 'Hover or focus to play; tap to enlarge', loadFailed: 'Unable to load. Please refresh and try again.', noHTML: 'No artwork available for this run', waiting: 'Waiting for the first artwork',
-    disabled: 'Pelican monitoring is not available', disabledHint: 'Latest group artwork will appear here when monitoring is opened.', empty: 'No monitoring groups are published yet', noMatches: 'No matching groups', retention: 'Each model in each group keeps its latest 20 checks. The first 10 artworks play automatically when visible; hover or focus to play the rest, or tap to open the full view.',
+    disabled: 'Pelican monitoring is not available', disabledHint: 'Latest group artwork will appear here when monitoring is opened.', empty: 'No monitoring groups are published yet', noMatches: 'No matching groups', retention: 'Each model in each group keeps its latest 20 checks. The first 8 artworks play automatically when visible; hover or focus to play the rest, or tap to open the full view.',
   },
 }

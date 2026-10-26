@@ -104,3 +104,17 @@ func TestUpstreamFinanceRemoteBillingEndpointAndFailure(t *testing.T) {
 	require.Equal(t, "endpoint_unavailable", got.Error)
 	require.Equal(t, 1, calls)
 }
+
+func TestUpstreamFinanceRemoteBillingHTTPWithPort(t *testing.T) {
+	now := time.Now().UTC()
+	svc := NewUpstreamFinanceService(nil, financeTestCipher{}, nil, nil, nil)
+	svc.now = func() time.Time { return now }
+	svc.client.Transport = financeRoundTrip(func(req *http.Request) (*http.Response, error) {
+		require.Equal(t, "http://216.158.77.26:7070/prefix/v1/sub2api/billing", req.URL.String())
+		require.Equal(t, "Bearer private-test-key", req.Header.Get("Authorization"))
+		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(remoteBillingFixture(.5, now))), Header: http.Header{}}, nil
+	})
+	got := svc.fetchRemoteBilling(context.Background(), &UpstreamFinanceTarget{ID: 1, Endpoint: "http://216.158.77.26:7070/prefix/v1", APIKeyEncrypted: "private-test-key"})
+	require.Equal(t, "ok", got.Status)
+	require.Equal(t, .5, *got.EffectiveRateMultiplier)
+}

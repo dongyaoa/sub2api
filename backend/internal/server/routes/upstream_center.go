@@ -23,6 +23,7 @@ func registerUpstreamCenterRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	center.GET("/storage/archives", api.StorageArchives)
 	center.POST("/storage/restore", api.RestoreStorage)
 	center.POST("/storage/purge", api.PurgeStorage)
+	center.POST("/storage/purge-archives", api.PurgeArchivedStorage)
 	center.PUT("/order", api.SaveOrder)
 	center.POST("/suppliers", api.CreateSupplier)
 	center.GET("/suppliers/:id/accounts", api.SupplierAccounts)

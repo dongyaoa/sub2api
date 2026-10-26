@@ -1423,6 +1423,11 @@
 
         <!-- Tab: Security — Registration, Turnstile, LinuxDo -->
         <div v-show="activeTab === 'security'" class="space-y-6">
+          <WebAccessSettings
+            v-model:enabled="form.web_access_cn_block_enabled"
+            v-model:message="form.web_access_block_message"
+            v-model:ip-allowlist="form.web_access_ip_allowlist"
+          />
           <!-- Registration Settings -->
           <div class="card">
             <div
@@ -9088,6 +9093,9 @@ import ImageUpload from "@/components/common/ImageUpload.vue";
 import BackupSettings from "@/views/admin/BackupView.vue";
 import EmailTemplateEditor from "@/views/admin/settings/EmailTemplateEditor.vue";
 import RechargeBonusTierEditor from "@/components/admin/settings/RechargeBonusTierEditor.vue";
+import WebAccessSettings from "@/components/admin/settings/WebAccessSettings.vue";
+import { DEFAULT_WEB_ACCESS_MESSAGE } from "@/api/webAccess";
+import { webAccessGate } from "@/services/webAccess";
 import {
   normalizeRechargeBonusMode,
   normalizeRechargeBonusTiers,
@@ -9818,6 +9826,9 @@ type SettingsForm = Omit<
   // 系统全局平台限额 map；form 内始终归一化为全部平台对象（模板非空绑定依赖此不变量）
   default_platform_quotas: DefaultPlatformQuotasMap;
   account_scheduling_thresholds: ReturnType<typeof normalizeAccountSchedulingThresholdsMap>;
+  web_access_cn_block_enabled: boolean;
+  web_access_block_message: string;
+  web_access_ip_allowlist: string[];
 };
 
 const schedulingThresholdPlatforms = SCHEDULING_THRESHOLD_PLATFORMS;
@@ -9870,6 +9881,9 @@ const form = reactive<SettingsForm>({
   home_content: "",
   compact_home_enabled: false,
   backend_mode_enabled: false,
+  web_access_cn_block_enabled: false,
+  web_access_block_message: DEFAULT_WEB_ACCESS_MESSAGE,
+  web_access_ip_allowlist: [],
   hide_ccs_import_button: false,
   payment_enabled: false,
   risk_control_enabled: false,
@@ -11174,6 +11188,11 @@ async function loadSettings() {
       settings.account_scheduling_thresholds,
     );
     form.backend_mode_enabled = settings.backend_mode_enabled;
+    form.web_access_cn_block_enabled = settings.web_access_cn_block_enabled === true;
+    form.web_access_block_message = settings.web_access_block_message || DEFAULT_WEB_ACCESS_MESSAGE;
+    form.web_access_ip_allowlist = Array.isArray(settings.web_access_ip_allowlist)
+      ? [...settings.web_access_ip_allowlist]
+      : [];
     form.default_subscriptions = normalizeDefaultSubscriptionSettings(
       settings.default_subscriptions,
     );
@@ -11581,6 +11600,9 @@ async function saveSettings() {
       home_content: form.home_content,
       compact_home_enabled: form.compact_home_enabled,
       backend_mode_enabled: form.backend_mode_enabled,
+      web_access_cn_block_enabled: form.web_access_cn_block_enabled,
+      web_access_block_message: form.web_access_block_message.trim() || DEFAULT_WEB_ACCESS_MESSAGE,
+      web_access_ip_allowlist: [...new Set(form.web_access_ip_allowlist.map(value => value.trim()).filter(Boolean))],
       hide_ccs_import_button: form.hide_ccs_import_button,
       table_default_page_size: form.table_default_page_size,
       table_page_size_options: form.table_page_size_options,
@@ -11905,8 +11927,12 @@ async function saveSettings() {
     );
     appendAuthSourceDefaultsToUpdateRequest(payload, authSourceDefaults);
 
+    const webAccessWasEnabled = webAccessGate.state.enabled;
     const updated = await settingsStepUp.run(() =>
       adminAPI.settings.updateSettings(payload),
+    );
+    const publicSettingsRefresh = appStore.refreshPublicSettingsAfterWebAccessUpdate(
+      updated.web_access_cn_block_enabled === true,
     );
     for (const [key, value] of Object.entries(updated)) {
       if (key === "openai_fast_policy_settings") continue;
@@ -11986,10 +12012,13 @@ async function saveSettings() {
     // Save web search emulation config separately (errors handled internally)
     const wsOk = await saveWebSearchConfig();
     // Refresh cached settings so sidebar/header update immediately
-    await appStore.fetchPublicSettings(true);
+    await publicSettingsRefresh;
     await adminSettingsStore.fetch(true);
     if (wsOk) {
       appStore.showSuccess(t("admin.settings.settingsSaved"));
+    }
+    if (webAccessWasEnabled && webAccessGate.state.enabled) {
+      void webAccessGate.refreshAfterUpdate();
     }
   } catch (error: unknown) {
     // 用户取消 step-up 验证：静默返回，不弹错误

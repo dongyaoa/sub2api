@@ -1,9 +1,9 @@
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ref } from 'vue'
+import { defineComponent, h, provide, ref } from 'vue'
 import type { PelicanRun } from '@/api/pelicanMonitor'
 import PelicanArtworkPreview from './PelicanArtworkPreview.vue'
-import { pelicanPageActiveKey } from './pelicanContext'
+import { pelicanDialogOpenKey, pelicanPageActiveKey } from './pelicanContext'
 import { resetPelicanArtworkAccess } from './pelicanArtworkLoader'
 const detail = vi.hoisted(() => vi.fn())
 vi.mock('@/api/pelicanMonitor', () => ({ pelicanMonitorAPI: { detail } }))
@@ -26,6 +26,42 @@ function observeVisibility() {
   return (visible: boolean) => update(visible)
 }
 describe('safe user artwork previews', () => {
+  it('transfers an in-flight thumbnail download to the opened dialog without aborting or restarting it', async () => {
+    let finish!: (value: PelicanRun) => void
+    detail.mockImplementation(() => new Promise<PelicanRun>(resolve => { finish = resolve }))
+    const dialogOpen = ref(false)
+    host = document.createElement('div'); document.body.append(host)
+    wrapper = mount(defineComponent({ setup() {
+      provide(pelicanDialogOpenKey, dialogOpen)
+      return () => h('div', [h(PelicanArtworkPreview, { key: 'thumbnail', run: run() }), dialogOpen.value ? h(PelicanArtworkPreview, { key: 'dialog', run: run(), large: true }) : null])
+    } }), { attachTo: host, global: { stubs: { Icon: true } } })
+    await flushPromises()
+    expect(detail).toHaveBeenCalledTimes(1)
+    const signal = detail.mock.calls[0]![1] as AbortSignal
+    dialogOpen.value = true; await flushPromises()
+    expect(detail).toHaveBeenCalledTimes(1)
+    expect(signal.aborted).toBe(false)
+    finish(run({ html: '<svg>Shared artwork</svg>' })); await flushPromises()
+    expect(wrapper.findAll('iframe')).toHaveLength(1)
+    expect(wrapper.get('iframe').attributes('srcdoc')).toContain('Shared artwork')
+    dialogOpen.value = false; await flushPromises()
+    expect(wrapper.get('iframe').attributes('srcdoc')).toContain('Shared artwork')
+    expect(detail).toHaveBeenCalledTimes(1)
+  })
+
+  it('defers resize observation for later artwork until its first playback', async () => {
+    const observe = vi.fn(), disconnect = vi.fn()
+    vi.stubGlobal('ResizeObserver', class { observe = observe; disconnect = disconnect })
+    detail.mockResolvedValue(run({ html: '<svg>On demand</svg>' }))
+    const view = render(ref(true), { autoplay: false }); await flushPromises()
+    expect(observe).not.toHaveBeenCalled()
+    expect(detail).not.toHaveBeenCalled()
+    await view.trigger('mouseenter'); await flushPromises()
+    expect(observe).toHaveBeenCalledTimes(1)
+    await view.trigger('mouseleave'); await view.trigger('mouseenter'); await flushPromises()
+    expect(observe).toHaveBeenCalledTimes(1)
+  })
+
   it('opens a completed artwork before its thumbnail detail has loaded', async () => {
     let finish!: (value: PelicanRun) => void
     detail.mockImplementation(() => new Promise<PelicanRun>(resolve => { finish = resolve }))

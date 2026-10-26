@@ -112,10 +112,13 @@ export function resolveModelVariant(
 export function collectModelSquareGroups(
   channels: UserAvailableChannel[],
   groups: Group[],
+  platform?: string,
 ): Group[] {
   const visibleIds = new Set<number>()
   for (const channel of channels) {
     for (const section of channel.platforms) {
+      // Composite groups belong to each concrete platform section in the catalog.
+      if (platform && section.platform !== platform) continue
       for (const group of section.groups) visibleIds.add(group.id)
     }
   }
