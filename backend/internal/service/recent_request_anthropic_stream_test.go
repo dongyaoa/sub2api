@@ -55,8 +55,24 @@ func TestRecentRequestAnthropicAdaptersObserveStreamErrors(t *testing.T) {
 				}
 				resp := &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(reader)}
 				result, err := handler.call(&GatewayService{}, resp, c)
-				require.NoError(t, err)
-				require.NotNil(t, result)
+				streaming := strings.HasSuffix(handler.name, "streaming")
+				if streaming && scenario != "complete" {
+					require.Error(t, err)
+					if scenario == "error event" {
+						require.Nil(t, result)
+					} else {
+						require.NotNil(t, result)
+					}
+					switch scenario {
+					case "read error":
+						message = "upstream stream disconnected: upstream connection error"
+					case "missing terminal":
+						message = "upstream stream ended without a terminal event"
+					}
+				} else {
+					require.NoError(t, err)
+					require.NotNil(t, result)
+				}
 				finish(result != nil, err)
 				record := takeRecentObserverRecord(t, store)
 				require.Equal(t, scenario == "complete", record.Success)

@@ -193,7 +193,11 @@ func (state *webAccessLocalNetworkState) resolve(ctx context.Context) (netip.Add
 		if completed.Err != nil {
 			return netip.Addr{}, completed.Err
 		}
-		return completed.Val.(netip.Addr), nil
+		address, ok := completed.Val.(netip.Addr)
+		if !ok {
+			return netip.Addr{}, ErrWebAccessLocalNetworkUnavailable
+		}
+		return address, nil
 	}
 }
 

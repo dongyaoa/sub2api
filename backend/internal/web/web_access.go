@@ -1,3 +1,5 @@
+//go:build embed
+
 package web
 
 import (
@@ -10,14 +12,8 @@ import (
 
 	clientip "github.com/Wei-Shaw/sub2api/internal/pkg/ip"
 	"github.com/Wei-Shaw/sub2api/internal/server/middleware"
-	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/gin-gonic/gin"
 )
-
-// WebAccessProvider evaluates website access only. API handlers never use this gate.
-type WebAccessProvider interface {
-	GetWebAccessDecision(context.Context, string) (service.WebAccessDecision, error)
-}
 
 //go:embed web_access.html
 var webAccessHTML string
