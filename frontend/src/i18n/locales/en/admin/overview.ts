@@ -1081,6 +1081,7 @@ export default {
         description: 'Configure image generation access and base prices. Grok is priced per model with the same 1K / 2K rate; other platforms are priced by resolution. Leave empty to use defaults.',
         allowImageGeneration: 'Allow image generation for this group',
         allowBatchImageGeneration: 'Allow batch image generation for this group',
+        perImageBilling: 'Bill per generated image',
         independentMultiplier: 'Use independent image multiplier',
         imageMultiplier: 'Image multiplier',
         batchDiscountMultiplier: 'Batch image discount',

@@ -61,6 +61,18 @@ func buildImageStudioPricing(ctx context.Context, billing *BillingService, resol
 		RateMultiplier:  resolveImageRateMultiplier(apiKey, baseMultiplier),
 		OpenAI4KAllowed: apiKey.Group.ImagePrice4K != nil,
 	}
+	var groupImagePrices *ImagePriceConfig
+	if resolved != nil && resolved.Mode == BillingModeToken && imageCountBillingApplies(apiKey, true) {
+		// Studio submits to a dedicated image endpoint, so its quote must use
+		// the same explicit token-to-image override as the eventual charge.
+		groupImagePrices = imagePriceConfigFromAPIKey(apiKey)
+		if apiKeyHasConfiguredImagePrice(apiKey, ImageBillingSize1K) ||
+			apiKeyHasConfiguredImagePrice(apiKey, ImageBillingSize2K) ||
+			apiKeyHasConfiguredImagePrice(apiKey, ImageBillingSize4K) {
+			quote.PricingSource = PricingSourceGroup
+		}
+		resolved = nil
+	}
 	if resolved != nil {
 		quote.BillingMode = resolved.Mode
 		quote.PricingSource = resolved.Source
@@ -76,7 +88,7 @@ func buildImageStudioPricing(ctx context.Context, billing *BillingService, resol
 	}
 	quote.Tiers = make(map[string]ImageStudioTierPrice, 3)
 	for _, size := range []string{ImageBillingSize1K, ImageBillingSize2K, ImageBillingSize4K} {
-		cost := billing.CalculateImageCost(billingModel, size, 1, nil, quote.RateMultiplier)
+		cost := billing.CalculateImageCost(billingModel, size, 1, groupImagePrices, quote.RateMultiplier)
 		if resolved != nil {
 			gid := apiKey.Group.ID
 			var err error

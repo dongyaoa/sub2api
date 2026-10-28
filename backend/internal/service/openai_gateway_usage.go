@@ -619,26 +619,38 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
 	}
 
 	if result != nil && result.ImageCount > 0 {
-		// 渠道定价为 token 计费时走 token 路径，否则走图片计费
-		if resolved := resolveImagePricingForAPIKey(ctx, s.resolver, billingModel, apiKey); resolved == nil || resolved.Mode != BillingModeToken {
-			return s.calculateOpenAIImageCost(ctx, billingModel, apiKey, result, imageMultiplier), nil
+		var imageCountCost *CostBreakdown
+		// 分组显式开启按张计费且来自图片端点时强制走图片计费；否则渠道 token 定价优先。
+		// 混合的 Responses/Chat/WS 请求即使产出了图片，也不能因开关丢失文本 token 费用。
+		if imageCountBillingApplies(apiKey, result.ImageEndpoint) {
+			imageCountCost = s.calculateOpenAIImageCost(ctx, billingModel, apiKey, result, imageMultiplier)
 		} else {
-			gid := apiKey.Group.ID
-			cost, err := s.billingService.CalculateCostUnified(CostInput{
-				Ctx: ctx, Model: billingModel, GroupID: &gid, Group: apiKey.Group,
-				Tokens: tokens, RequestCount: result.ImageCount, RateMultiplier: multiplier, PricingAt: pricingAt,
-				ServiceTier: serviceTier, ReasoningEffort: optionalStringValue(result.ReasoningEffort),
-				Resolver: s.resolver, Resolved: resolved, LongContextBillingEnabled: longContextBillingGate,
-			})
-			if err == nil && result.SearchCount > 0 {
-				search := s.billingService.CalculateSearchCost(result.SearchCount, groupSearchPricePer1kFromAPIKey(apiKey), webSearchMultiplier)
-				if search != nil {
-					cost.TotalCost += search.TotalCost
-					cost.ActualCost += search.ActualCost
+			resolved := resolveImagePricingForAPIKey(ctx, s.resolver, billingModel, apiKey)
+			if resolved == nil || resolved.Mode != BillingModeToken {
+				imageCountCost = s.calculateOpenAIImageCost(ctx, billingModel, apiKey, result, imageMultiplier)
+			} else {
+				gid := apiKey.Group.ID
+				cost, err := s.billingService.CalculateCostUnified(CostInput{
+					Ctx: ctx, Model: billingModel, GroupID: &gid, Group: apiKey.Group,
+					Tokens: tokens, RequestCount: result.ImageCount, RateMultiplier: multiplier, PricingAt: pricingAt,
+					ServiceTier: serviceTier, ReasoningEffort: optionalStringValue(result.ReasoningEffort),
+					Resolver: s.resolver, Resolved: resolved, LongContextBillingEnabled: longContextBillingGate,
+				})
+				if err == nil {
+					imageCountCost = cost
+				} else {
+					return nil, err
 				}
 			}
-			return cost, err
 		}
+		if result.SearchCount > 0 {
+			search := s.billingService.CalculateSearchCost(result.SearchCount, groupSearchPricePer1kFromAPIKey(apiKey), webSearchMultiplier)
+			if search != nil {
+				imageCountCost.TotalCost += search.TotalCost
+				imageCountCost.ActualCost += search.ActualCost
+			}
+		}
+		return imageCountCost, nil
 	}
 
 	// Token path (optional search surcharge is additive — never replaces token cost).
@@ -785,14 +797,23 @@ func (s *OpenAIGatewayService) calculateOpenAIImageCost(
 ) *CostBreakdown {
 	sizeTier := NormalizeImageBillingTierOrDefault(result.ImageSize)
 	resolved := resolveImagePricingForAPIKey(ctx, s.resolver, billingModel, apiKey)
+	if resolved != nil && resolved.Mode == BillingModeToken && imageCountBillingApplies(apiKey, result.ImageEndpoint) {
+		// Only an explicit token-to-image override uses the legacy group image price.
+		return s.billingService.CalculateImageCost(billingModel, sizeTier, result.ImageCount, imagePriceConfigFromAPIKey(apiKey), multiplier)
+	}
 	if resolved != nil &&
 		(resolved.Mode == BillingModePerRequest || resolved.Mode == BillingModeImage) {
 		gid := apiKey.Group.ID
 		cost, err := s.billingService.CalculateCostUnified(CostInput{
-			Ctx:             ctx,
-			Model:           billingModel,
-			GroupID:         &gid,
-			Group:           apiKey.Group,
+			Ctx:     ctx,
+			Model:   billingModel,
+			GroupID: &gid,
+			Group:   apiKey.Group,
+			Tokens: UsageTokens{
+				InputTokens:       result.Usage.InputTokens,
+				OutputTokens:      result.Usage.OutputTokens,
+				ImageOutputTokens: result.Usage.ImageOutputTokens,
+			},
 			RequestCount:    result.ImageCount,
 			SizeTier:        sizeTier,
 			ReasoningEffort: optionalStringValue(result.ReasoningEffort),

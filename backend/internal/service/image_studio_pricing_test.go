@@ -92,6 +92,7 @@ func TestImageStudioPricing_TokenModelHasNoPerImageEstimate(t *testing.T) {
 	groupPrice, searchPrice := 0.06, 1000.0
 	apiKey.Group.ModelPricing = []ChannelModelPricing{{Models: []string{model}, BillingMode: BillingModeImage, PerRequestPrice: &groupPrice}}
 	apiKey.Group.SearchPricePer1k = &searchPrice
+	apiKey.Group.ImageCountBilling = true // Mixed tool responses retain token and search charges.
 	svc := &OpenAIGatewayService{billingService: resolver.billingService, resolver: resolver}
 	cost, err := svc.calculateOpenAIRecordUsageCost(ctx, &OpenAIForwardResult{ImageCount: 1, SearchCount: 1}, apiKey, []string{model},
 		0.5, 0.5, 1, 0.25, UsageTokens{InputTokens: 100, OutputTokens: 200}, "", nil, false, time.Time{})

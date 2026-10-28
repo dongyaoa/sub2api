@@ -1026,16 +1026,21 @@ func (s *GatewayService) calculateRecordUsageCost(
 	imageMultiplier float64,
 	pricingAt time.Time,
 ) *CostBreakdown {
-	// 图片生成：渠道定价为 token 计费时走 token 路径，否则走图片计费
+	var tokenCost *CostBreakdown
+	// 图片生成：渠道定价为 token 计费时走 token 路径，否则走图片计费。
+	// 分组按张计费开关只对专用图片端点生效，混合请求仍按 token 计费。
 	if result.ImageCount > 0 {
-		if resolved := resolveImagePricingForAPIKey(ctx, s.resolver, billingModel, apiKey); resolved != nil && resolved.Mode == BillingModeToken {
-			return s.calculateTokenCost(ctx, result, apiKey, billingModel, multiplier, pricingAt)
+		if !imageCountBillingApplies(apiKey, result.ImageEndpoint) {
+			if resolved := resolveImagePricingForAPIKey(ctx, s.resolver, billingModel, apiKey); resolved != nil && resolved.Mode == BillingModeToken {
+				tokenCost = s.calculateTokenCost(ctx, result, apiKey, billingModel, multiplier, pricingAt)
+			} else {
+				tokenCost = s.calculateImageCost(ctx, result, apiKey, billingModel, imageMultiplier)
+			}
+		} else {
+			tokenCost = s.calculateImageCost(ctx, result, apiKey, billingModel, imageMultiplier)
 		}
-		return s.calculateImageCost(ctx, result, apiKey, billingModel, imageMultiplier)
-	}
-
-	// Voice audio (TTS / STT / realtime) when present on the forward result.
-	if result.AudioUsage != nil {
+	} else if result.AudioUsage != nil {
+		// Voice audio (TTS / STT / realtime) when present on the forward result.
 		if resolved := s.resolveChannelPricing(ctx, billingModel, apiKey); resolved != nil &&
 			resolved.Mode == BillingModePerRequest {
 			gid := apiKey.Group.ID
@@ -1051,13 +1056,11 @@ func (s *GatewayService) calculateRecordUsageCost(
 		}
 		cfg := groupAudioPriceConfigFromAPIKey(apiKey)
 		return s.billingService.CalculateAudioCost(result.AudioUsage.Mode, result.AudioUsage.DurationOrUnits, cfg, multiplier)
-	}
-
-	// Token 计费；SearchCount 为叠加 surcharge（不替代 token）。纯存储费不是一次模型请求，不计 token / 按次费用。
-	var tokenCost *CostBreakdown
-	if isCacheStorageOnlyResult(result) {
+	} else if isCacheStorageOnlyResult(result) {
+		// Pure cache storage is not a model request, so it has no token/request charge.
 		tokenCost = &CostBreakdown{}
 	} else {
+		// Token 计费；SearchCount 为叠加 surcharge（不替代 token）。
 		tokenCost = s.calculateTokenCost(ctx, result, apiKey, billingModel, multiplier, pricingAt)
 	}
 	if result.SearchCount > 0 {
@@ -1175,7 +1178,12 @@ func (s *GatewayService) calculateImageCost(
 ) *CostBreakdown {
 	sizeTier := NormalizeImageBillingTierOrDefault(result.ImageSize)
 	resolved := resolveImagePricingForAPIKey(ctx, s.resolver, billingModel, apiKey)
-	if resolved != nil {
+	if resolved != nil && resolved.Mode == BillingModeToken && imageCountBillingApplies(apiKey, result.ImageEndpoint) && apiKeyHasConfiguredImagePrice(apiKey, sizeTier) {
+		// An explicit token-to-image override uses the legacy group image price.
+		return s.billingService.CalculateImageCost(billingModel, sizeTier, result.ImageCount, imagePriceConfigFromAPIKey(apiKey), multiplier)
+	}
+	if resolved != nil && resolved.Mode != BillingModeToken {
+		// Context tiers still need tokens even when the final price is per image.
 		tokens := UsageTokens{
 			InputTokens:       result.Usage.InputTokens,
 			OutputTokens:      result.Usage.OutputTokens,
@@ -1196,7 +1204,7 @@ func (s *GatewayService) calculateImageCost(
 			Resolved:        resolved,
 		})
 		if err != nil {
-			logger.LegacyPrintf("service.gateway", "Calculate image token cost failed: %v", err)
+			logger.LegacyPrintf("service.gateway", "Calculate image model cost failed: %v", err)
 			return &CostBreakdown{ActualCost: 0}
 		}
 		return cost
