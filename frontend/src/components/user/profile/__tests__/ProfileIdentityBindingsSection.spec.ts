@@ -690,6 +690,56 @@ describe('ProfileIdentityBindingsSection', () => {
     expect(wrapper.get('[data-testid="profile-binding-email-input"]').exists()).toBe(true)
   })
 
+  it('keeps the embedded email dialog draft when closed, refreshed, and reopened', async () => {
+    const wrapper = mount(ProfileIdentityBindingsSection, {
+      global: { plugins: [pinia], stubs: { teleport: true } },
+      props: { user: createUser({ email_bound: true }), embedded: true, compact: true, hideHeading: true },
+    })
+
+    try {
+      expect(wrapper.findAll('[data-testid$="-status"]')).toHaveLength(5)
+      expect(wrapper.find('[role="dialog"]').exists()).toBe(false)
+      await wrapper.get('[data-testid="profile-binding-email-toggle"]').trigger('click')
+      expect(wrapper.get('[role="dialog"]').attributes('aria-modal')).toBe('true')
+      await wrapper.get('[data-testid="profile-binding-email-input"]').setValue('draft@example.com')
+      await wrapper.get('[data-testid="profile-binding-email-code-input"]').setValue('123456')
+      await wrapper.get('[data-testid="profile-binding-email-password-input"]').setValue('draft-password')
+      await wrapper.get('[aria-label="Close modal"]').trigger('click')
+      expect(wrapper.find('[role="dialog"]').exists()).toBe(false)
+
+      await wrapper.setProps({ user: createUser({ email_bound: true, email: 'refreshed@example.com' }) })
+      await wrapper.get('[data-testid="profile-binding-email-toggle"]').trigger('click')
+      expect(wrapper.get<HTMLInputElement>('[data-testid="profile-binding-email-input"]').element.value).toBe('draft@example.com')
+      expect(wrapper.get<HTMLInputElement>('[data-testid="profile-binding-email-code-input"]').element.value).toBe('123456')
+      expect(wrapper.get<HTMLInputElement>('[data-testid="profile-binding-email-password-input"]').element.value).toBe('draft-password')
+    } finally {
+      wrapper.unmount()
+    }
+  })
+
+  it('submits the embedded email dialog and updates its binding summary', async () => {
+    userApiMocks.bindEmailIdentity.mockResolvedValue(createUser({ email: 'new@example.com', email_bound: true }))
+    const wrapper = mount(ProfileIdentityBindingsSection, {
+      global: { plugins: [pinia], stubs: { teleport: true } },
+      props: { user: createUser({ email_bound: true }), embedded: true, compact: true, hideHeading: true },
+    })
+
+    try {
+      await wrapper.get('[data-testid="profile-binding-email-toggle"]').trigger('click')
+      await wrapper.get('[data-testid="profile-binding-email-input"]').setValue('new@example.com')
+      await wrapper.get('[data-testid="profile-binding-email-code-input"]').setValue('123456')
+      await wrapper.get('[data-testid="profile-binding-email-password-input"]').setValue('current-password')
+      await wrapper.get('[data-testid="profile-binding-email-submit"]').trigger('click')
+      await flushPromises()
+
+      expect(userApiMocks.bindEmailIdentity).toHaveBeenCalledWith({ email: 'new@example.com', verify_code: '123456', password: 'current-password' })
+      expect(wrapper.find('[role="dialog"]').exists()).toBe(false)
+      expect(wrapper.text()).toContain('new@example.com')
+    } finally {
+      wrapper.unmount()
+    }
+  })
+
   it('shows third-party binding details and unbinds a connected provider', async () => {
     userApiMocks.unbindAuthIdentity.mockResolvedValue(
       createUser({

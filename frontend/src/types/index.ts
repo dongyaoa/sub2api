@@ -1277,20 +1277,6 @@ export interface Account {
   credentials?: Record<string, unknown>
   credentials_status?: Record<string, boolean>
   ollama_cloud_usage?: OllamaCloudUsageState
-  codex_turn_tickets?: Array<{
-    model: string
-    length?: number
-    ready: boolean
-    remaining_seconds: number
-    blocked: boolean
-    expires_at?: string
-    harvest_enabled?: boolean
-    harvest_paused?: boolean
-    token_invalid?: boolean
-    attempts?: number
-    harvesting?: boolean
-    next_harvest_at?: string
-  }>
   opencode_go_usage?: OpenCodeGoUsageState
   // Extra fields including Codex usage, OpenAI compact capability, and model-level rate limits.
   extra?: (CodexUsageSnapshot & OpenAICompactState & {
@@ -1424,31 +1410,6 @@ export interface Account {
   parent_chatgpt_account_id?: string
 
   grok_model_diagnostics?: GrokModelDiagnostics
-}
-
-export interface CodexTicketLogEntry {
-  id: number
-  time: string
-  attempt: number
-  event: 'started' | 'success' | 'miss' | 'error' | 'skipped'
-  reason: string
-  http_status?: number
-  egress_ip?: string
-  egress_country_code?: string
-  egress_error?: {
-    reason: string
-    http_status?: number
-  }
-  ticket_length?: number
-  target_length: number
-  duration_ms?: number
-}
-
-export interface CodexTicketLogsResponse {
-  model: string
-  entries: CodexTicketLogEntry[]
-  status: NonNullable<Account['codex_turn_tickets']>[number] | null
-  limit: number
 }
 
 export interface AccountProxyPoolEntry {

@@ -559,7 +559,7 @@ import Icon from '@/components/icons/Icon.vue'
 import ErrorPassthroughRulesModal from '@/components/admin/ErrorPassthroughRulesModal.vue'
 import TLSFingerprintProfilesModal from '@/components/admin/TLSFingerprintProfilesModal.vue'
 import { fetchAllAccountIds } from '@/utils/accountSelection'
-import { hasCodexTicketHarvest, shouldReplaceAutoRefreshRow } from '@/utils/accountUsageRefresh'
+import { shouldReplaceAutoRefreshRow } from '@/utils/accountUsageRefresh'
 import { formatDateTime, formatRelativeTime } from '@/utils/format'
 import { proxyExpiryBadgeClass, proxyExpiryLabelKey } from '@/utils/proxyExpiry'
 import { extractApiErrorMessage } from '@/utils/apiError'
@@ -1689,15 +1689,10 @@ const syncPendingListChanges = async () => {
   usageManualRefreshToken.value += 1
 }
 
-const ticketPollingEnabled = computed(() => (
-  !hiddenColumns.has('usage') && accounts.value.some(hasCodexTicketHarvest)
-))
-
 useAccountListRefresh({
   autoEnabled: autoRefreshEnabled,
   autoIntervalSeconds: autoRefreshIntervalSeconds,
   autoCountdown: autoRefreshCountdown,
-  ticketPollingEnabled,
   silentUntil: autoRefreshSilentUntil,
   lastRefreshAt: lastAccountListRefreshAt,
   isBlocked: () => loading.value || autoRefreshFetching.value || isAnyModalOpen.value ||

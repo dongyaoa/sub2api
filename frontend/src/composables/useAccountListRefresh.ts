@@ -1,21 +1,18 @@
 import { watch, type Ref } from 'vue'
 import { useIntervalFn } from '@vueuse/core'
 
-const TICKET_POLL_INTERVAL_MS = 5000
+const MIN_REFRESH_INTERVAL_MS = 5000
 
 interface AccountListRefreshOptions {
   autoEnabled: Ref<boolean>
   autoIntervalSeconds: Ref<number>
   autoCountdown: Ref<number>
-  ticketPollingEnabled: Ref<boolean>
   silentUntil: Ref<number>
   lastRefreshAt: Ref<number>
   isBlocked: () => boolean
   refresh: (options: { refreshTodayStats: boolean }) => Promise<void>
 }
 
-// Share one timer and rate limit between the user-selected refresh and ticket
-// status polling. Ticket updates do not opt the user into other usage queries.
 export function useAccountListRefresh(options: AccountListRefreshOptions) {
   let refreshing = false
   const { pause, resume } = useIntervalFn(async () => {
@@ -33,22 +30,21 @@ export function useAccountListRefresh(options: AccountListRefreshOptions) {
       options.autoCountdown.value = Math.max(0, options.autoCountdown.value - 1)
     }
     const autoDue = options.autoEnabled.value && options.autoCountdown.value === 0
-    const enoughTimeElapsed = now - options.lastRefreshAt.value >= TICKET_POLL_INTERVAL_MS
-    const ticketsDue = options.ticketPollingEnabled.value && enoughTimeElapsed
-    if ((!autoDue && !ticketsDue) || !enoughTimeElapsed) return
+    const enoughTimeElapsed = now - options.lastRefreshAt.value >= MIN_REFRESH_INTERVAL_MS
+    if (!autoDue || !enoughTimeElapsed) return
 
-    if (autoDue) options.autoCountdown.value = options.autoIntervalSeconds.value
+    options.autoCountdown.value = options.autoIntervalSeconds.value
     options.lastRefreshAt.value = now
     refreshing = true
     try {
-      await options.refresh({ refreshTodayStats: autoDue })
+      await options.refresh({ refreshTodayStats: true })
     } finally {
       refreshing = false
     }
   }, 1000, { immediate: false })
 
-  watch([options.autoEnabled, options.ticketPollingEnabled], ([autoEnabled, ticketsEnabled]) => {
-    if (autoEnabled || ticketsEnabled) resume()
+  watch(options.autoEnabled, (autoEnabled) => {
+    if (autoEnabled) resume()
     else pause()
   }, { immediate: true })
 }

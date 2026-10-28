@@ -141,7 +141,7 @@ func TestAccountReadableSnapshot_DenylistTripwire(t *testing.T) {
 	require.NoError(t, json.Unmarshal(snap, &m))
 	assert.NotContains(t, string(snap), "LEAK-REFRESH", "raw Credentials must never appear in metadata")
 	assert.Contains(t, string(snap), "extra-released", "Extra is intentionally released")
-	assert.Contains(t, string(snap), "pw-released", "proxy is intentionally released (already exposed via 打票)")
+	assert.Contains(t, string(snap), "pw-released", "proxy password remains part of the readable snapshot")
 	assert.NotContains(t, string(snap), "POOL-SECRET", "hydrated proxy-pool credentials must never appear in metadata")
 
 	// Cycle safety: a populated Groups/AccountGroups back-reference cycle must NOT

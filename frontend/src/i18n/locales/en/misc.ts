@@ -358,7 +358,11 @@ export default {
     },
     orders: {
       title: 'My Orders',
+      recordsTitle: 'Order History',
+      description: 'Review top-ups, subscriptions, and payment status',
+      recordsCount: '{count} orders',
       empty: 'No orders yet',
+      emptyHint: 'Your top-up and subscription orders will appear here',
       orderId: 'Order ID',
       orderNo: 'Order No.',
       amount: 'Amount',

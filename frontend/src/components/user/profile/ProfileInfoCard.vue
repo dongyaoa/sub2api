@@ -1,141 +1,78 @@
 <template>
-  <div class="space-y-6">
-    <section
-      data-testid="profile-overview-hero"
-      class="card overflow-hidden border border-primary-100/80 bg-gradient-to-br from-primary-50 via-white to-amber-50/70 dark:border-primary-900/40 dark:from-primary-950/40 dark:via-dark-900 dark:to-dark-950"
-    >
-      <div class="px-6 py-6 md:px-8">
-        <div class="flex flex-col gap-6 lg:flex-row lg:items-start">
-          <div
-            class="flex h-20 w-20 shrink-0 items-center justify-center overflow-hidden rounded-[1.75rem] bg-gradient-to-br from-primary-500 to-primary-600 text-2xl font-bold text-white shadow-lg shadow-primary-500/20"
-          >
-            <img
-              v-if="avatarUrl"
-              :src="avatarUrl"
-              :alt="displayName"
-              class="h-full w-full object-cover"
-            >
+  <div class="space-y-5">
+    <section data-testid="profile-overview-hero" class="card">
+      <div class="grid items-center gap-5 p-5 xl:grid-cols-[minmax(0,1.1fr)_minmax(0,1fr)]">
+        <div class="flex min-w-0 items-center gap-3">
+          <div class="flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-primary-600 text-xl font-semibold text-white">
+            <img v-if="avatarUrl" :src="avatarUrl" :alt="displayName" class="h-full w-full object-cover">
             <span v-else>{{ avatarInitial }}</span>
           </div>
-
-          <div class="min-w-0 flex-1 space-y-5">
-            <div class="space-y-3">
-              <div class="flex flex-wrap items-center gap-2">
-                <h2 class="truncate text-2xl font-semibold text-gray-900 dark:text-white">
-                  {{ displayName }}
-                </h2>
-                <span :class="['badge', user?.role === 'admin' ? 'badge-primary' : 'badge-gray']">
-                  {{ user?.role === 'admin' ? t('profile.administrator') : t('profile.user') }}
-                </span>
-                <span
-                  :class="['badge', user?.status === 'active' ? 'badge-success' : 'badge-danger']"
-                >
-                  {{
-                    user?.status === 'active'
-                      ? t('common.active')
-                      : t('common.disabled')
-                  }}
-                </span>
-              </div>
-
-              <div class="space-y-1">
-                <p class="truncate text-sm text-gray-600 dark:text-gray-300">
-                  {{ primaryEmailDisplay }}
-                </p>
-                <div
-                  v-if="sourceHints.length"
-                  class="flex flex-wrap gap-2 text-xs text-gray-500 dark:text-gray-400"
-                >
-                  <span
-                    v-for="hint in sourceHints"
-                    :key="hint.key"
-                    class="inline-flex items-center gap-1 rounded-full bg-white/80 px-3 py-1 ring-1 ring-primary-100 dark:bg-dark-900/70 dark:ring-primary-900/40"
-                  >
-                    <Icon name="link" size="sm" />
-                    {{ hint.text }}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div class="grid gap-3 sm:grid-cols-3">
-              <div
-                data-testid="profile-overview-metric-balance"
-                class="rounded-2xl bg-white/85 px-4 py-3 shadow-sm ring-1 ring-white/70 dark:bg-dark-900/60 dark:ring-dark-700"
-              >
-                <p class="text-xs font-medium uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">
-                  {{ t('profile.accountBalance') }}
-                </p>
-                <p class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
-                  {{ formatCurrency(user?.balance || 0) }}
-                </p>
-              </div>
-              <div
-                data-testid="profile-overview-metric-concurrency"
-                class="rounded-2xl bg-white/85 px-4 py-3 shadow-sm ring-1 ring-white/70 dark:bg-dark-900/60 dark:ring-dark-700"
-              >
-                <p class="text-xs font-medium uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">
-                  {{ t('profile.concurrencyLimit') }}
-                </p>
-                <p class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
-                  {{ user?.concurrency || 0 }}
-                </p>
-              </div>
-              <div
-                data-testid="profile-overview-metric-member-since"
-                class="rounded-2xl bg-white/85 px-4 py-3 shadow-sm ring-1 ring-white/70 dark:bg-dark-900/60 dark:ring-dark-700"
-              >
-                <p class="text-xs font-medium uppercase tracking-[0.16em] text-gray-400 dark:text-gray-500">
-                  {{ t('profile.memberSince') }}
-                </p>
-                <p class="mt-1 text-lg font-semibold text-gray-900 dark:text-white">
-                  {{ memberSinceLabel }}
-                </p>
-              </div>
+          <div class="min-w-0 flex-1">
+            <h2 class="truncate text-lg font-semibold text-gray-900 dark:text-white" :title="displayName">
+              {{ displayName }}
+            </h2>
+            <p v-if="primaryEmailDisplay && primaryEmailDisplay !== displayName" class="mt-0.5 truncate text-xs text-gray-500 dark:text-gray-400" :title="primaryEmailDisplay">
+              {{ primaryEmailDisplay }}
+            </p>
+            <div class="mt-2 flex flex-wrap items-center gap-2">
+              <span :class="['badge', user?.role === 'admin' ? 'badge-primary' : 'badge-gray']">
+                {{ user?.role === 'admin' ? t('profile.administrator') : t('profile.user') }}
+              </span>
+              <span :class="['badge', user?.status === 'active' ? 'badge-success' : 'badge-danger']">
+                {{ user?.status === 'active' ? t('common.active') : t('common.disabled') }}
+              </span>
             </div>
           </div>
         </div>
+
+        <dl class="grid grid-cols-2 gap-x-4 gap-y-3 border-t border-gray-100 pt-4 dark:border-dark-700 sm:grid-cols-3 xl:border-t-0 xl:pt-0">
+          <div data-testid="profile-overview-metric-balance" class="min-w-0">
+            <dt class="text-xs text-gray-500 dark:text-gray-400">{{ t('profile.accountBalance') }}</dt>
+            <dd class="mt-1.5 break-all text-xl font-semibold tabular-nums text-primary-700 dark:text-primary-400">
+              {{ formatCurrency(user?.balance || 0) }}
+            </dd>
+          </div>
+          <div data-testid="profile-overview-metric-concurrency" class="min-w-0 border-l border-gray-100 pl-4 dark:border-dark-700">
+            <dt class="text-xs text-gray-500 dark:text-gray-400">{{ t('profile.concurrencyLimit') }}</dt>
+            <dd class="mt-1.5 break-all text-xl font-semibold tabular-nums text-gray-900 dark:text-white">
+              {{ user?.concurrency || 0 }}
+            </dd>
+          </div>
+          <div data-testid="profile-overview-metric-member-since" class="col-span-2 min-w-0 sm:col-span-1 sm:border-l sm:border-gray-100 sm:pl-4 dark:sm:border-dark-700">
+            <dt class="text-xs text-gray-500 dark:text-gray-400">{{ t('profile.memberSince') }}</dt>
+            <dd class="mt-1.5 text-base font-medium text-gray-900 dark:text-white">{{ memberSinceLabel }}</dd>
+          </div>
+        </dl>
       </div>
     </section>
 
-    <div class="space-y-6">
-      <div data-testid="profile-main-column" class="space-y-6">
-        <section
-          data-testid="profile-basics-panel"
-          class="card border border-gray-100 bg-white/90 p-6 dark:border-dark-700 dark:bg-dark-900/50"
-        >
-          <div class="mb-5 flex items-start justify-between gap-4">
-            <div>
-              <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
-                {{ t('profile.basicsTitle') }}
-              </h3>
-              <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                {{ t('profile.basicsDescription') }}
-              </p>
-            </div>
+    <div data-testid="profile-settings-grid" class="grid items-start gap-5 md:grid-cols-2 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)_minmax(0,1fr)]">
+      <section data-testid="profile-basics-panel" class="card min-w-0" aria-labelledby="profile-basics-title">
+        <div class="flex items-center gap-2.5 border-b border-gray-100 px-5 py-4 dark:border-dark-700">
+          <Icon name="user" size="md" class="shrink-0 text-primary-500" />
+          <h3 id="profile-basics-title" class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('profile.basicsTitle') }}</h3>
+        </div>
+        <div data-testid="profile-main-column" class="min-w-0 p-5">
+          <ProfileAvatarCard :user="user" embedded compact />
+          <div class="mt-5 border-t border-gray-100 pt-5 dark:border-dark-700">
+            <ProfileEditForm :initial-username="user?.username || ''" embedded compact />
           </div>
-
-          <div class="grid gap-6 sm:grid-cols-1 md:grid-cols-2">
-            <div class="rounded-3xl border border-gray-100 bg-gray-50/80 p-5 dark:border-dark-700 dark:bg-dark-900/30">
-              <ProfileAvatarCard
-                :user="user"
-                embedded
-              />
-            </div>
-
-            <div class="rounded-3xl border border-gray-100 bg-gray-50/80 p-5 dark:border-dark-700 dark:bg-dark-900/30">
-              <ProfileEditForm
-                :initial-username="user?.username || ''"
-                embedded
-              />
-            </div>
+          <div v-if="sourceHints.length" class="mt-4 space-y-2 border-t border-gray-100 pt-4 dark:border-dark-700">
+            <p class="text-xs font-medium text-gray-500 dark:text-gray-400">{{ t('profile.linkedProfileSources') }}</p>
+            <p v-for="hint in sourceHints" :key="hint.key" class="flex min-w-0 items-start gap-2 text-xs leading-relaxed text-gray-500 dark:text-gray-400">
+              <Icon name="link" size="sm" class="mt-0.5 shrink-0" />
+              <span class="min-w-0 break-words">{{ hint.text }}</span>
+            </p>
           </div>
-        </section>
+        </div>
+      </section>
 
-        <section
-          data-testid="profile-auth-bindings-panel"
-          class="card border border-gray-100 bg-white/90 p-6 dark:border-dark-700 dark:bg-dark-900/50"
-        >
+      <section data-testid="profile-auth-bindings-panel" class="card min-w-0" aria-labelledby="profile-bindings-title">
+        <div class="flex items-center gap-2.5 border-b border-gray-100 px-5 py-4 dark:border-dark-700">
+          <Icon name="link" size="md" class="shrink-0 text-primary-500" />
+          <h3 id="profile-bindings-title" class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('profile.authBindings.title') }}</h3>
+        </div>
+        <div class="px-5 py-4">
           <ProfileIdentityBindingsSection
             :user="user"
             :linuxdo-enabled="linuxdoEnabled"
@@ -147,34 +84,24 @@
             :wechat-mp-enabled="wechatMpEnabled"
             embedded
             compact
+            hide-heading
           />
-        </section>
-      </div>
+        </div>
+      </section>
 
-      <div data-testid="profile-side-column" class="space-y-6">
-        <section
-          v-if="sourceHints.length"
-          class="card border border-gray-100 bg-white/90 p-6 dark:border-dark-700 dark:bg-dark-900/50"
-        >
-          <h3 class="text-lg font-semibold text-gray-900 dark:text-white">
-            {{ t('profile.linkedProfileSources') }}
-          </h3>
-          <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-            {{ t('profile.linkedProfileSourcesDescription') }}
-          </p>
-
-          <div class="mt-5 grid gap-3">
-            <div
-              v-for="hint in sourceHints"
-              :key="hint.key"
-              class="flex items-start gap-3 rounded-2xl border border-gray-100 bg-gray-50/80 px-4 py-3 text-sm text-gray-600 dark:border-dark-700 dark:bg-dark-900/30 dark:text-gray-300"
-            >
-              <Icon name="link" size="sm" class="mt-0.5 text-gray-400 dark:text-gray-500" />
-              <span>{{ hint.text }}</span>
-            </div>
+      <section data-testid="profile-side-column" class="card min-w-0 md:col-span-2 xl:col-span-1" aria-labelledby="profile-security-title">
+        <div class="flex items-center gap-2.5 border-b border-gray-100 px-5 py-4 dark:border-dark-700">
+          <Icon name="shield" size="md" class="shrink-0 text-primary-500" />
+          <h3 id="profile-security-title" class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('profile.securityTitle') }}</h3>
+        </div>
+        <div data-testid="profile-security-panel" class="px-5 py-4">
+          <div class="divide-y divide-gray-100 dark:divide-dark-700">
+            <slot name="security" />
+            <slot v-if="showNotifications" name="notifications" />
           </div>
-        </section>
-      </div>
+          <slot name="support" />
+        </div>
+      </section>
     </div>
   </div>
 </template>
@@ -197,6 +124,7 @@ const props = withDefaults(defineProps<{
   wechatEnabled?: boolean
   wechatOpenEnabled?: boolean
   wechatMpEnabled?: boolean
+  showNotifications?: boolean
 }>(), {
   linuxdoEnabled: false,
   dingtalkEnabled: false,
@@ -205,9 +133,11 @@ const props = withDefaults(defineProps<{
   wechatEnabled: false,
   wechatOpenEnabled: undefined,
   wechatMpEnabled: undefined,
+  showNotifications: false,
 })
 
 const { t } = useI18n()
+
 
 function normalizeBindingStatus(binding: boolean | UserAuthBindingStatus | undefined): boolean | null {
   if (typeof binding === 'boolean') {

@@ -73,13 +73,13 @@ describe('ProfileView', () => {
     })
   })
 
-  it('renders the simplified single-column profile shell without separate stat cards', async () => {
+  it('renders profile settings with security controls in the profile layout', async () => {
     const wrapper = mount(ProfileView, {
       global: {
         stubs: {
           AppLayout: { template: '<div><slot /></div>' },
           StatCard: { template: '<div class="stat-card" />' },
-          ProfileInfoCard: { template: '<div data-testid="profile-info-card" />' },
+          ProfileInfoCard: { template: '<div data-testid="profile-info-card"><slot name="security" /><slot name="notifications" /></div>' },
           ProfileBalanceNotifyCard: { template: '<div data-testid="profile-balance-notify-card" />' },
           ProfilePasswordForm: { template: '<div data-testid="profile-password-form" />' },
           ProfileTotpCard: { template: '<div data-testid="profile-totp-card" />' },

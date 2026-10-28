@@ -1,44 +1,64 @@
 <template>
   <AppLayout>
-    <div class="space-y-4">
-      <!-- Filters -->
-      <div class="card p-4">
-        <div class="flex flex-wrap items-center gap-3">
-          <Select v-model="currentFilter" :options="statusFilters" class="w-36" @change="handlePageChange(1)" />
-          <div class="flex flex-1 items-center justify-end gap-2">
-            <button @click="fetchOrders" :disabled="loading" class="btn btn-secondary" :title="t('common.refresh')">
+    <div data-testid="user-orders-shell" class="mx-auto max-w-7xl">
+      <section class="card overflow-hidden shadow-sm" aria-labelledby="orders-title">
+        <div class="flex flex-wrap items-center justify-between gap-4 border-b border-gray-100 px-5 py-4 dark:border-dark-700 sm:px-6">
+          <div class="flex min-w-0 flex-wrap items-center gap-3">
+            <h2 id="orders-title" class="text-base font-semibold text-gray-900 dark:text-white">{{ t('payment.orders.recordsTitle') }}</h2>
+            <span v-if="!loading || orders.length" class="text-xs tabular-nums text-gray-400 dark:text-gray-500">
+              {{ t('payment.orders.recordsCount', { count: pagination.total }) }}
+            </span>
+          </div>
+          <div class="flex w-full flex-wrap items-center gap-2 sm:w-auto">
+            <Select
+              v-model="currentFilter"
+              :options="statusFilters"
+              :aria-label="t('payment.orders.status')"
+              class="min-w-28 flex-1 sm:w-36 sm:flex-none"
+              @change="handlePageChange(1)"
+            />
+            <button @click="fetchOrders" :disabled="loading" class="btn btn-ghost px-3" :title="t('common.refresh')" :aria-label="t('common.refresh')">
               <Icon name="refresh" size="md" :class="loading ? 'animate-spin' : ''" />
             </button>
-            <button class="btn btn-primary" @click="router.push('/purchase')">{{ t('payment.result.backToRecharge') }}</button>
+            <button class="btn bg-primary-600 text-white hover:bg-primary-700" @click="router.push('/purchase')">{{ t('payment.result.backToRecharge') }}</button>
           </div>
         </div>
-      </div>
+        <!-- Table -->
+        <div class="p-3 md:p-0">
+          <OrderTable :orders="orders" :loading="loading" compact>
+            <template #actions="{ row }">
+              <div class="flex flex-wrap items-center justify-end gap-2 md:justify-start">
+                <button
+                  v-if="row.status === 'PENDING'"
+                  @click="handleCancel(row.id)"
+                  class="rounded-md px-2 py-1 text-xs font-medium text-gray-500 hover:bg-gray-100 hover:text-gray-900 focus-visible:outline-primary-500 dark:text-gray-400 dark:hover:bg-dark-700 dark:hover:text-white"
+                >
+                  {{ t('payment.orders.cancel') }}
+                </button>
+                <button
+                  v-if="canRequestRefund(row)"
+                  @click="openRefundDialog(row)"
+                  class="rounded-md px-2 py-1 text-xs font-medium text-primary-600 hover:bg-primary-50 focus-visible:outline-primary-500 dark:text-primary-400 dark:hover:bg-primary-900/20"
+                >
+                  {{ t('payment.orders.requestRefund') }}
+                </button>
+                <span v-if="row.status !== 'PENDING' && !canRequestRefund(row)" class="text-gray-300 dark:text-gray-600">—</span>
+              </div>
+            </template>
+          </OrderTable>
+        </div>
 
-      <!-- Table -->
-      <OrderTable :orders="orders" :loading="loading">
-        <template #actions="{ row }">
-          <div class="flex items-center gap-2">
-            <button v-if="row.status === 'PENDING'" @click="handleCancel(row.id)" class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-yellow-600 hover:bg-yellow-50 dark:text-yellow-400 dark:hover:bg-yellow-900/20">
-              <Icon name="x" size="sm" />
-              <span>{{ t('payment.orders.cancel') }}</span>
-            </button>
-            <button v-if="canRequestRefund(row)" @click="openRefundDialog(row)" class="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-purple-600 hover:bg-purple-50 dark:text-purple-400 dark:hover:bg-purple-900/20">
-              <Icon name="dollar" size="sm" />
-              <span>{{ t('payment.orders.requestRefund') }}</span>
-            </button>
-          </div>
-        </template>
-      </OrderTable>
-
-      <!-- Pagination -->
-      <Pagination
-        v-if="pagination.total > 0"
-        :page="pagination.page"
-        :total="pagination.total"
-        :page-size="pagination.page_size"
-        @update:page="handlePageChange"
-        @update:pageSize="handlePageSizeChange"
-      />
+        <!-- Pagination -->
+        <Pagination
+          v-if="pagination.total > 0"
+          class="orders-pagination"
+          :page="pagination.page"
+          :total="pagination.total"
+          :page-size="pagination.page_size"
+          @update:page="handlePageChange"
+          @update:pageSize="handlePageSizeChange"
+        />
+      </section>
     </div>
 
     <!-- Cancel Confirm Dialog -->
@@ -187,3 +207,15 @@ async function loadRefundEligibility() {
 
 onMounted(() => { fetchOrders(); loadRefundEligibility() })
 </script>
+
+<style scoped>
+.orders-pagination :deep(> div) {
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.orders-pagination :deep(> div > div) {
+  flex-wrap: wrap;
+  row-gap: 0.75rem;
+}
+</style>

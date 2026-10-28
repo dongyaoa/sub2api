@@ -1,21 +1,21 @@
 <template>
-  <div :class="props.embedded ? 'space-y-4' : 'card'">
+  <div :class="props.compact ? 'min-w-0' : props.embedded ? 'space-y-4' : 'card'">
     <div
-      v-if="!props.embedded"
+      v-if="!props.embedded && !props.compact"
       class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
     >
       <h2 class="text-lg font-medium text-gray-900 dark:text-white">
         {{ t('profile.editProfile') }}
       </h2>
     </div>
-    <div :class="props.embedded ? '' : 'px-6 py-6'">
-      <form @submit.prevent="handleUpdateProfile" class="space-y-4">
-        <div v-if="props.embedded">
+    <div :class="props.embedded || props.compact ? '' : 'px-6 py-6'">
+      <form @submit.prevent="handleUpdateProfile" :class="props.compact ? 'grid grid-cols-[minmax(0,1fr)_auto] items-end gap-2' : 'space-y-4'">
+        <div v-if="props.embedded && !props.compact">
           <p class="text-sm font-semibold text-gray-900 dark:text-white">
             {{ t('profile.editProfile') }}
           </p>
         </div>
-        <div>
+        <div class="min-w-0">
           <label for="username" class="input-label">
             {{ t('profile.username') }}
           </label>
@@ -28,8 +28,8 @@
           />
         </div>
 
-        <div class="flex justify-end pt-4">
-          <button type="submit" :disabled="loading" class="btn btn-primary">
+        <div class="flex justify-end" :class="props.compact ? '' : 'pt-4'">
+          <button type="submit" :disabled="loading" class="btn btn-primary" :class="props.compact ? 'h-[42px] whitespace-nowrap px-3 text-xs' : ''">
             {{ loading ? t('profile.updating') : t('profile.updateProfile') }}
           </button>
         </div>
@@ -49,8 +49,10 @@ import { extractApiErrorMessage } from '@/utils/apiError'
 const props = withDefaults(defineProps<{
   initialUsername: string
   embedded?: boolean
+  compact?: boolean
 }>(), {
   embedded: false,
+  compact: false,
 })
 
 const { t } = useI18n()

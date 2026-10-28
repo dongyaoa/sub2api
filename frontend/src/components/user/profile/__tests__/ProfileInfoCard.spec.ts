@@ -71,6 +71,38 @@ function createUser(overrides: Partial<User> = {}): User {
 }
 
 describe('ProfileInfoCard', () => {
+  it('keeps profile editing and security available while managing an email binding', async () => {
+    const wrapper = mount(ProfileInfoCard, {
+      props: { user: createUser(), showNotifications: true },
+      global: { stubs: { Icon: true, teleport: true } },
+      slots: {
+        security: '<button data-testid="security-control">Manage security</button>',
+        notifications: '<button data-testid="notification-control">Manage notifications</button>'
+      }
+    })
+
+    try {
+      expect(wrapper.find('[role="tablist"]').exists()).toBe(false)
+      expect(wrapper.get('[data-testid="profile-basics-panel"]').isVisible()).toBe(true)
+      expect(wrapper.get('[data-testid="profile-auth-bindings-panel"]').isVisible()).toBe(true)
+      expect(wrapper.get('[data-testid="security-control"]').isVisible()).toBe(true)
+      expect(wrapper.get('[data-testid="notification-control"]').isVisible()).toBe(true)
+      await wrapper.get('#username').setValue('unsaved-name')
+      await wrapper.get('[data-testid="profile-binding-email-toggle"]').trigger('click')
+      await wrapper.get('[data-testid="profile-binding-email-input"]').setValue('draft@example.com')
+      await wrapper.get('[aria-label="Close modal"]').trigger('click')
+      expect(wrapper.get<HTMLInputElement>('#username').element.value).toBe('unsaved-name')
+      await wrapper.get('[data-testid="profile-binding-email-toggle"]').trigger('click')
+      expect(wrapper.get<HTMLInputElement>('[data-testid="profile-binding-email-input"]').element.value).toBe('draft@example.com')
+      await wrapper.get('[aria-label="Close modal"]').trigger('click')
+      await wrapper.setProps({ showNotifications: false })
+      expect(wrapper.find('[data-testid="notification-control"]').exists()).toBe(false)
+      expect(wrapper.get('[data-testid="security-control"]').isVisible()).toBe(true)
+    } finally {
+      wrapper.unmount()
+    }
+  })
+
   it.each([
     { avatar_source: 'dingtalk', username_source: 'dingtalk' },
     { profile_sources: { avatar: { provider: 'dingtalk' }, username: { provider: 'dingtalk' } } },
@@ -186,7 +218,7 @@ describe('ProfileInfoCard', () => {
     expect(wrapper.text()).not.toContain('legacy-user@wechat-connect.invalid')
   })
 
-  it('renders the approved overview hero and two-column content shell', () => {
+  it('renders the account summary and unified settings dashboard', () => {
     const wrapper = mount(ProfileInfoCard, {
       props: {
         user: createUser()

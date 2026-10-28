@@ -1,7 +1,7 @@
 <template>
-  <div :class="props.embedded ? 'space-y-4' : 'card'">
+  <div :class="props.compact ? 'min-w-0' : props.embedded ? 'space-y-4' : 'card'">
     <div
-      v-if="!props.embedded"
+      v-if="!props.embedded && !props.compact"
       class="border-b border-gray-100 px-6 py-4 dark:border-dark-700"
     >
       <h2 class="text-lg font-medium text-gray-900 dark:text-white">
@@ -12,9 +12,11 @@
       </p>
     </div>
 
-    <div :class="props.embedded ? 'space-y-3' : 'flex flex-col gap-5 px-6 py-6 sm:flex-row sm:items-start'">
+    <div :class="props.compact ? 'grid grid-cols-[56px_minmax(0,1fr)] items-center gap-3' : props.embedded ? 'space-y-3' : 'flex flex-col gap-5 px-6 py-6 sm:flex-row sm:items-start'">
       <div
-        :class="props.embedded
+        :class="props.compact
+          ? 'flex h-14 w-14 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-gradient-to-br from-primary-500 to-primary-600 text-xl font-semibold text-white'
+          : props.embedded
           ? 'flex h-16 w-16 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-primary-500 to-primary-600 text-xl font-bold text-white shadow-lg shadow-primary-500/20'
           : 'flex h-24 w-24 shrink-0 items-center justify-center overflow-hidden rounded-2xl bg-gradient-to-br from-primary-500 to-primary-600 text-3xl font-bold text-white shadow-lg shadow-primary-500/20'"
       >
@@ -28,20 +30,20 @@
         <span v-else>{{ avatarInitial }}</span>
       </div>
 
-      <div :class="props.embedded ? 'space-y-3' : 'min-w-0 flex-1 space-y-4'">
-        <div class="space-y-1">
-          <p v-if="props.embedded" class="text-sm font-semibold text-gray-900 dark:text-white">
+      <div :class="props.compact ? 'contents' : props.embedded ? 'space-y-3' : 'min-w-0 flex-1 space-y-4'">
+        <div class="min-w-0 space-y-1">
+          <p v-if="props.embedded || props.compact" class="text-sm font-semibold text-gray-900 dark:text-white">
             {{ t('profile.avatar.title') }}
           </p>
           <p v-else class="text-sm font-medium text-gray-900 dark:text-white">
             {{ displayName }}
           </p>
-          <p class="text-sm text-gray-500 dark:text-gray-400">
+          <p class="text-gray-500 dark:text-gray-400" :class="props.compact ? 'text-xs leading-relaxed' : 'text-sm'">
             {{ t('profile.avatar.uploadHint') }}
           </p>
         </div>
 
-        <div class="flex flex-wrap items-center gap-3">
+        <div class="flex flex-wrap items-center" :class="props.compact ? 'col-span-2 gap-2' : 'gap-3'">
           <label class="btn btn-secondary btn-sm cursor-pointer">
             <input
               data-testid="profile-avatar-file-input"
@@ -90,8 +92,10 @@ import { extractApiErrorMessage } from '@/utils/apiError'
 const props = withDefaults(defineProps<{
   user: User | null
   embedded?: boolean
+  compact?: boolean
 }>(), {
   embedded: false,
+  compact: false,
 })
 
 const { t } = useI18n()

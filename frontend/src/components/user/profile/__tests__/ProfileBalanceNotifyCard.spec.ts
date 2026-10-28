@@ -44,6 +44,34 @@ describe('ProfileBalanceNotifyCard', () => {
     vi.useRealTimers()
   })
 
+  it('preserves compact dialog drafts and verification countdown when reopened', async () => {
+    const wrapper = mount(ProfileBalanceNotifyCard, {
+      props: {
+        enabled: true, threshold: null, extraEmails: [], systemDefaultThreshold: 5,
+        userEmail: '', compact: true
+      },
+      global: { stubs: { teleport: true } }
+    })
+    expect(wrapper.find('input[type="email"]').exists()).toBe(false)
+    await wrapper.get('[data-testid="profile-notify-manage"]').trigger('click')
+    await wrapper.get('input[type="number"]').setValue('12.5')
+    await wrapper.get('input[type="email"]').setValue('pending@example.com')
+    await button(wrapper, 'common.add').trigger('click')
+    await button(wrapper, 'profile.balanceNotify.sendCode').trigger('click')
+    await flushPromises()
+    await pendingRows(wrapper)[0]!.get('input').setValue('123456')
+    await wrapper.get('input[type="email"]').setValue('draft@example.com')
+
+    await wrapper.get('[aria-label="Close modal"]').trigger('click')
+    await vi.advanceTimersByTimeAsync(2000)
+    await wrapper.get('[data-testid="profile-notify-manage"]').trigger('click')
+    expect(wrapper.get<HTMLInputElement>('input[type="number"]').element.value).toBe('12.5')
+    expect(wrapper.get<HTMLInputElement>('input[type="email"]').element.value).toBe('draft@example.com')
+    expect(pendingRows(wrapper)[0]!.get<HTMLInputElement>('input').element.value).toBe('123456')
+    expect(pendingRows(wrapper)[0]!.text()).toContain('58s')
+    expect(sendNotifyEmailCode).toHaveBeenCalledOnce()
+  })
+
   it.each(['remove', 'unmount'])('does not start a pending email timer after %s', async (action) => {
     const request = deferred()
     sendNotifyEmailCode.mockReturnValueOnce(request.promise)

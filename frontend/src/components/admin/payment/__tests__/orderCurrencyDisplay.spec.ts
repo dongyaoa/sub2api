@@ -99,7 +99,7 @@ describe('admin order currency display', () => {
     expect(text).toContain('$200.00')
   })
 
-  it('renders payment currency consistently in the shared order table', () => {
+  it.each([false, true])('renders payment currency consistently in the shared order table (compact: %s)', (compact) => {
     const wrapper = mount(OrderTable, {
       props: {
         orders: [
@@ -107,7 +107,8 @@ describe('admin order currency display', () => {
           orderFactory({ id: 2, currency: 'CNY', amount: 100, pay_amount: 108 }),
         ],
         loading: false,
-        showUser: true,
+        showUser: !compact,
+        compact,
       },
       global: {
         stubs: {

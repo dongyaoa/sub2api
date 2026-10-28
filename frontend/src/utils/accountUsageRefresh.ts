@@ -70,12 +70,6 @@ export const buildGrokUsageRefreshKey = (account: Pick<Account, 'platform' | 'ex
   ].join('|')
 }
 
-export const hasCodexTicketHarvest = (account: Account): boolean => (
-  account.platform === 'openai' &&
-  (account.type === 'oauth' || account.type === 'setup-token') &&
-  account.codex_turn_tickets?.some((ticket) => ticket.harvest_enabled === true) === true
-)
-
 export const shouldReplaceAutoRefreshRow = (current: Account, next: Account): boolean => (
   current.updated_at !== next.updated_at ||
   current.current_concurrency !== next.current_concurrency ||
@@ -87,6 +81,5 @@ export const shouldReplaceAutoRefreshRow = (current: Account, next: Account): bo
   current.overload_until !== next.overload_until ||
   current.temp_unschedulable_until !== next.temp_unschedulable_until ||
   buildOpenAIUsageRefreshKey(current) !== buildOpenAIUsageRefreshKey(next) ||
-  buildGrokUsageRefreshKey(current) !== buildGrokUsageRefreshKey(next) ||
-  serializeSnapshotRefreshValue(current.codex_turn_tickets) !== serializeSnapshotRefreshValue(next.codex_turn_tickets)
+  buildGrokUsageRefreshKey(current) !== buildGrokUsageRefreshKey(next)
 )

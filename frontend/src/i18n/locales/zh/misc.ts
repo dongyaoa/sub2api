@@ -382,7 +382,11 @@ export default {
     },
     orders: {
       title: '我的订单',
+      recordsTitle: '订单记录',
+      description: '查看充值、订阅订单及支付状态',
+      recordsCount: '{count} 笔',
       empty: '暂无订单',
+      emptyHint: '充值或订阅后，订单会显示在这里',
       orderId: '订单 ID',
       orderNo: '订单编号',
       amount: '金额',

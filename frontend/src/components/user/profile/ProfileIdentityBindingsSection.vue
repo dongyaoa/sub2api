@@ -12,8 +12,8 @@
       </p>
     </div>
 
-    <div :class="props.embedded ? 'space-y-4' : 'divide-y divide-gray-100 dark:divide-dark-700'">
-      <div v-if="props.embedded">
+    <div :class="dense ? 'divide-y divide-gray-100 dark:divide-dark-700' : props.embedded ? 'space-y-4' : 'divide-y divide-gray-100 dark:divide-dark-700'">
+      <div v-if="props.embedded && !props.hideHeading" :class="dense ? 'pb-4' : ''">
         <p class="text-sm font-semibold text-gray-900 dark:text-white">
           {{ t('profile.authBindings.title') }}
         </p>
@@ -27,11 +27,11 @@
         :key="item.provider"
         :class="rowClass"
       >
-        <div class="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-          <div class="flex min-w-0 flex-1 items-start gap-4">
+        <div :class="dense ? 'flex items-start justify-between gap-3' : 'flex flex-wrap items-start gap-3'">
+          <div :class="dense ? 'flex min-w-0 flex-1 items-start gap-2.5' : 'flex min-w-0 flex-[1_1_16rem] items-start gap-3'">
             <div
-              :class="providerIconClass(item.provider)"
-              class="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-sm font-semibold"
+              :class="[providerIconClass(item.provider), dense ? 'h-8 w-8 rounded-lg text-xs' : 'h-11 w-11 rounded-2xl text-sm']"
+              class="flex shrink-0 items-center justify-center font-semibold"
             >
               <Icon
                 v-if="item.provider === 'email'"
@@ -42,14 +42,16 @@
               <span v-else>{{ providerInitial(item.provider) }}</span>
             </div>
 
-            <div class="min-w-0 flex-1 space-y-3">
-              <div class="flex flex-wrap items-center gap-2">
-                <h3 class="font-medium text-gray-900 dark:text-white">
+            <div class="min-w-0 flex-1 break-words" :class="dense ? 'space-y-1' : 'space-y-2'">
+              <div class="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <h3 class="min-w-0 break-words font-medium text-gray-900 dark:text-white" :class="dense ? 'text-sm' : ''">
                   {{ item.label }}
                 </h3>
                 <span
                   :data-testid="`profile-binding-${item.provider}-status`"
-                  :class="['badge', item.bound ? 'badge-success' : 'badge-gray']"
+                  :class="dense
+                    ? ['text-[11px]', item.bound ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400 dark:text-gray-500']
+                    : ['badge', item.bound ? 'badge-success' : 'badge-gray']"
                 >
                   {{
                     item.bound
@@ -61,14 +63,16 @@
 
               <p
                 v-if="providerSummary(item.provider)"
-                class="text-sm text-gray-600 dark:text-gray-300"
+                class="text-gray-600 dark:text-gray-300"
+                :class="dense ? 'text-xs leading-relaxed' : 'text-sm'"
               >
                 {{ providerSummary(item.provider) }}
               </p>
 
               <div
                 v-if="hasBindingDetails(item.provider, item.details)"
-                class="grid gap-1 text-sm text-gray-500 dark:text-gray-400"
+                class="grid gap-1 text-gray-500 dark:text-gray-400"
+                :class="dense ? 'text-xs leading-relaxed' : 'text-sm'"
               >
                 <p
                   v-if="item.provider !== 'email' && item.details?.display_name"
@@ -87,80 +91,86 @@
                 </p>
               </div>
 
-              <div
-                v-if="item.provider === 'email' && showEmailForm"
-                data-testid="profile-binding-email-form"
-                class="grid gap-2 sm:grid-cols-[minmax(0,1.4fr)_auto]"
+              <component
+                :is="dense ? BaseDialog : 'div'"
+                v-if="item.provider === 'email' && (dense || showEmailForm)"
+                v-bind="dense ? { show: showEmailForm, title: t('profile.authBindings.manageEmailAction') } : {}"
+                @close="isEmailFormExpanded = false"
               >
-                <input
-                  v-model.trim="emailBindingForm.email"
-                  data-testid="profile-binding-email-input"
-                  type="email"
-                  class="input"
-                  :placeholder="t('profile.authBindings.emailPlaceholder')"
-                  :disabled="isSendingEmailCode || isBindingEmail"
-                  @input="isEmailBindingFormDirty = true"
-                />
-                <button
-                  data-testid="profile-binding-email-send-code"
-                  type="button"
-                  class="btn btn-secondary btn-sm"
-                  :disabled="isSendingEmailCode || isBindingEmail"
-                  @click="sendEmailCode"
+                <div
+                  data-testid="profile-binding-email-form"
+                  class="grid min-w-0 gap-2 sm:grid-cols-2"
                 >
-                  {{
-                    isSendingEmailCode
-                      ? t('common.loading')
-                      : t('profile.authBindings.sendCodeAction')
-                  }}
-                </button>
-                <input
-                  v-model.trim="emailBindingForm.verifyCode"
-                  data-testid="profile-binding-email-code-input"
-                  type="text"
-                  inputmode="numeric"
-                  maxlength="6"
-                  class="input"
-                  :placeholder="t('profile.authBindings.codePlaceholder')"
-                  :disabled="isBindingEmail"
-                  @input="isEmailBindingFormDirty = true"
-                />
-                <input
-                  v-model="emailBindingForm.password"
-                  data-testid="profile-binding-email-password-input"
-                  type="password"
-                  class="input"
-                  :placeholder="emailPasswordPlaceholder"
-                  :disabled="isBindingEmail"
-                  @input="isEmailBindingFormDirty = true"
-                />
-                <button
-                  data-testid="profile-binding-email-submit"
-                  type="button"
-                  class="btn btn-primary btn-sm sm:col-span-2"
-                  :disabled="isBindingEmail"
-                  @click="bindEmail"
-                >
-                  {{
-                    isBindingEmail
-                      ? t('common.loading')
-                      : emailSubmitActionLabel
-                  }}
-                </button>
-              </div>
+                  <input
+                    v-model.trim="emailBindingForm.email"
+                    data-testid="profile-binding-email-input"
+                    type="email"
+                    class="input"
+                    :placeholder="t('profile.authBindings.emailPlaceholder')"
+                    :disabled="isSendingEmailCode || isBindingEmail"
+                    @input="isEmailBindingFormDirty = true"
+                  />
+                  <button
+                    data-testid="profile-binding-email-send-code"
+                    type="button"
+                    class="btn btn-secondary btn-sm"
+                    :disabled="isSendingEmailCode || isBindingEmail"
+                    @click="sendEmailCode"
+                  >
+                    {{
+                      isSendingEmailCode
+                        ? t('common.loading')
+                        : t('profile.authBindings.sendCodeAction')
+                    }}
+                  </button>
+                  <input
+                    v-model.trim="emailBindingForm.verifyCode"
+                    data-testid="profile-binding-email-code-input"
+                    type="text"
+                    inputmode="numeric"
+                    maxlength="6"
+                    class="input"
+                    :placeholder="t('profile.authBindings.codePlaceholder')"
+                    :disabled="isBindingEmail"
+                    @input="isEmailBindingFormDirty = true"
+                  />
+                  <input
+                    v-model="emailBindingForm.password"
+                    data-testid="profile-binding-email-password-input"
+                    type="password"
+                    class="input"
+                    :placeholder="emailPasswordPlaceholder"
+                    :disabled="isBindingEmail"
+                    @input="isEmailBindingFormDirty = true"
+                  />
+                  <button
+                    data-testid="profile-binding-email-submit"
+                    type="button"
+                    class="btn btn-primary btn-sm sm:col-span-2"
+                    :disabled="isBindingEmail"
+                    @click="bindEmail"
+                  >
+                    {{
+                      isBindingEmail
+                        ? t('common.loading')
+                        : emailSubmitActionLabel
+                    }}
+                  </button>
+                </div>
+              </component>
             </div>
           </div>
 
-          <div class="flex shrink-0 flex-wrap items-center gap-3">
+          <div class="flex min-w-0 max-w-full flex-wrap items-center gap-2" :class="dense ? 'shrink-0' : ''">
             <button
               v-if="item.provider === 'email' && compact"
               data-testid="profile-binding-email-toggle"
               type="button"
-              class="btn btn-secondary btn-sm"
+              :class="dense ? 'btn btn-ghost btn-sm text-primary-600 dark:text-primary-400' : 'btn btn-secondary btn-sm'"
               @click="toggleEmailForm"
             >
               {{
-                showEmailForm
+                showEmailForm && !dense
                   ? t('profile.authBindings.hideEmailFormAction')
                   : t('profile.authBindings.manageEmailAction')
               }}
@@ -169,16 +179,18 @@
               v-if="item.canBind"
               :data-testid="`profile-binding-${item.provider}-action`"
               type="button"
-              class="btn btn-primary btn-sm"
+              class="btn btn-sm min-w-0 max-w-full break-words [overflow-wrap:anywhere]"
+              :class="dense ? 'btn-ghost text-primary-600 dark:text-primary-400' : 'btn-primary'"
+              :aria-label="t('profile.authBindings.bindAction', { providerName: item.label })"
               @click="startBinding(item.provider)"
             >
-              {{ t('profile.authBindings.bindAction', { providerName: item.label }) }}
+              {{ dense ? t('profile.bindActionShort') : t('profile.authBindings.bindAction', { providerName: item.label }) }}
             </button>
             <button
               v-if="item.canUnbind"
               :data-testid="`profile-binding-${item.provider}-unbind`"
               type="button"
-              class="btn btn-secondary btn-sm"
+              :class="dense ? 'btn btn-ghost btn-sm' : 'btn btn-secondary btn-sm'"
               :disabled="unbindingProvider === item.provider"
               @click="handleUnbindForItem(item.provider, item.label)"
             >
@@ -211,6 +223,7 @@ import {
   unbindAuthIdentity,
 } from '@/api/user'
 import Icon from '@/components/icons/Icon.vue'
+import BaseDialog from '@/components/common/BaseDialog.vue'
 import { useAppStore, useAuthStore } from '@/stores'
 import type { User, UserAuthBindingStatus, UserAuthProvider } from '@/types'
 
@@ -228,6 +241,7 @@ const props = withDefaults(
     wechatMpEnabled?: boolean
     embedded?: boolean
     compact?: boolean
+    hideHeading?: boolean
   }>(),
   {
     linuxdoEnabled: false,
@@ -239,6 +253,7 @@ const props = withDefaults(
     wechatMpEnabled: undefined,
     embedded: false,
     compact: false,
+    hideHeading: false,
   }
 )
 
@@ -291,10 +306,11 @@ watch(
 
 const currentUser = computed(() => localUser.value ?? props.user)
 const compact = computed(() => props.compact)
+const dense = computed(() => props.embedded && props.compact)
 const rowClass = computed(() =>
   props.embedded
     ? compact.value
-      ? 'rounded-2xl border border-gray-100 bg-white p-4 shadow-sm dark:border-dark-700 dark:bg-dark-900/40'
+      ? 'min-w-0 py-3 first:pt-0 last:pb-0'
       : 'rounded-2xl border border-gray-100 bg-gray-50/70 p-4 dark:border-dark-700 dark:bg-dark-900/30'
     : 'px-6 py-5'
 )
