@@ -520,7 +520,7 @@ func (s *OpenAIGatewayService) forwardGrokChatCompletionsViaResponses(
 	body []byte,
 	promptCacheKey string,
 	defaultMappedModel string,
-) (*OpenAIForwardResult, error) {
+) (policyResult *OpenAIForwardResult, policyErr error) {
 	startTime := time.Now()
 
 	var chatReq apicompat.ChatCompletionsRequest
@@ -612,6 +612,7 @@ func (s *OpenAIGatewayService) forwardGrokChatCompletionsViaResponses(
 		return nil, s.handleOpenAIUpstreamTransportError(ctx, c, account, err, false)
 	}
 	defer func() { _ = resp.Body.Close() }()
+	defer s.observeGrokContentPolicyResponse(resp, account, originalModel, clientStream, startTime, &policyResult, &policyErr)()
 
 	if resp.StatusCode >= http.StatusBadRequest {
 		respBody, upstreamMsg := s.readOpenAIUpstreamError(resp)

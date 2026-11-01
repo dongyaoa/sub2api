@@ -349,7 +349,7 @@ describe('upstream target credentials and form lifecycle', () => {
     expect(mocks.models).toHaveBeenCalledWith(expect.objectContaining({ target_id: undefined, account_id: 7, api_key: undefined, endpoint: 'https://example.com' }))
     await view.get('form').trigger('submit')
     await flushPromises()
-    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ supplier_id: null, source_account_id: 7, account_ids: [], api_key: undefined, models: ['gpt-5.6-sol'], interval_seconds: 30 }))
+    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ supplier_id: null, source_account_id: 7, account_ids: [], api_key: undefined, models: ['gpt-6.1-sol'], interval_seconds: 60 }))
   })
   it('replaces credentials through account import when editing a standalone monitor without changing its model or interval', async () => {
     const item = { ...target(), supplier_id: null, account_ids: [] }
@@ -480,18 +480,24 @@ describe('upstream target credentials and form lifecycle', () => {
     await flushPromises()
     expect(mocks.update).toHaveBeenCalledWith(9, expect.objectContaining({ source_account_id: undefined, account_ids: [], api_key: 'new-manual-key' }))
   })
-  it.each([['upstream group', supplier], ['standalone monitor', null]] as const)('creates a new %s with the shared model and 30 second defaults', async (_name, parentSupplier) => {
+  it.each([['upstream group', supplier], ['standalone monitor', null]] as const)('creates a new %s with the shared model and 60 second defaults', async (_name, parentSupplier) => {
     const view = render(null, true, parentSupplier)
     await flushPromises()
-    expect(view.getComponent(ModelTagInput).props('models')).toEqual(['gpt-5.6-sol'])
-    expect((view.get('#target-interval').element as HTMLInputElement).value).toBe('30')
+    expect(view.getComponent(ModelTagInput).props('models')).toEqual(['gpt-6.1-sol'])
+    expect((view.get('#target-interval').element as HTMLInputElement).value).toBe('60')
     expect(view.get('#target-interval').attributes('min')).toBe('30')
+    await view.get('#target-provider').setValue('anthropic')
+    expect(view.getComponent(ModelTagInput).props('models')).toEqual(['claude-sonnet-5'])
+    await view.get('#target-provider').setValue('gemini')
+    expect(view.getComponent(ModelTagInput).props('models')).toEqual(['gemini-2.5-flash'])
+    await view.get('#target-provider').setValue('openai')
+    expect(view.getComponent(ModelTagInput).props('models')).toEqual(['gpt-6.1-sol'])
     await view.get('#target-name').setValue('New monitor')
     await view.get('#target-endpoint').setValue('https://upstream.example')
     await view.get('#target-key').setValue('test-key')
     await view.get('form').trigger('submit')
     await flushPromises()
-    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ models: ['gpt-5.6-sol'], interval_seconds: 30, supplier_id: parentSupplier?.id ?? null }))
+    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ models: ['gpt-6.1-sol'], interval_seconds: 60, supplier_id: parentSupplier?.id ?? null }))
   })
   it('keeps customized monitoring settings when importing an account with a different model whitelist', async () => {
     mocks.account.mockResolvedValue({ id: 7, name: 'Imported account', platform: 'anthropic', credentials: { base_url: 'https://example.com', model_mapping: { 'account-only-model': 'remote-model' } } })
@@ -553,10 +559,10 @@ describe('upstream target credentials and form lifecycle', () => {
     const modelButton = view.findAll('button').find(button => button.text() === 'upstreamCenter.form.fetchModels')!
     await modelButton.trigger('click'); await flushPromises()
     expect(mocks.models).toHaveBeenCalledWith(expect.objectContaining({ account_id: 7, api_key: undefined, endpoint: 'https://example.com' }))
-    expect(view.getComponent(tags).props('models')).toEqual(['gpt-5.6-sol'])
+    expect(view.getComponent(tags).props('models')).toEqual(['gpt-6.1-sol'])
     await view.get('.test-model-add').trigger('click')
     await view.get('form').trigger('submit'); await flushPromises()
-    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ name: 'Imported account', account_ids: [7], api_key: undefined, models: ['gpt-test'], interval_seconds: 30 }))
+    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ name: 'Imported account', account_ids: [7], api_key: undefined, models: ['gpt-test'], interval_seconds: 60 }))
   })
   it('keeps validation errors in the open form without making a request', async () => {
     const view = render()

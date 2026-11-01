@@ -109,6 +109,10 @@ func (s *OpenAIGatewayService) ForwardGrokVoice(ctx context.Context, c *gin.Cont
 	if err != nil {
 		return nil, err
 	}
+	// TTS may return binary audio; only inspect JSON model responses.
+	if json.Valid(data) && isGrokBillableContentPolicyRejection(resp.StatusCode, data) {
+		return s.grokContentPolicyErrorResponse(resp, c, account, data, baseEndpoint)
+	}
 	writeGrokMediaResponse(c, resp, data, s.responseHeaderFilter)
 	audioUsage := estimateGrokVoiceAudioUsage(baseEndpoint, body, contentType, data, time.Since(started))
 	upstreamID := firstNonEmpty(resp.Header.Get("x-request-id"), resp.Header.Get("xai-request-id"))

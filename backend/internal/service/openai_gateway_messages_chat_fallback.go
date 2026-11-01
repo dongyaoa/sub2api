@@ -34,7 +34,7 @@ func (s *OpenAIGatewayService) forwardAnthropicViaRawChatCompletions(
 	account *Account,
 	body []byte,
 	defaultMappedModel string,
-) (*OpenAIForwardResult, error) {
+) (policyResult *OpenAIForwardResult, policyErr error) {
 	startTime := time.Now()
 
 	// 1. Parse Anthropic request
@@ -128,6 +128,7 @@ func (s *OpenAIGatewayService) forwardAnthropicViaRawChatCompletions(
 		return nil, err
 	}
 	defer func() { _ = resp.Body.Close() }()
+	defer s.observeGrokContentPolicyResponse(resp, account, originalModel, clientStream, startTime, &policyResult, &policyErr)()
 
 	// 4. Handle error responses
 	if resp.StatusCode >= 400 {

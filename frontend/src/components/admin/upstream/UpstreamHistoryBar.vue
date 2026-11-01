@@ -35,19 +35,20 @@ import { useClipboard } from '@/composables/useClipboard'
 import type { UpstreamHistoryRecord } from '@/api/admin/upstreamCenter'
 import { dateTime, latency, recentHistory } from './format'
 import { useUpstreamHistoryClock } from './useUpstreamHistoryClock'
-const props = withDefaults(defineProps<{ records?: UpstreamHistoryRecord[]; lastCheckedAt?: string | null; legend?: boolean }>(), { records: () => [], lastCheckedAt: null, legend: false })
+const props = withDefaults(defineProps<{ records?: UpstreamHistoryRecord[]; lastCheckedAt?: string | null; enabled?: boolean; legend?: boolean }>(), { records: () => [], lastCheckedAt: null, enabled: false, legend: false })
 const emit = defineEmits<{ select: [record: UpstreamHistoryRecord] }>()
 const { t, locale } = useI18n()
 const { copyToClipboard } = useClipboard()
 const bars = computed(() => recentHistory(props.records))
 const lastChecked = computed(() => props.lastCheckedAt || bars.value[bars.value.length - 1]?.checked_at)
-const now = useUpstreamHistoryClock()
+const now = useUpstreamHistoryClock(() => props.enabled)
 const updatedLabel = computed(() => {
   const timestamp = lastChecked.value ? Date.parse(lastChecked.value) : NaN
   if (!Number.isFinite(timestamp)) return t('upstreamCenter.history.waiting')
-  // The shared clock invalidates once a minute; changed server timestamps also
-  // recompute immediately using wall time, without adding another timer.
-  const minutes = Math.max(0, Math.floor((Math.max(now.value, Date.now()) - timestamp) / 60_000))
+  // Changed server timestamps and monitoring state take effect immediately.
+  const seconds = Math.max(0, Math.floor((Math.max(now.value, Date.now()) - timestamp) / 1000))
+  if (props.enabled) return t('upstreamCenter.history.updatedSecondsAgo', { count: seconds })
+  const minutes = Math.floor(seconds / 60)
   if (minutes < 1) return t('upstreamCenter.history.updatedJustNow')
   if (minutes < 60) return t('upstreamCenter.history.updatedMinutesAgo', { count: minutes })
   if (minutes < 1440) return t('upstreamCenter.history.updatedHoursAgo', { count: Math.floor(minutes / 60) })

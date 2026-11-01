@@ -370,6 +370,28 @@ func buildOpenAIWSHTTPBridgeErrorEvent(statusCode int, message string) []byte {
 	return body
 }
 
+// A WebSocket has already upgraded, so an HTTP refusal must be carried in an
+// error frame. Preserve xAI's error fields and message without sanitizing them.
+func buildGrokWSContentPolicyErrorEvent(statusCode int, body []byte) []byte {
+	var payload map[string]json.RawMessage
+	_ = json.Unmarshal(body, &payload)
+	errorPayload := body
+	if upstreamError, ok := payload["error"]; ok {
+		errorPayload = upstreamError
+	}
+	var errorObject map[string]json.RawMessage
+	if json.Unmarshal(errorPayload, &errorObject) != nil || errorObject == nil {
+		message := string(errorPayload)
+		_ = json.Unmarshal(errorPayload, &message)
+		encodedMessage, _ := json.Marshal(message)
+		errorObject = map[string]json.RawMessage{"message": encodedMessage}
+	}
+	event, _ := json.Marshal(map[string]any{
+		"type": "error", "sequence_number": 0, "status": statusCode, "error": errorObject,
+	})
+	return event
+}
+
 // buildOpenAIWSHTTPBridgeFailedEvent synthesizes response.failed for a turn that
 // ended on a bare error. created_at and sequence_number are always written:
 // strict clients (grok-build, Codex) reject the frame without them.
@@ -430,7 +452,7 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 	grokCacheIdentity string,
 	turn int,
 	writeClientMessage func([]byte) error,
-) (*OpenAIForwardResult, error) {
+) (policyResult *OpenAIForwardResult, policyErr error) {
 	if s == nil {
 		return nil, errors.New("service is nil")
 	}
@@ -577,6 +599,26 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 
 		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, openAIWSHTTPBridgeErrorBodyLimitBytes))
 		_ = resp.Body.Close()
+		if account.IsGrok() && isGrokBillableContentPolicyRejection(resp.StatusCode, respBody) {
+			result := &OpenAIForwardResult{
+				// An HTTP rejection has no Responses ID. Allocate one billing ID
+				// per turn; the connection context ID is shared across all turns.
+				RequestID: "grok-policy-ws:" + generateRequestID(),
+				Model:     originalModel, UpstreamModel: actualModel,
+				Stream: true, OpenAIWSMode: true, UpstreamTerminalEvent: "response.failed",
+				UpstreamHeaders: resp.Header.Clone(), ResponseHeaders: resp.Header.Clone(),
+				Duration: time.Since(turnStart), GrokContentPolicyRejection: true,
+			}
+			message := extractUpstreamErrorMessage(respBody)
+			setOpsUpstreamError(c, resp.StatusCode, message, truncateString(string(respBody), 2048))
+			appendOpsUpstreamHTTPError(c, account, resp, message)
+			clientError := buildGrokWSContentPolicyErrorEvent(resp.StatusCode, respBody)
+			if writeErr := writeClientMessage(clientError); writeErr != nil {
+				return result, fmt.Errorf("write Grok content policy error: %w", writeErr)
+			}
+			markOpenAIWSClientVisibleFailure(c, "error", clientError)
+			return result, fmt.Errorf("grok content policy rejection: %s", message)
+		}
 		markOpenAICyberPolicyEvent(c, respBody, resp.StatusCode, nil)
 		if resp.StatusCode == http.StatusBadRequest &&
 			extractUpstreamErrorCode(respBody) == openAIWSFallbackReasonInvalidEncryptedContent {
@@ -624,6 +666,21 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 		return nil, fmt.Errorf("upstream http bridge error: status=%d message=%s", resp.StatusCode, upstreamMsg)
 	}
 	defer func() { _ = resp.Body.Close() }()
+	observeContentPolicy := s.observeGrokContentPolicyResponse(resp, account, originalModel, true, turnStart, &policyResult, &policyErr)
+	defer func() {
+		responseRequestID := ""
+		if policyResult != nil {
+			responseRequestID = policyResult.RequestID
+		}
+		observeContentPolicy()
+		if policyResult != nil && policyResult.GrokContentPolicyRejection {
+			policyResult.OpenAIWSMode = true
+			policyResult.UpstreamModel = actualModel
+			if responseRequestID == "" {
+				policyResult.RequestID = "grok-policy-ws:" + generateRequestID()
+			}
+		}
+	}()
 	stopCancelBody := context.AfterFunc(ctx, func() { _ = resp.Body.Close() })
 	defer stopCancelBody()
 	if account.Platform == PlatformGrok {
@@ -811,6 +868,7 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 		replayCollector.AddEvent(eventType, upstreamMessage)
 
 		var upstreamEventErr error
+		billableGrokRefusal := account.IsGrok() && isGrokBillableContentPolicyRejection(resp.StatusCode, upstreamMessage)
 		if officialOpenAIResponses && bareErrorPending && (eventType == "response.completed" || eventType == "response.done") {
 			// Some upstreams emit a recoverable bare error before the authoritative
 			// successful terminal. Do not replace that terminal with a synthetic
@@ -852,6 +910,9 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 					s.handleGrokAccountUpstreamError(ctx, account, statusCode, resp.Header, upstreamMessage)
 				}
 			}
+			if billableGrokRefusal {
+				shouldFailover = false
+			}
 			// A disconnected client needs this attempt drained for usage, not replayed,
 			// even when only non-semantic heartbeats were delivered.
 			if !clientDisconnected && !wroteDownstream && shouldFailover && (turn == 1 || statusCode == http.StatusTooManyRequests) {
@@ -886,7 +947,7 @@ func (s *OpenAIGatewayService) proxyOpenAIWSHTTPBridgeTurn(
 		// 重试。账号状态与终止事件判定（下方 handleOpenAIWSTerminalTransientFailure）
 		// 仍使用未改写的 upstreamMessage。
 		clientMessage := upstreamMessage
-		if eventType == "error" || eventType == "response.failed" {
+		if !billableGrokRefusal && (eventType == "error" || eventType == "response.failed") {
 			if rewritten, changed := sanitizeOpenAICapacityShedErrorCodeForClient(clientMessage); changed {
 				clientMessage = rewritten
 			}

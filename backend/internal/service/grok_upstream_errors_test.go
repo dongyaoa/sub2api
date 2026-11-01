@@ -205,10 +205,12 @@ func TestGrokContentPolicy403SharedErrorFallbackDoesNotMutate(t *testing.T) {
 		Header:     http.Header{"Content-Type": []string{"application/json"}},
 		Body:       io.NopCloser(strings.NewReader(string(body))),
 	}
-	_, err := svc.handleErrorResponse(context.Background(), resp, c, account, nil, "grok-4.5")
+	result, err := svc.handleErrorResponse(context.Background(), resp, c, account, nil, "grok-4.5")
 	require.Error(t, err)
+	require.NotNil(t, result)
+	require.True(t, result.GrokContentPolicyRejection)
 	require.Equal(t, http.StatusForbidden, recorder.Code)
-	require.Contains(t, recorder.Body.String(), "invalid_request_error")
+	require.Equal(t, string(body), recorder.Body.String())
 
 	c, recorder = newContext()
 	resp = &http.Response{
@@ -216,10 +218,12 @@ func TestGrokContentPolicy403SharedErrorFallbackDoesNotMutate(t *testing.T) {
 		Header:     http.Header{"Content-Type": []string{"application/json"}},
 		Body:       io.NopCloser(strings.NewReader(string(body))),
 	}
-	_, err = svc.handleCompatErrorResponse(resp, c, account, writeChatCompletionsError, "grok-4.5")
+	result, err = svc.handleCompatErrorResponse(resp, c, account, writeChatCompletionsError, "grok-4.5")
 	require.Error(t, err)
+	require.NotNil(t, result)
+	require.True(t, result.GrokContentPolicyRejection)
 	require.Equal(t, http.StatusForbidden, recorder.Code)
-	require.Contains(t, recorder.Body.String(), "invalid_request_error")
+	require.Equal(t, string(body), recorder.Body.String())
 
 	require.Zero(t, repo.tempUnschedCalls)
 	require.Zero(t, repo.rateLimitedCalls)
@@ -249,10 +253,12 @@ func TestGrokContentPolicy403MediaResponseBypassesCustomErrorCodes(t *testing.T)
 		Body:       io.NopCloser(strings.NewReader(body)),
 	}
 
-	_, err := svc.handleGrokMediaErrorResponse(context.Background(), resp, c, account, "request-id", "grok-imagine")
+	result, err := svc.handleGrokMediaErrorResponse(context.Background(), resp, c, account, "request-id", "grok-imagine")
 	require.Error(t, err)
+	require.NotNil(t, result)
+	require.True(t, result.GrokContentPolicyRejection)
 	require.Equal(t, http.StatusForbidden, recorder.Code)
-	require.Contains(t, recorder.Body.String(), "invalid_request_error")
+	require.Equal(t, body, recorder.Body.String())
 	require.Zero(t, repo.tempUnschedCalls)
 	require.Zero(t, repo.rateLimitedCalls)
 	require.Zero(t, repo.updateCalls)

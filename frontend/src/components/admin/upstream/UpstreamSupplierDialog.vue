@@ -65,6 +65,7 @@ import * as accountsAPI from '@/api/admin/accounts'
 import type { AccountListItem } from '@/types'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { isValidUpstreamEndpoint, upstreamEndpointErrorKey } from './upstreamEndpoint'
+import { defaultUpstreamMonitorModel, DEFAULT_UPSTREAM_MONITOR_INTERVAL } from './upstreamMonitorDefaults'
 const props = defineProps<{ show: boolean; supplier: UpstreamSupplier | null }>()
 const emit = defineEmits<{ close: []; saved: []; changed: [] }>()
 const { t } = useI18n()
@@ -114,7 +115,7 @@ async function toggleAccount(account: AccountListItem) {
     if (currentGeneration !== generation) return
     const endpoint = typeof detail.credentials?.base_url === 'string' ? detail.credentials.base_url : form.website.trim()
     const provider = detail.platform as UpstreamProvider
-    selected.value.push({ id: account.id, name: detail.name, targetName: detail.name, provider, endpoint, modelsText: 'gpt-5.6-sol', intervalSeconds: 30, status: 'pending', error: '' })
+    selected.value.push({ id: account.id, name: detail.name, targetName: detail.name, provider, endpoint, modelsText: defaultUpstreamMonitorModel(provider), intervalSeconds: DEFAULT_UPSTREAM_MONITOR_INTERVAL, status: 'pending', error: '' })
     if (!form.name) form.name = detail.name
     if (!form.website && endpoint) { try { form.website = new URL(endpoint).origin } catch { form.website = endpoint } }
     accountError.value = ''

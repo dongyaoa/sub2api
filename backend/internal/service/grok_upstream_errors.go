@@ -16,10 +16,13 @@ import (
 // Keep this matcher deliberately narrow: account entitlement and suspension
 // messages may mention policy but must retain the normal account failover path.
 func isGrokContentPolicyRejection(statusCode int, responseBody []byte) bool {
+	if isGrokBillableContentPolicyRejection(statusCode, responseBody) {
+		return true
+	}
 	if statusCode != http.StatusForbidden || len(responseBody) == 0 {
 		return false
 	}
-	if grokAccountAccessMessage(string(responseBody)) {
+	if grokContentPolicyAccountOrBrowserFailure(responseBody) {
 		return false
 	}
 
@@ -34,6 +37,246 @@ func isGrokContentPolicyRejection(statusCode int, responseBody []byte) bool {
 	}
 
 	return grokContentPolicyMessage(string(responseBody))
+}
+
+// isGrokBillableContentPolicyRejection applies the fixed violation-fee rules.
+// The legacy no-failover classifier above also recognizes some structured
+// policy codes; those codes alone are deliberately insufficient to charge.
+// For successful responses only assistant output is inspected, never echoed
+// request input, tool arguments, reasoning, or response metadata.
+func isGrokBillableContentPolicyRejection(statusCode int, responseBody []byte) bool {
+	if len(responseBody) == 0 || (statusCode < 200 || statusCode >= 300) &&
+		statusCode != http.StatusBadRequest && statusCode != http.StatusForbidden {
+		return false
+	}
+	if statusCode >= 200 && statusCode < 300 {
+		if grokContentPolicyResponseFailure(responseBody) {
+			return false
+		}
+		output := grokContentPolicyOutputText(responseBody)
+		return !grokContentPolicyAccountOrBrowserFailure([]byte(output)) && grokContentPolicyRefusalText(output)
+	}
+	if grokContentPolicyAccountOrBrowserFailure(responseBody) {
+		return false
+	}
+	text := normalizeGrokRefusalText(string(responseBody))
+	for _, candidate := range grokStructuredErrorMessageCandidates(responseBody) {
+		text += "\n" + normalizeGrokRefusalText(candidate)
+	}
+	if statusCode == http.StatusBadRequest {
+		return strings.Contains(text, "generated image rejected by content moderation") ||
+			strings.Contains(text, "generated video rejected by content moderation")
+	}
+	if strings.Contains(text, "the moderation feature is not available") {
+		return false
+	}
+	if grokContentPolicyRefusalText(text) {
+		return true
+	}
+	for _, phrase := range []string{
+		"content violates usage guidelines", "safety_check_type_", "content moderation", "content policy",
+		"image is sensitive", "text is sensitive", "prohibited content", "forbidden content",
+		"request blocked by policy", "request rejected by policy", "request violates policy",
+		"prompt violates policy", "input violates policy",
+	} {
+		if strings.Contains(text, phrase) {
+			return true
+		}
+	}
+	return false
+}
+
+// Inspect only explicit upstream errors, not account-like strings echoed in
+// input or metadata on an otherwise successful response.
+func grokContentPolicyResponseFailure(body []byte) bool {
+	root := gjson.ParseBytes(body)
+	for _, response := range []gjson.Result{root, root.Get("response")} {
+		if !response.Get("error").Exists() && response.Get("type").String() != "error" && !response.Get("cloudflare_error").Bool() {
+			continue
+		}
+		fields := make(map[string]json.RawMessage)
+		for _, field := range []string{"error", "code", "error_code", "type", "category", "reason", "message", "detail", "cloudflare_error", "error_name"} {
+			if value := response.Get(field); value.Exists() {
+				fields[field] = json.RawMessage(value.Raw)
+			}
+		}
+		errorBody, err := json.Marshal(fields)
+		if err == nil && grokContentPolicyAccountOrBrowserFailure(errorBody) {
+			return true
+		}
+	}
+	return false
+}
+
+func normalizeGrokRefusalText(text string) string {
+	return strings.ToLower(strings.NewReplacer("’", "'", "‘", "'", "ʼ", "'").Replace(text))
+}
+
+// grokContentPolicyRefusalText consumes model output (or an error message).
+// Suffix matching intentionally has no word boundary: "that...", "your...",
+// and "it..." all satisfy the published rule.
+func grokContentPolicyRefusalText(text string) bool {
+	text = normalizeGrokRefusalText(text)
+	for _, phrase := range []string{"i can't help with", "i cannot help with", "i c***t help with", "i ca*** help with"} {
+		rest := text
+		for {
+			index := strings.Index(rest, phrase)
+			if index < 0 {
+				break
+			}
+			rest = rest[index+len(phrase):]
+			suffix := strings.TrimSpace(rest)
+			for _, prefix := range []string{"that", "this", "you", "your", "the request", "the prompt", "it"} {
+				if strings.HasPrefix(suffix, prefix) {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+func grokContentPolicyAccountOrBrowserFailure(body []byte) bool {
+	text := normalizeGrokRefusalText(string(body))
+	for _, candidate := range grokStructuredErrorMessageCandidates(body) {
+		text += "\n" + normalizeGrokRefusalText(candidate)
+	}
+	if grokAccountAccessMessage(text) || isGrokFreeUsageExhaustedText(text) || isGrokBillingQuotaText(text) || isCloudflareBotBlockResponse(body) {
+		return true
+	}
+	var payload any
+	if json.Unmarshal(body, &payload) == nil && grokStructuredAccountAccessMarker(payload) {
+		return true
+	}
+	for _, phrase := range []string{
+		"account is suspended", "account is disabled", "account banned", "account is banned", "account has been banned",
+		"user disabled", "user is suspended", "user is disabled", "user is banned", "user has been banned",
+		"insufficient entitlement", "insufficient permissions", "not eligible", "does not have access", "do not have access",
+		"quota exceeded", "quota exhausted", "quota limit", "usage limit reached", "usage limit exceeded", "credit limit",
+		"cf-chl-", "/cdn-cgi/challenge-platform", "checking your browser", "verify you are human", "browser verification",
+		"browser_signature_banned", "enable javascript and cookies to continue",
+	} {
+		if strings.Contains(text, phrase) {
+			return true
+		}
+	}
+	return strings.Contains(text, "<html") && (strings.Contains(text, "cloudflare") || strings.Contains(text, "just a moment"))
+}
+
+// grokContentPolicyOutputText extracts only model-visible output from common
+// Responses, Chat Completions, and Messages payloads, including SSE data events.
+// Callers handling streamed deltas should concatenate these strings per output
+// before matching so a refusal split across chunks can still be recognized.
+// Independent JSON text parts are separated by NUL to prevent joining fragments
+// from different choices, content blocks, or output items into a false refusal.
+func grokContentPolicyOutputText(body []byte) string {
+	trimmed := strings.TrimSpace(string(body))
+	if strings.HasPrefix(trimmed, "data:") || strings.HasPrefix(trimmed, "event:") {
+		var output strings.Builder
+		for _, line := range strings.Split(trimmed, "\n") {
+			if data, ok := strings.CutPrefix(strings.TrimSpace(line), "data:"); ok && strings.TrimSpace(data) != "[DONE]" {
+				output.WriteString(grokContentPolicyOutputText([]byte(data)))
+			}
+		}
+		return output.String()
+	}
+	if !json.Valid(body) {
+		// A truncated JSON response may contain echoed input or metadata.
+		// Never reinterpret that unfinished envelope as model output.
+		if strings.HasPrefix(trimmed, "{") || strings.HasPrefix(trimmed, "[") {
+			return ""
+		}
+		return trimmed
+	}
+	root := gjson.ParseBytes(body)
+	if root.Type == gjson.String {
+		return root.String()
+	}
+	var output strings.Builder
+	appendText := func(text string) {
+		if text == "" {
+			return
+		}
+		if output.Len() > 0 {
+			output.WriteByte(0)
+		}
+		output.WriteString(text)
+	}
+	var appendContent func(gjson.Result)
+	appendContent = func(content gjson.Result) {
+		if content.Type == gjson.String {
+			appendText(content.String())
+		} else if content.IsArray() {
+			content.ForEach(func(_, part gjson.Result) bool {
+				appendContent(part)
+				return true
+			})
+		} else if content.IsObject() {
+			if role := content.Get("role").String(); role != "" && role != "assistant" {
+				return
+			}
+			switch content.Get("type").String() {
+			case "text", "output_text":
+				appendText(content.Get("text").String())
+			case "refusal":
+				appendText(content.Get("refusal").String())
+			}
+		}
+	}
+	appendMessage := func(message gjson.Result) {
+		if role := message.Get("role").String(); role != "" && role != "assistant" {
+			return
+		}
+		appendContent(message.Get("content"))
+		appendContent(message.Get("refusal"))
+	}
+	root.Get("choices").ForEach(func(_, choice gjson.Result) bool {
+		appendMessage(choice.Get("message"))
+		appendMessage(choice.Get("delta"))
+		appendContent(choice.Get("text"))
+		return true
+	})
+	for _, response := range []gjson.Result{root, root.Get("response")} {
+		// Some relays keep HTTP 200 for terminal error / response.failed
+		// events. Their explicit error message is an upstream refusal, too.
+		if upstreamError := response.Get("error"); upstreamError.Type == gjson.String {
+			appendContent(upstreamError)
+		} else {
+			appendContent(upstreamError.Get("message"))
+			appendContent(upstreamError.Get("error"))
+		}
+		appendContent(response.Get("output_text"))
+		response.Get("output").ForEach(func(_, item gjson.Result) bool {
+			if item.Get("type").String() == "message" {
+				appendMessage(item)
+			} else {
+				appendContent(item)
+			}
+			return true
+		})
+		if response.Get("role").String() == "assistant" {
+			appendMessage(response)
+		}
+	}
+	switch root.Get("type").String() {
+	case "response.output_text.delta", "response.refusal.delta":
+		appendContent(root.Get("delta"))
+	case "response.output_text.done":
+		appendContent(root.Get("text"))
+	case "response.refusal.done":
+		appendContent(root.Get("refusal"))
+	case "response.content_part.added", "response.content_part.done":
+		appendContent(root.Get("part"))
+	case "response.output_item.added", "response.output_item.done":
+		appendMessage(root.Get("item"))
+	case "content_block_delta":
+		if root.Get("delta.type").String() == "text_delta" {
+			appendContent(root.Get("delta.text"))
+		}
+	case "content_block_start":
+		appendContent(root.Get("content_block"))
+	}
+	return output.String()
 }
 
 func grokStructuredAccountAccessMarker(value any) bool {
@@ -111,11 +354,19 @@ func isGrokAccountAccessCode(value string) bool {
 	switch normalizeGrokErrorMarker(value) {
 	case "account_suspended",
 		"account_disabled",
+		"account_banned",
 		"user_suspended",
 		"user_disabled",
+		"user_banned",
 		"subscription_required",
 		"entitlement_required",
 		"not_entitled",
+		"insufficient_entitlement",
+		"insufficient_quota",
+		"quota_exceeded",
+		"quota_exhausted",
+		"usage_limit_exceeded",
+		"spending_limit_exceeded",
 		"plan_required":
 		// permission-denied is omitted: xAI reuses it for both entitlement
 		// refusals and request-scoped safety blocks, so the message decides.
@@ -254,6 +505,7 @@ func grokStructuredErrorMessageCandidates(body []byte) []string {
 	}
 	appendCandidate(gjson.GetBytes(body, "error.message"))
 	appendCandidate(gjson.GetBytes(body, "error.error"))
+	appendCandidate(gjson.GetBytes(body, "response.error.message"))
 	errorNode := gjson.GetBytes(body, "error")
 	if errorNode.Type == gjson.String {
 		appendCandidate(errorNode)

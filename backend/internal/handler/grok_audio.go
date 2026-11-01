@@ -289,7 +289,7 @@ func (h *OpenAIGatewayHandler) GrokVoice(c *gin.Context, endpoint string) {
 			defer release()
 			return h.gatewayService.ForwardGrokVoice(c.Request.Context(), c, account, endpoint, body, contentType)
 		}()
-		if forwardErr == nil {
+		if forwardErr == nil || (result != nil && result.GrokContentPolicyRejection) {
 			h.recordGrokVoiceUsage(c, apiKey, account, subscription, endpoint, body, result)
 			return
 		}
@@ -320,14 +320,16 @@ func (h *OpenAIGatewayHandler) recordGrokVoiceUsage(
 	if h == nil || c == nil || apiKey == nil || account == nil || result == nil {
 		return
 	}
-	if result.AudioUsage == nil {
+	if result.AudioUsage == nil && !result.GrokContentPolicyRejection {
 		return
 	}
 	// Ensure forced durable request ids even if callers forget (realtime/tts/stt money path).
-	if mode := strings.TrimSpace(result.AudioUsage.Mode); mode == "realtime" {
-		result.RequestID = service.StableGrokRealtimeBillingRequestID(result.RequestID)
-	} else {
-		result.RequestID = service.StableGrokAudioBillingRequestID(result.RequestID)
+	if !result.GrokContentPolicyRejection {
+		if mode := strings.TrimSpace(result.AudioUsage.Mode); mode == "realtime" {
+			result.RequestID = service.StableGrokRealtimeBillingRequestID(result.RequestID)
+		} else {
+			result.RequestID = service.StableGrokAudioBillingRequestID(result.RequestID)
+		}
 	}
 	userAgent := c.GetHeader("User-Agent")
 	clientIP := ip.GetClientIP(c)

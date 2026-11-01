@@ -193,6 +193,16 @@
 
 Sub2API 是一个 AI API 网关平台，用于分发和管理 AI 产品订阅的 API 配额。用户通过平台生成的 API Key 调用上游 AI 服务，平台负责鉴权、计费、负载均衡和请求转发。
 
+### Grok 内容违规扣费
+
+Grok 请求命中 xAI 内容安全拒绝时，每次固定扣费 **0.1**，不乘分组或用户倍率，不按 token 计算，也不叠加图片、视频、搜索或语音费用。用量记录显示“按次”、token 为 0、金额为 0.1。费用说明见 [xAI 官方计费页](https://docs.x.ai/developers/pricing) 的 Usage Guidelines Violation Fee。
+
+- **2xx**：模型输出包含 `I can't help with` 或 `I cannot help with`（也兼容 `I c***t help with`、`I ca*** help with`），后续内容以 `that`、`this`、`you`、`your`、`the request`、`the prompt` 或 `it` 开头。匹配不区分大小写，先规范化弯引号，后缀不要求单词边界；流式片段也会合并识别。
+- **400**：包含 `generated image rejected by content moderation` 或 `generated video rejected by content moderation`。
+- **403**：包含上述英文拒绝句，或 `content violates usage guidelines`、`safety_check_type_`、`content moderation`、`content policy`、`image is sensitive`、`text is sensitive`、`prohibited content`、`forbidden content`，或明确表示 request/prompt/input 被 policy 拒绝、阻止或违反 policy 的提示。
+
+内容拒绝保留上游状态与原始响应，不自动重试。每个请求幂等扣费一次（不超过两次上限）；同一视频任务的重复状态查询共用扣费标识。浏览器校验、账号封禁、资格不足和额度上限不收内容违规费。简易模式仍遵循其关闭余额扣费的设置。
+
 ## 核心功能
 
 - **多账号管理** - 支持多种上游账号类型（OAuth、API Key）

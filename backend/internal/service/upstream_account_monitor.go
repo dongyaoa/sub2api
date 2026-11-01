@@ -105,14 +105,8 @@ func (s *UpstreamCenterService) AccountMonitor(ctx context.Context, id int64, en
 				name = string(nameRunes[:100])
 			}
 			candidate = &UpstreamTarget{Name: name, Provider: identity.Provider, Endpoint: identity.Endpoint, APIMode: MonitorAPIModeChatCompletions,
-				Models: []string{"gpt-5.6-sol"}, Enabled: false, IntervalSeconds: 30, TimeoutSeconds: 45, DegradedThresholdMs: 6000,
+				Models: []string{defaultUpstreamMonitorModel(identity.Provider)}, Enabled: false, IntervalSeconds: defaultUpstreamMonitorIntervalSeconds, TimeoutSeconds: 45, DegradedThresholdMs: 6000,
 				WalletRef: "default", APIKeyFingerprint: identity.Fingerprint, AccountIDs: []int64{id}}
-			switch identity.Provider {
-			case MonitorProviderAnthropic:
-				candidate.Models = []string{"claude-haiku-4-5"}
-			case MonitorProviderGemini:
-				candidate.Models = []string{"gemini-2.5-flash"}
-			}
 			key := strings.TrimSpace(identity.Credentials.APIKey)
 			if err := validateUpstreamTargetConfig(candidate, key, true); err != nil {
 				return nil, err

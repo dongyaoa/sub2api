@@ -441,6 +441,10 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 		if resp.Body != nil {
 			_ = resp.Body.Close()
 		}
+		if isGrokContentPolicyRejection(resp.StatusCode, respBody) {
+			resp.Body = io.NopCloser(bytes.NewReader(respBody))
+			break
+		}
 		// Prefer explicit decrypt errors; also strip once on any 400 when the
 		// outbound body still carries reasoning.encrypted_content (account
 		// switch often returns opaque "Upstream error: 400").
@@ -466,10 +470,14 @@ func (s *OpenAIGatewayService) ForwardAsAnthropic(
 		)
 	}
 	defer func() { _ = resp.Body.Close() }()
+	defer s.observeGrokContentPolicyResponse(resp, account, originalModel, clientStream, startTime, &recentResult, &recentErr)()
 
 	// 8. Handle error response with failover
 	if resp.StatusCode >= 400 {
 		respBody, upstreamMsg := s.readOpenAIUpstreamError(resp)
+		if account.IsGrok() && isGrokBillableContentPolicyRejection(resp.StatusCode, respBody) {
+			return s.grokContentPolicyErrorResponse(resp, c, account, respBody, billingModel)
+		}
 		if !agentIdentityTaskRecoveryWasTried(ctx) && s.isAgentIdentityAccount(ctx, account) && isAgentIdentityTaskInvalidHTTPResponse(resp.StatusCode, respBody) {
 			expectedTaskID := account.GetCredential("task_id")
 			if err := s.recoverAgentIdentityTask(ctx, account, expectedTaskID); err != nil {
@@ -612,14 +620,18 @@ func (s *OpenAIGatewayService) handleAnthropicBufferedStreamingResponse(
 	startTime time.Time,
 ) (*OpenAIForwardResult, error) {
 	requestID := resp.Header.Get("x-request-id")
+	contentPolicyRejected := grokContentPolicyResponseCheck(resp)
 
 	finalResponse, usage, acc, prior, err := s.readOpenAICompatBufferedTerminal(resp, c, account, "openai messages buffered", requestID)
-	if err != nil {
+	if err != nil && !contentPolicyRejected() {
 		var readErr *openAICompatBufferedReadError
 		if errors.As(err, &readErr) && readErr != nil {
 			return nil, readErr.cause
 		}
 		return nil, err
+	}
+	if finalResponse == nil && contentPolicyRejected() {
+		finalResponse = &apicompat.ResponsesResponse{Status: "completed"}
 	}
 
 	if finalResponse == nil {
@@ -633,9 +645,25 @@ func (s *OpenAIGatewayService) handleAnthropicBufferedStreamingResponse(
 	prior.apply(observer)
 	observer.Observe(finalResponse.Model, true)
 	observer.ObserveServiceTier(finalResponse.ServiceTier, true)
+	acc.SupplementResponseOutput(finalResponse)
+	finalPayload, _ := json.Marshal(finalResponse)
+	grokRefusal := account != nil && account.IsGrok() && (contentPolicyRejected() || isGrokBillableContentPolicyRejection(resp.StatusCode, finalPayload))
 
 	if strings.TrimSpace(finalResponse.Status) == "failed" {
 		payload, _ := json.Marshal(gin.H{"type": "response.failed", "response": finalResponse})
+		if grokRefusal {
+			message := ""
+			if finalResponse.Error != nil {
+				message = finalResponse.Error.Message
+			}
+			MarkResponseCommitted(c)
+			writeAnthropicError(c, resp.StatusCode, "invalid_request_error", message)
+			return &OpenAIForwardResult{
+				RequestID: requestID, UpstreamHeaders: resp.Header, ResponseID: finalResponse.ID, Usage: usage,
+				Model: originalModel, BillingModel: billingModel, UpstreamModel: upstreamModel,
+				Duration: time.Since(startTime), GrokContentPolicyRejection: true,
+			}, fmt.Errorf("grok content policy rejection: %s", message)
+		}
 		if hit, code, msg := detectOpenAICyberPolicy(payload); hit {
 			MarkOpsCyberPolicy(c, CyberPolicyMark{
 				Code:           code,
@@ -676,10 +704,6 @@ func (s *OpenAIGatewayService) handleAnthropicBufferedStreamingResponse(
 		logOpenAISuccessMissingUsage(c.Request.Context(), c, account, resp, &usage, "response.completed", false)
 	}
 
-	// When the terminal event has an empty output array, reconstruct from
-	// accumulated delta events so the client receives the full content.
-	acc.SupplementResponseOutput(finalResponse)
-
 	anthropicResp := apicompat.ResponsesToAnthropic(finalResponse, originalModel)
 
 	if s.responseHeaderFilter != nil {
@@ -701,6 +725,7 @@ func (s *OpenAIGatewayService) handleAnthropicBufferedStreamingResponse(
 		UpstreamResponseServiceTier:   observedUpstreamResponseServiceTier(c),
 		Stream:                        false,
 		Duration:                      time.Since(startTime),
+		GrokContentPolicyRejection:    grokRefusal,
 	}
 	// Grok /v1/messages uses Responses upstream; count native search for surcharge.
 	if account != nil && account.IsGrok() && finalResponse != nil {
@@ -1010,6 +1035,8 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 	startTime time.Time,
 ) (*OpenAIForwardResult, error) {
 	requestID := resp.Header.Get("x-request-id")
+	contentPolicyRejected := grokContentPolicyResponseCheck(resp)
+	grokRefusal := false
 	writeStreamHeaders := s.newStreamHeaderWriter(c, resp.Header)
 
 	state := apicompat.NewResponsesEventToAnthropicState()
@@ -1064,6 +1091,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 			Duration:                      time.Since(startTime),
 			FirstTokenMs:                  firstTokenMs,
 			ClientDisconnect:              clientDisconnected,
+			GrokContentPolicyRejection:    grokRefusal || contentPolicyRejected(),
 		}
 		if searchCount > 0 {
 			out.SearchCount = searchCount
@@ -1092,6 +1120,9 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 			return false
 		}
 		observer.ObserveOpenAI([]byte(payload), event.Type)
+		if account != nil && account.IsGrok() {
+			grokRefusal = contentPolicyRejected() || isGrokBillableContentPolicyRejection(resp.StatusCode, []byte(payload))
+		}
 		s.parseSSEUsageBytesWithType([]byte(payload), event.Type, &usage)
 
 		eventType := strings.TrimSpace(event.Type)
@@ -1114,6 +1145,23 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 			// 回写让客户端感知并停止重试（F4），丢弃后续转换输出。
 			if eventType == "response.failed" || isBareErrorEvent {
 				payloadBytes := []byte(payload)
+				if grokRefusal {
+					message := gjson.GetBytes(payloadBytes, "response.error.message").String()
+					if message == "" {
+						message = gjson.GetBytes(payloadBytes, "error.message").String()
+					}
+					if message == "" {
+						message = extractOpenAISSEErrorMessage(payloadBytes)
+					}
+					if !clientDisconnected {
+						writeStreamHeaders()
+						_, _ = fmt.Fprint(c.Writer, buildAnthropicStreamErrorSSE("invalid_request_error", message))
+						c.Writer.Flush()
+						clientOutputStarted = true
+					}
+					streamNonFailoverErr = fmt.Errorf("grok content policy rejection: %s", message)
+					return true
+				}
 				if hit, code, msg := detectOpenAICyberPolicy(payloadBytes); hit {
 					MarkOpsCyberPolicy(c, CyberPolicyMark{
 						Code:           code,
@@ -1253,7 +1301,7 @@ func (s *OpenAIGatewayService) handleAnthropicStreamingResponse(
 			return result, fmt.Errorf("stream usage incomplete: missing terminal event")
 		}
 		message := "OpenAI messages stream ended before a terminal event"
-		if !clientOutputStarted {
+		if !clientOutputStarted && !grokRefusal && !contentPolicyRejected() {
 			return result, s.newOpenAIStreamFailoverError(c, account, false, requestID, nil, message)
 		}
 		s.recordOpenAIMessagesStreamUpstreamError(c, account, requestID, "stream_missing_terminal", message)

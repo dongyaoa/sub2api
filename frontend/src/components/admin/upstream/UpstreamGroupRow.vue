@@ -44,7 +44,7 @@
           </div>
         </div>
         </div>
-        <UpstreamHistoryBar :records="statistics?.timeline || []" :last-checked-at="statistics?.last_checked_at" @select="record => emit('details', target, selectedModel, record)" />
+        <UpstreamHistoryBar :records="statistics?.timeline || []" :last-checked-at="statistics?.last_checked_at" :enabled="target.enabled" @select="record => emit('details', target, selectedModel, record)" />
       </div>
 
       <dl class="metric-grid" :aria-label="t('upstreamCenter.finance.title')">

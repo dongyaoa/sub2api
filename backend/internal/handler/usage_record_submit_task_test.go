@@ -219,3 +219,22 @@ func TestOpenAIGatewayHandlerSubmitOpenAIUsageRecordTask_SearchCountUsesMandator
 
 	require.True(t, called.Load(), "search surcharge usage task must be mandatory when async submit is dropped")
 }
+
+func TestOpenAIGatewayHandlerSubmitOpenAIUsageRecordTask_GrokRefusalUsesMandatoryFallback(t *testing.T) {
+	pool := service.NewUsageRecordWorkerPoolWithOptions(service.UsageRecordWorkerPoolOptions{
+		WorkerCount: 1, QueueSize: 1, TaskTimeout: time.Second,
+		OverflowPolicy: "drop", OverflowSamplePercent: 0, AutoScaleEnabled: false,
+	})
+	t.Cleanup(pool.Stop)
+	h := &OpenAIGatewayHandler{usageRecordWorkerPool: pool}
+	started, release := make(chan struct{}), make(chan struct{})
+	pool.Submit(func(context.Context) { close(started); <-release })
+	<-started
+	pool.Submit(func(context.Context) {})
+	var called atomic.Bool
+	h.submitOpenAIUsageRecordTask(context.Background(), &service.OpenAIForwardResult{GrokContentPolicyRejection: true}, func(context.Context) {
+		called.Store(true)
+	})
+	close(release)
+	require.True(t, called.Load(), "Grok refusal billing must not be dropped when the queue is full")
+}

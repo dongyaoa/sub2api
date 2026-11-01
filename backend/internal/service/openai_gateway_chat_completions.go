@@ -684,10 +684,14 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 	startTime time.Time,
 ) (*OpenAIForwardResult, error) {
 	requestID := resp.Header.Get("x-request-id")
+	contentPolicyRejected := grokContentPolicyResponseCheck(resp)
 
 	finalResponse, usage, acc, priorModels, err := s.readOpenAICompatBufferedTerminal(resp, c, account, "openai chat_completions buffered", requestID)
-	if err != nil {
+	if err != nil && !contentPolicyRejected() {
 		return nil, s.newOpenAICompatBufferedReadFailoverError(c, account, resp, requestID, err)
+	}
+	if finalResponse == nil && contentPolicyRejected() {
+		finalResponse = &apicompat.ResponsesResponse{Status: "completed"}
 	}
 
 	if finalResponse == nil {
@@ -701,8 +705,22 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 	priorModels.apply(observer)
 	observer.Observe(finalResponse.Model, true)
 	observer.ObserveServiceTier(finalResponse.ServiceTier, true)
+	// Reconstruct output before deciding whether a zero-token completion is
+	// retryable: Grok can emit a billable refusal only in delta events.
+	acc.SupplementResponseOutput(finalResponse)
+	finalPayload, _ := json.Marshal(finalResponse)
+	grokRefusal := account != nil && account.IsGrok() && (contentPolicyRejected() || isGrokBillableContentPolicyRejection(resp.StatusCode, finalPayload))
 	if strings.TrimSpace(finalResponse.Status) == "failed" {
 		payload, _ := json.Marshal(gin.H{"type": "response.failed", "response": finalResponse})
+		if grokRefusal {
+			MarkResponseCommitted(c)
+			c.JSON(resp.StatusCode, gin.H{"error": finalResponse.Error})
+			return &OpenAIForwardResult{
+				RequestID: requestID, UpstreamHeaders: resp.Header, Usage: usage,
+				Model: originalModel, BillingModel: billingModel, UpstreamModel: upstreamModel,
+				Duration: time.Since(startTime), GrokContentPolicyRejection: true,
+			}, fmt.Errorf("grok content policy rejection: %s", openAICompatFailedResponseMessage(finalResponse))
+		}
 		// cyber_policy 致命不可重试：不 failover，以 Chat Completions 错误格式回写（F4），
 		// 标记供 handler 事后写风控/邮件/tokens=0 用量行。
 		if hit, code, msg := detectOpenAICyberPolicy(payload); hit {
@@ -745,14 +763,10 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 		logOpenAISuccessMissingUsage(c.Request.Context(), c, account, resp, &usage, "response.completed", false)
 	}
 
-	if requiresBillableGrokChatUsage(account, billingModel, upstreamModel, finalResponse.Model) && !hasBillableGrokChatUsage(usage) {
+	if !grokRefusal && requiresBillableGrokChatUsage(account, billingModel, upstreamModel, finalResponse.Model) && !hasBillableGrokChatUsage(usage) {
 		upstreamRequestID := firstNonEmpty(requestID, resp.Header.Get("xai-request-id"))
 		return nil, newGrokMissingUsageFailoverError(c, account, upstreamRequestID)
 	}
-
-	// When the terminal event has an empty output array, reconstruct from
-	// accumulated delta events so the client receives the full content.
-	acc.SupplementResponseOutput(finalResponse)
 
 	chatResp := apicompat.ResponsesToChatCompletions(finalResponse, originalModel)
 
@@ -778,6 +792,7 @@ func (s *OpenAIGatewayService) handleChatBufferedStreamingResponse(
 		UpstreamResponseServiceTier:   observedUpstreamResponseServiceTier(c),
 		Stream:                        false,
 		Duration:                      time.Since(startTime),
+		GrokContentPolicyRejection:    grokRefusal,
 	}
 	// Grok chat bridge: bill native search tools found in the terminal Responses body.
 	if account != nil && account.IsGrok() && finalResponse != nil {
@@ -844,6 +859,9 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 	requestBodyLen int,
 ) (*OpenAIForwardResult, error) {
 	requestID := resp.Header.Get("x-request-id")
+	contentPolicyRejected := grokContentPolicyResponseCheck(resp)
+	grokRefusal := false
+	grokOutputSeen := false
 	writeStreamHeaders := s.newStreamHeaderWriter(c, resp.Header)
 
 	state := apicompat.NewResponsesEventToChatState()
@@ -902,6 +920,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 			Stream:                        true,
 			Duration:                      time.Since(startTime),
 			FirstTokenMs:                  firstTokenMs,
+			GrokContentPolicyRejection:    grokRefusal || contentPolicyRejected(),
 		}
 		if searchCount > 0 {
 			out.SearchCount = searchCount
@@ -929,6 +948,9 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 			return false
 		}
 		observer.ObserveOpenAI([]byte(payload), event.Type)
+		if account != nil && account.IsGrok() {
+			grokRefusal = contentPolicyRejected() || isGrokBillableContentPolicyRejection(resp.StatusCode, []byte(payload))
+		}
 		refusalDetector.ObservePayload([]byte(payload))
 		s.parseSSEUsageBytesWithType([]byte(payload), event.Type, &usage)
 
@@ -945,6 +967,31 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 		if strings.TrimSpace(event.Type) == "response.failed" || strings.TrimSpace(event.Type) == "error" {
 			payloadBytes := []byte(payload)
 			message := extractOpenAISSEErrorMessage(payloadBytes)
+			if grokRefusal {
+				if !clientDisconnected {
+					writeStreamHeaders()
+					for _, pending := range pendingSSE {
+						_, _ = fmt.Fprint(c.Writer, pending)
+					}
+					pendingSSE = nil
+					// Keep xAI's message and code, including an overloaded or cyber
+					// code accompanying the refusal. Those codes must not trigger retry.
+					errorPayload := gjson.GetBytes(payloadBytes, "response.error")
+					if !errorPayload.Exists() {
+						errorPayload = gjson.GetBytes(payloadBytes, "error")
+					}
+					if errorPayload.Exists() {
+						_, _ = fmt.Fprintf(c.Writer, "data: {\"error\":%s}\n\n", errorPayload.Raw)
+					} else {
+						_, _ = fmt.Fprint(c.Writer, buildChatStreamErrorSSE("content_policy_violation", message))
+					}
+					_, _ = fmt.Fprint(c.Writer, "data: [DONE]\n\n")
+					c.Writer.Flush()
+					clientOutputStarted = true
+				}
+				streamNonFailoverErr = fmt.Errorf("grok content policy rejection: %s", message)
+				return true
+			}
 			if hit, code, msg := detectOpenAICyberPolicy(payloadBytes); hit {
 				// cyber_policy 致命且不可重试：不 failover。下发标准 error chunk +
 				// [DONE]，让程序化客户端可感知并停止重试（F4）；标记供 handler 事后
@@ -1021,9 +1068,28 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 			return true
 		}
 
-		chunks := apicompat.ResponsesEventToChatChunks(&event, state)
+		var chunks []apicompat.ChatCompletionsChunk
+		if grokRefusal && isTerminalEvent && !grokOutputSeen {
+			// Some xAI relays send the entire refusal only in terminal output.
+			// The chat converter otherwise emits only its empty finish chunk.
+			if text := grokContentPolicyOutputText([]byte(payload)); text != "" {
+				// NUL separates independent fields for matching only; it must
+				// never be emitted as part of the client's refusal text.
+				text = strings.ReplaceAll(text, "\x00", "\n")
+				chunks = apicompat.ResponsesEventToChatChunks(&apicompat.ResponsesStreamEvent{
+					Type: "response.output_text.delta", Delta: text,
+				}, state)
+			}
+		}
+		chunks = append(chunks, apicompat.ResponsesEventToChatChunks(&event, state)...)
 		if !clientDisconnected {
 			for _, chunk := range chunks {
+				for _, choice := range chunk.Choices {
+					if (choice.Delta.Content != nil && *choice.Delta.Content != "") ||
+						(choice.Delta.Refusal != nil && *choice.Delta.Refusal != "") {
+						grokOutputSeen = true
+					}
+				}
 				refusalDetector.ObserveChatChunk(chunk)
 				sse, err := apicompat.ChatChunkToSSE(chunk)
 				if err != nil {
@@ -1033,7 +1099,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 					)
 					continue
 				}
-				if !clientOutputStarted && !refusalDetector.ShouldReleaseClientOutput() {
+				if !clientOutputStarted && !grokRefusal && !refusalDetector.ShouldReleaseClientOutput() {
 					pendingSSE = append(pendingSSE, sse)
 					continue
 				}
@@ -1086,7 +1152,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 				if err != nil {
 					continue
 				}
-				if !clientOutputStarted && !refusalDetector.ShouldReleaseClientOutput() {
+				if !clientOutputStarted && !grokRefusal && !refusalDetector.ShouldReleaseClientOutput() {
 					pendingSSE = append(pendingSSE, sse)
 					continue
 				}
@@ -1117,7 +1183,7 @@ func (s *OpenAIGatewayService) handleChatStreamingResponse(
 			}
 		}
 		if !clientDisconnected && !clientOutputStarted {
-			if refusalDetector.IsSilentRefusal() {
+			if !grokRefusal && !contentPolicyRejected() && refusalDetector.IsSilentRefusal() {
 				return nil, newOpenAISilentRefusalFailoverError(c, account, requestID)
 			}
 			if len(pendingSSE) > 0 {

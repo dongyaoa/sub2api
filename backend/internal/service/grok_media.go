@@ -681,6 +681,21 @@ func (s *OpenAIGatewayService) ForwardGrokMedia(
 	defer func() { finishRecentRequest(recentResult != nil && recentResult.SucceededForScheduling(), recentErr) }()
 
 	startTime := time.Now()
+	defer func() {
+		if recentResult == nil || !recentResult.GrokContentPolicyRejection {
+			return
+		}
+		recentResult.Duration = time.Since(startTime)
+		if endpoint.IsVideoLookupRequest() && strings.TrimSpace(requestID) != "" {
+			// Polling observes the same rejected generation; it must not create
+			// a new money event for every status/content request.
+			recentResult.RequestID = StableGrokVideoBillingRequestID("content-policy:" + strings.TrimSpace(requestID))
+			recentResult.ResponseID = strings.TrimSpace(requestID)
+			if strings.TrimSpace(recentResult.Model) == "" {
+				recentResult.Model = "grok-imagine-video"
+			}
+		}
+	}()
 	if account == nil {
 		return nil, fmt.Errorf("grok account is required")
 	}
@@ -783,6 +798,9 @@ func (s *OpenAIGatewayService) ForwardGrokMedia(
 	respBody, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, openAITooLargeError)
 	if err != nil {
 		return nil, err
+	}
+	if isGrokBillableContentPolicyRejection(resp.StatusCode, respBody) {
+		return s.grokContentPolicyErrorResponse(resp, c, account, respBody, requestModel)
 	}
 	if endpoint == GrokMediaEndpointImagesGenerations || endpoint == GrokMediaEndpointImagesEdits {
 		if countOpenAIResponseImageOutputsFromJSONBytes(respBody) <= 0 {
@@ -894,6 +912,9 @@ func (s *OpenAIGatewayService) forwardGrokMediaVideoContent(
 	if err != nil {
 		SetOpsLatencyMs(c, OpsUpstreamLatencyMsKey, time.Since(upstreamStart).Milliseconds())
 		return nil, err
+	}
+	if isGrokBillableContentPolicyRejection(statusResp.StatusCode, statusBody) {
+		return s.grokContentPolicyErrorResponse(statusResp, c, account, statusBody, "")
 	}
 
 	contentURL, err := grokMediaSignedVideoContentURL(statusBody, requestID)
@@ -1453,6 +1474,9 @@ func (s *OpenAIGatewayService) handleGrokMediaErrorResponse(
 	requestedModel string,
 ) (*OpenAIForwardResult, error) {
 	body := s.readUpstreamErrorBody(resp)
+	if isGrokBillableContentPolicyRejection(resp.StatusCode, body) {
+		return s.grokContentPolicyErrorResponse(resp, c, account, body, requestedModel)
+	}
 	// Reconcile readiness before configurable passthrough branches can return;
 	// otherwise a Grok 429 can remain schedulable.
 	s.handleGrokAccountUpstreamError(ctx, account, resp.StatusCode, resp.Header, body)

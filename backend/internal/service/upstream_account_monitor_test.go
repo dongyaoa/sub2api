@@ -218,6 +218,8 @@ func TestUpstreamAccountMonitorCreatesPausedSharedTarget(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, int64(27), view.Target.ID)
 	require.False(t, view.Target.Enabled)
+	require.Equal(t, []string{"gpt-6.1-sol"}, view.Target.Models)
+	require.Equal(t, 60, view.Target.IntervalSeconds)
 	require.Nil(t, view.Target.NextCheckAt)
 	require.Equal(t, []int64{6}, view.Target.AccountIDs)
 	require.Equal(t, "Supplier key", view.Target.Name)
@@ -244,7 +246,7 @@ func TestUpstreamAccountMonitorIndependentAndOtherProviders(t *testing.T) {
 	require.Equal(t, int64(7), view.Target.ID)
 	require.True(t, view.Target.Enabled, "reuse never resets an existing monitor's schedule")
 	require.Empty(t, view.Target.AccountIDs)
-	for provider, model := range map[string]string{MonitorProviderAnthropic: "claude-haiku-4-5", MonitorProviderGemini: "gemini-2.5-flash"} {
+	for provider, model := range map[string]string{MonitorProviderAnthropic: "claude-sonnet-5", MonitorProviderGemini: "gemini-2.5-flash"} {
 		account.Platform = provider
 		repo.target = nil
 		view, err = svc.AccountMonitor(context.Background(), 6, true)

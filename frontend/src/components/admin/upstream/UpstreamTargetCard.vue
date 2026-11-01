@@ -36,7 +36,7 @@
         <dd class="mt-0.5"><strong class="text-base font-semibold leading-5 tabular-nums" :class="latencyColor(statistics?.latest_latency_ms, target.degraded_threshold_ms, target.timeout_seconds, statistics?.status)" data-testid="upstream-latency">{{ latency(statistics?.latest_latency_ms) }}</strong></dd>
       </div>
     </dl>
-    <UpstreamHistoryBar class="mt-2.5" :records="statistics?.timeline || []" :last-checked-at="statistics?.last_checked_at" :legend="!compact" @select="record => emit('details', target, selectedModel, record)" />
+    <UpstreamHistoryBar class="mt-2.5" :records="statistics?.timeline || []" :last-checked-at="statistics?.last_checked_at" :enabled="target.enabled" :legend="!compact" @select="record => emit('details', target, selectedModel, record)" />
     <div v-if="!compact" class="mt-1.5 flex min-w-0 items-center justify-between gap-2 text-[10px] leading-4 text-gray-400 dark:text-dark-400">
       <span class="shrink-0">{{ t('upstreamCenter.nextCheck') }}</span>
       <time v-if="target.enabled" class="min-w-0 truncate text-right tabular-nums" :datetime="target.next_check_at || undefined" :title="dateTime(target.next_check_at)" data-testid="upstream-next-check">{{ dateTime(target.next_check_at) }}</time>

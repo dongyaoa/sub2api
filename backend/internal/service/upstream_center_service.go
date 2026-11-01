@@ -176,7 +176,7 @@ func (s *UpstreamCenterService) ArchiveTarget(ctx context.Context, id int64) err
 }
 
 func (s *UpstreamCenterService) SaveTarget(ctx context.Context, id int64, in UpstreamTargetInput) (*UpstreamTarget, error) {
-	t := &UpstreamTarget{Provider: MonitorProviderOpenAI, APIMode: MonitorAPIModeChatCompletions, Enabled: true, IntervalSeconds: 30, TimeoutSeconds: 45, DegradedThresholdMs: 6000, WalletRef: "default", Models: []string{"gpt-5.6-sol"}, AccountIDs: []int64{}}
+	t := &UpstreamTarget{Provider: MonitorProviderOpenAI, APIMode: MonitorAPIModeChatCompletions, Enabled: true, IntervalSeconds: defaultUpstreamMonitorIntervalSeconds, TimeoutSeconds: 45, DegradedThresholdMs: 6000, WalletRef: "default", AccountIDs: []int64{}}
 	var oldSupplier, oldSourceTarget *int64
 	oldProvider, oldEndpoint, oldEncrypted := "", "", ""
 	var oldNewAPIUserID int64
@@ -259,6 +259,9 @@ func (s *UpstreamCenterService) SaveTarget(ctx context.Context, id int64, in Ups
 			t.APIMode = MonitorAPIModeChatCompletions
 		}
 		t.Provider, t.Endpoint, plain = provider, endpoint, key
+	}
+	if id == 0 && in.Models == nil && t.SourceTargetID == nil {
+		t.Models = []string{defaultUpstreamMonitorModel(t.Provider)}
 	}
 	// Never carry the saved key to a different credential recipient. An explicit
 	// key, validated source import or exact linked-account credentials must supply

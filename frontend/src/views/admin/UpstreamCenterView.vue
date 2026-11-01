@@ -232,8 +232,8 @@ onBeforeUnmount(() => { disposed = true })
 </script>
 <style scoped>
 @media (min-width: 1280px) {
-  .supplier-browse-with-navigation { grid-template-columns: 184px minmax(0, 1fr); }
-  .supplier-browse-with-navigation[data-navigation-side="right"] { grid-template-columns: minmax(0, 1fr) 184px; }
+  .supplier-browse-with-navigation { grid-template-columns: 172px minmax(0, 1fr); }
+  .supplier-browse-with-navigation[data-navigation-side="right"] { grid-template-columns: minmax(0, 1fr) 172px; }
   .supplier-browse-with-navigation[data-navigation-side="right"] > .supplier-navigation { grid-column: 2; grid-row: 1; }
   .supplier-browse-with-navigation[data-navigation-side="right"] > .supplier-results { grid-column: 1; grid-row: 1; }
 }

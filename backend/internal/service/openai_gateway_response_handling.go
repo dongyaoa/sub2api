@@ -489,6 +489,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 		if data, ok := extractOpenAISSEDataLine(line); ok {
 			dataBytes := []byte(data)
 			eventType := effectiveOpenAISSEEventType(dataBytes, pendingSSEEventType)
+			grokRefusal := account != nil && account.IsGrok() && isGrokBillableContentPolicyRejection(resp.StatusCode, dataBytes)
 			if codexFailureTerminal && sawBareError && !sawResponseFailed &&
 				(eventType == "response.completed" || eventType == "response.done") {
 				// A later successful terminal is authoritative over a pending bare
@@ -541,7 +542,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 				// 再打 cyber 标记，否则 mark 记到的是解析前的 0，导致流式 cyber 按 0 token 计费
 				// 而漏记真实用量。对齐 WS V2 / Chat 流式路径（均先解析 usage 再 Mark）。
 				s.parseSSEUsageBytesWithType(dataBytes, eventType, usage)
-				if hit, code, msg := detectOpenAICyberPolicy(dataBytes); hit {
+				if hit, code, msg := detectOpenAICyberPolicy(dataBytes); hit && !grokRefusal {
 					cyberHit = true
 					MarkOpsCyberPolicy(c, CyberPolicyMark{
 						Code:           code,
@@ -553,14 +554,14 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 					})
 				}
 				outputStarted := openAIStreamClientOutputStarted(c, clientOutputStarted)
-				if !outputStarted && !cyberHit {
+				if !outputStarted && !cyberHit && !grokRefusal {
 					if compactErr := newOpenAICompactFallbackSignal(c, dataBytes, failedMessage); compactErr != nil {
 						sawFailedEvent = true
 						streamEarlyErr = compactErr
 						return
 					}
 				}
-				if outputStarted && !cyberHit {
+				if outputStarted && !cyberHit && !grokRefusal {
 					if codexFailureTerminal && eventType == "error" {
 						// OpenAI commonly follows a bare error with response.failed.
 						// Defer account health updates so the pair is applied once.
@@ -578,7 +579,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 				}
 				if !outputStarted {
 					shouldFailover := false
-					if !cyberHit {
+					if !cyberHit && !grokRefusal {
 						if eventType == "error" {
 							shouldFailover = openAIStreamErrorEventShouldFailover(dataBytes, failedMessage)
 						} else {
@@ -590,7 +591,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 						streamEarlyErr = s.newOpenAIStreamFailoverErrorWithModel(c, account, false, upstreamRequestID, dataBytes, failedMessage, mappedModel, resp.Header)
 						return
 					}
-					if !cyberHit && !sawBareError {
+					if !cyberHit && !sawBareError && !grokRefusal {
 						if status, errType, errMsg, matched := applyOpenAIStreamFailedErrorPassthroughRule(c, account.Platform, dataBytes, failedMessage); matched {
 							sawFailedEvent = true
 							// 命中透传规则也要记录 ops 上游错误事件（对齐 CC/Messages 与
@@ -665,7 +666,7 @@ func (s *OpenAIGatewayService) handleStreamingResponseWithReasoning(ctx context.
 				dataBytes,
 				eventType,
 				openAIStreamClientOutputStarted(c, clientOutputStarted),
-			); sanitized {
+			); sanitized && !grokRefusal {
 				dataBytes = sanitizedData
 				data = string(sanitizedData)
 				line = "data: " + data
@@ -1728,6 +1729,10 @@ func (s *OpenAIGatewayService) handleSSEToJSON(resp *http.Response, c *gin.Conte
 	bodyText := string(body)
 	terminalType, terminalPayload, terminalOK := extractOpenAISSETerminalEvent(bodyText)
 	if terminalOK && (terminalType == "response.failed" || terminalType == "error") {
+		if account != nil && account.IsGrok() && isGrokBillableContentPolicyRejection(resp.StatusCode, terminalPayload) {
+			_, err := s.grokContentPolicyErrorResponse(resp, c, account, body, originalModel)
+			return nil, err
+		}
 		msg := extractOpenAISSEErrorMessage(terminalPayload)
 		if msg == "" {
 			msg = "Upstream compact response failed"

@@ -454,6 +454,12 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 		}
 		service.SetOpsLatencyMs(c, service.OpsResponseLatencyMsKey, responseLatencyMs)
 
+		if result != nil && result.GrokContentPolicyRejection {
+			// Content refusals are terminal and have their own fixed fee, even
+			// when no image/audio/video output was generated.
+			recordGrokMediaUsage(c, h, reqLog, apiKey, subject, subscription, account, result, result.Model, body, requestID)
+			return
+		}
 		if err != nil {
 			if endpoint.IsVideoLookupRequest() && videoRecord != nil && h.videoTasks != nil {
 				if recordErr := h.videoTasks.RecordLookupError(requestCtx, videoOwner, requestID, grokVideoLookupErrorEvidence(err)); recordErr != nil {

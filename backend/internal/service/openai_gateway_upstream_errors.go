@@ -310,6 +310,9 @@ func (s *OpenAIGatewayService) shouldFailoverUpstreamError(statusCode int) bool 
 }
 
 func (s *OpenAIGatewayService) shouldFailoverOpenAIUpstreamResponse(account *Account, statusCode int, upstreamMsg string, upstreamBody []byte) bool {
+	if account != nil && account.IsGrok() && isGrokContentPolicyRejection(statusCode, upstreamBody) {
+		return false
+	}
 	// cyber_policy is request-scoped even when an intermediary wraps the
 	// provider response in a retryable 5xx status. Never punish or rotate the
 	// selected credential for it.
@@ -586,6 +589,13 @@ func (s *OpenAIGatewayService) handleErrorResponse(
 	requestedModel ...string,
 ) (*OpenAIForwardResult, error) {
 	body := s.readUpstreamErrorBody(resp)
+	if account != nil && account.IsGrok() && isGrokBillableContentPolicyRejection(resp.StatusCode, body) {
+		model := ""
+		if len(requestedModel) > 0 {
+			model = requestedModel[0]
+		}
+		return s.grokContentPolicyErrorResponse(resp, c, account, body, model)
+	}
 	body = s.redactAgentIdentitySensitiveBody(ctx, account, body)
 
 	// cyber_policy 硬阻断：透传上游原始错误体给客户端（不重包成通用 502），不冷却账号。
@@ -840,6 +850,13 @@ func (s *OpenAIGatewayService) handleCompatErrorResponse(
 	requestedModel ...string,
 ) (*OpenAIForwardResult, error) {
 	body := s.readUpstreamErrorBody(resp)
+	if account != nil && account.IsGrok() && isGrokBillableContentPolicyRejection(resp.StatusCode, body) {
+		model := ""
+		if len(requestedModel) > 0 {
+			model = requestedModel[0]
+		}
+		return s.grokContentPolicyErrorResponse(resp, c, account, body, model)
+	}
 	body = s.redactAgentIdentitySensitiveBody(context.Background(), account, body)
 
 	// cyber_policy：兼容路径（Chat Completions / Anthropic）以各自格式回写错误，

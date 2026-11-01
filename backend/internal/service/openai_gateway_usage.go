@@ -151,6 +151,8 @@ func groupBillsOpenAIFastAtStandard(apiKey *APIKey, account *Account, serviceTie
 	}
 }
 
+const grokContentPolicyViolationFee = 0.1
+
 // RecordUsage records usage and deducts balance
 func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRecordUsageInput) error {
 	if input == nil {
@@ -168,11 +170,32 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	user := input.User
 	account := input.Account
 	subscription := input.Subscription
+	grokContentPolicyRejection := result.GrokContentPolicyRejection && account != nil && account.IsGrok()
+	if grokContentPolicyRejection {
+		// Keep the caller's upstream result intact, but never combine the fixed
+		// violation fee with token, media, search, or audio usage charges.
+		rejection := *result
+		rejection.Usage = OpenAIUsage{}
+		rejection.ImageCount = 0
+		rejection.ImageSize = ""
+		rejection.ImageInputSize = ""
+		rejection.ImageOutputSize = ""
+		rejection.ImageOutputSizes = nil
+		rejection.ImageSizeSource = ""
+		rejection.ImageSizeBreakdown = nil
+		rejection.VideoCount = 0
+		rejection.VideoResolution = ""
+		rejection.VideoDurationSeconds = 0
+		rejection.WebSearchCalls = 0
+		rejection.SearchCount = 0
+		rejection.AudioUsage = nil
+		result = &rejection
+	}
 	billingAccount, err := resolveCredentialAccount(ctx, s.accountRepo, account)
 	if err != nil {
 		return err
 	}
-	if !isGrokVideoUsageResult(result, nil) {
+	if !grokContentPolicyRejection && !isGrokVideoUsageResult(result, nil) {
 		ApplyOpenAIImageBillingResolution(result)
 	}
 	logServiceTierBillingDowngrade("service.openai_gateway", account, result.RequestID, ApplyOpenAIServiceTierBillingResolution(billingAccount, result))
@@ -211,6 +234,9 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	pricingAt := openAIUsagePricingAt(input)
 	multiplier, imageMultiplier := computePeakAwareMultipliers(apiKey, baseMultiplier, pricingAt)
 	videoMultiplier := resolveVideoRateMultiplier(apiKey, baseMultiplier)
+	if grokContentPolicyRejection {
+		multiplier, imageMultiplier, videoMultiplier, baseMultiplier = 1, 1, 1, 1
+	}
 
 	var cost *CostBreakdown
 	billingModel := forwardResultBillingModel(result.Model, result.UpstreamModel)
@@ -238,21 +264,29 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	}
 	longContextBillingGate := openAILongContextBillingGate(billingAccount)
 	modelLongContextExempt := openAISubscriptionLongContextExempt(billingAccount, result)
-	cost, err = s.calculateOpenAIRecordUsageCost(
-		ctx,
-		result,
-		apiKey,
-		billingModels,
-		multiplier,
-		imageMultiplier,
-		videoMultiplier,
-		baseMultiplier,
-		tokens,
-		serviceTier,
-		longContextBillingGate,
-		modelLongContextExempt,
-		pricingAt,
-	)
+	if grokContentPolicyRejection {
+		cost = &CostBreakdown{
+			TotalCost:   grokContentPolicyViolationFee,
+			ActualCost:  grokContentPolicyViolationFee,
+			BillingMode: string(BillingModePerRequest),
+		}
+	} else {
+		cost, err = s.calculateOpenAIRecordUsageCost(
+			ctx,
+			result,
+			apiKey,
+			billingModels,
+			multiplier,
+			imageMultiplier,
+			videoMultiplier,
+			baseMultiplier,
+			tokens,
+			serviceTier,
+			longContextBillingGate,
+			modelLongContextExempt,
+			pricingAt,
+		)
+	}
 	if err != nil {
 		if !isUsagePricingUnavailableError(err) {
 			return err
@@ -279,7 +313,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		result.UpstreamResponseModelConflict,
 		result.ImageCount > 0 || result.VideoCount > 0 || result.WebSearchCalls > 0 ||
 			result.AudioUsage != nil || result.SearchCount > 0,
-	); responseModel != "" && !strings.EqualFold(responseModel, baselineBillingModel) {
+	); !grokContentPolicyRejection && responseModel != "" && !strings.EqualFold(responseModel, baselineBillingModel) {
 		if identified, responseChannelPriced := s.hasIdentifiedOpenAIResponsePricing(ctx, responseModel, apiKey); identified {
 			responseModels := s.filterCNProviderBillingModelCandidates(ctx, account, apiKey, usageBillingModelCandidates(responseModel))
 			responseCost, responseErr := s.calculateOpenAIRecordUsageCost(
@@ -302,7 +336,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	// Free Fast changes only the customer charge. Keep priority TotalCost and
 	// service_tier for upstream accounting, but evaluate ActualCost once more at
 	// the Standard tier using the same channel, peak, and long-context policy.
-	if groupBillsOpenAIFastAtStandard(apiKey, billingAccount, serviceTier) {
+	if !grokContentPolicyRejection && groupBillsOpenAIFastAtStandard(apiKey, billingAccount, serviceTier) {
 		standardCost, standardErr := s.calculateOpenAIRecordUsageCost(
 			ctx,
 			result,
@@ -411,7 +445,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		ImageSizeBreakdown:       imageSizeBreakdown,
 		NativeCompactionV2:       input.NativeCompactionV2,
 	}
-	isVideoUsage := isGrokVideoUsageResult(result, billingModels)
+	isVideoUsage := !grokContentPolicyRejection && isGrokVideoUsageResult(result, billingModels)
 	if isVideoUsage {
 		usageLog.VideoCount = result.VideoCount
 		usageLog.VideoResolution = optionalTrimmedStringPtr(NormalizeVideoBillingResolutionOrDefault(result.VideoResolution))
@@ -484,7 +518,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	}
 
 	// 计算账号统计定价费用（使用最终上游模型匹配自定义规则）
-	if apiKey.GroupID != nil {
+	if apiKey.GroupID != nil && !grokContentPolicyRejection {
 		applyAccountStatsCost(ctx, usageLog, s.channelService, s.billingService,
 			account.ID, *apiKey.GroupID, result.UpstreamModel, result.Model,
 			tokens, cost.TotalCost, pricingAt,

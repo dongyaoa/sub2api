@@ -12,7 +12,7 @@
             <button
               type="button"
               class="platform-tab"
-              :class="selectedPlatform === '' ? 'platform-tab--all-active' : 'platform-tab--all'"
+              :class="{ 'platform-tab--active': selectedPlatform === '' }"
               :aria-pressed="selectedPlatform === ''"
               data-platform=""
               @click="selectedPlatform = ''"
@@ -26,9 +26,7 @@
               :key="stat.platform"
               type="button"
               class="platform-tab"
-              :class="selectedPlatform === stat.platform
-                ? ['border-transparent', platformButtonClass(stat.platform)]
-                : platformBadgeClass(stat.platform)"
+              :class="{ 'platform-tab--active': selectedPlatform === stat.platform }"
               :aria-pressed="selectedPlatform === stat.platform"
               :data-platform="stat.platform"
               @click="selectedPlatform = stat.platform"
@@ -93,7 +91,17 @@
               @click="selectedGroupId = String(group.id)"
             >
               <span class="group-option-heading">
-                <span class="group-option-name">{{ group.name }}</span>
+                <span class="flex min-w-0 flex-1 items-start gap-1.5">
+                  <PlatformIcon
+                    :platform="group.platform"
+                    size="sm"
+                    class="mt-[3px]"
+                    :class="platformIconClass(group.platform)"
+                    role="img"
+                    :aria-label="platformLabel(group.platform)"
+                  />
+                  <span class="group-option-name">{{ group.name }}</span>
+                </span>
                 <span class="group-check" aria-hidden="true">
                   <Icon v-if="selectedGroupId === String(group.id)" name="check" size="xs" :stroke-width="2.5" />
                 </span>
@@ -179,7 +187,7 @@ import {
   type ModelSquareModel,
 } from '@/utils/modelSquare'
 import { BILLING_MODE_TOKEN } from '@/constants/channel'
-import { platformBadgeClass, platformButtonClass, platformLabel } from '@/utils/platformColors'
+import { platformIconClass, platformLabel } from '@/utils/platformColors'
 
 const route = useRoute()
 const { t, locale } = useI18n({ useScope: 'local', messages: modelSquareMessages })
@@ -360,8 +368,10 @@ onMounted(loadData)
   --filter-line: #e9edf2;
   --filter-soft: #f8fafc;
   --filter-selected: #f0fdfa;
+  --filter-group-selected: #f4faf9;
+  --filter-check-selected: #deefeb;
   --filter-accent: #0f766e;
-  --filter-accent-line: #5eead4;
+  --filter-accent-line: #b9dad4;
   overflow: hidden;
   border: 1px solid var(--filter-line);
   border-radius: 16px;
@@ -426,33 +436,32 @@ onMounted(loadData)
   min-width: 0;
   gap: 6px;
   padding: 5px 10px;
-  border-width: 1px;
+  border: 1px solid transparent;
   border-radius: 10px;
+  background: transparent;
+  color: var(--filter-muted);
   font-size: 12px;
   font-weight: 600;
-  transition: background-color 0.2s, border-color 0.2s;
+  transition: background-color 0.2s, color 0.2s;
 }
 
-.platform-tab--all {
-  border-color: var(--filter-line);
+.platform-tab:hover {
   background: var(--filter-soft);
-  color: var(--filter-muted);
+  color: var(--filter-text);
 }
 
-.platform-tab--all-active {
-  @apply border-transparent bg-gradient-to-br from-primary-500 to-primary-600 text-white;
+.platform-tab--active,
+.platform-tab--active:hover {
+  background: var(--filter-selected);
+  color: var(--filter-accent);
 }
 
 .platform-count {
   padding: 1px 5px;
   border-radius: 5px;
-  background: rgba(127, 127, 127, 0.1);
+  background: rgba(127, 127, 127, 0.08);
   font-size: 10px;
   font-variant-numeric: tabular-nums;
-}
-
-.platform-tab[aria-pressed="true"] .platform-count {
-  background: rgba(255, 255, 255, 0.18);
 }
 
 .filter-refresh-button {
@@ -514,8 +523,7 @@ onMounted(loadData)
 
 .group-option--selected {
   border-color: var(--filter-accent-line);
-  background: var(--filter-selected);
-  box-shadow: inset 0 0 0 1px var(--filter-accent-line);
+  background: var(--filter-group-selected);
 }
 
 .group-option-heading {
@@ -526,7 +534,7 @@ onMounted(loadData)
 
 .group-option-name {
   min-width: 0;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
   line-height: 1.5;
   overflow-wrap: anywhere;
@@ -546,7 +554,9 @@ onMounted(loadData)
 }
 
 .group-option--selected .group-check {
-  @apply border-transparent bg-gradient-to-br from-primary-500 to-primary-600 text-white;
+  border-color: transparent;
+  background: var(--filter-check-selected);
+  color: var(--filter-accent);
 }
 
 .group-option-details {
@@ -609,8 +619,10 @@ onMounted(loadData)
   --filter-line: #334155;
   --filter-soft: #172235;
   --filter-selected: #143532;
+  --filter-group-selected: #192d2c;
+  --filter-check-selected: #294a45;
   --filter-accent: #5eead4;
-  --filter-accent-line: #2b7c72;
+  --filter-accent-line: #365752;
   background: #0f172a;
   box-shadow: none;
 }
@@ -621,7 +633,7 @@ onMounted(loadData)
 }
 
 :global(.dark .premium-filter-panel .group-option--selected .group-check) {
-  @apply border-transparent bg-gradient-to-br from-primary-500 to-primary-600;
+  background: var(--filter-check-selected);
 }
 
 @container (max-width: 680px) {

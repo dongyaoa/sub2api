@@ -30,7 +30,7 @@ func (s *OpenAIGatewayService) forwardResponsesViaRawChatCompletions(
 	account *Account,
 	body []byte,
 	startTime time.Time,
-) (*OpenAIForwardResult, error) {
+) (policyResult *OpenAIForwardResult, policyErr error) {
 	var responsesReq apicompat.ResponsesRequest
 	if err := json.Unmarshal(body, &responsesReq); err != nil {
 		writeOpenAIResponsesFallbackError(c, http.StatusBadRequest, "invalid_request_error", "Failed to parse request body")
@@ -126,6 +126,7 @@ func (s *OpenAIGatewayService) forwardResponsesViaRawChatCompletions(
 		return nil, err
 	}
 	defer func() { _ = resp.Body.Close() }()
+	defer s.observeGrokContentPolicyResponse(resp, account, originalModel, clientStream, startTime, &policyResult, &policyErr)()
 
 	if resp.StatusCode >= 400 {
 		respBody, upstreamMsg := s.readOpenAIUpstreamError(resp)

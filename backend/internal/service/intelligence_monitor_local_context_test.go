@@ -273,7 +273,7 @@ func TestIntelligenceLocalBufferedReadersWaitBeyondOrdinaryIdle(t *testing.T) {
 				switch reader {
 				case "responses_sse":
 					var response *apicompat.ResponsesResponse
-					response, _, _, err = svc.readOpenAICompatBufferedTerminal(resp, c, "iq-test", "iq-test")
+					response, _, _, _, err = svc.readOpenAICompatBufferedTerminal(resp, c, nil, "iq-test", "iq-test")
 					if trusted {
 						require.NotNil(t, response)
 					}

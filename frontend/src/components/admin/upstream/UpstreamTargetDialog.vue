@@ -78,6 +78,7 @@ import * as accountsAPI from '@/api/admin/accounts'
 import type { AccountListItem } from '@/types'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { isValidUpstreamEndpoint, upstreamEndpointErrorKey } from './upstreamEndpoint'
+import { defaultUpstreamMonitorModel, DEFAULT_UPSTREAM_MONITOR_INTERVAL } from './upstreamMonitorDefaults'
 const props = withDefaults(defineProps<{ show: boolean; target: UpstreamTarget | null; supplier: UpstreamSupplier | null; suppliers?: UpstreamSupplier[] }>(), { suppliers: () => [] })
 const emit = defineEmits<{ close: []; saved: [] }>()
 const { t } = useI18n()
@@ -88,8 +89,13 @@ const providerOptions = computed(() => [
 ])
 const apiModeOptions = [{ value: 'chat_completions', label: 'Chat Completions' }, { value: 'responses', label: 'Responses' }]
 const title = computed(() => t(props.target ? props.supplier ? 'upstreamCenter.editGroup' : 'upstreamCenter.editMonitor' : props.supplier ? 'upstreamCenter.addGroup' : 'upstreamCenter.addMonitor'))
-const defaults = (): UpstreamTargetInput => ({ supplier_id: props.supplier?.id || null, name: '', provider: 'openai', api_mode: 'chat_completions', endpoint: props.supplier?.website || '', api_key: '', newapi_user_id: undefined, newapi_access_token: '', models: ['gpt-5.6-sol'], enabled: true, interval_seconds: 30, timeout_seconds: 45, degraded_threshold_ms: 6000, account_ids: [], wallet_ref: 'default', notes: '' })
+const defaults = (): UpstreamTargetInput => ({ supplier_id: props.supplier?.id || null, name: '', provider: 'openai', api_mode: 'chat_completions', endpoint: props.supplier?.website || '', api_key: '', newapi_user_id: undefined, newapi_access_token: '', models: [defaultUpstreamMonitorModel('openai')], enabled: true, interval_seconds: DEFAULT_UPSTREAM_MONITOR_INTERVAL, timeout_seconds: 45, degraded_threshold_ms: 6000, account_ids: [], wallet_ref: 'default', notes: '' })
 const form = reactive<UpstreamTargetInput>(defaults())
+watch(() => form.provider, (provider, previous) => {
+  if (!props.target && form.models.length === 1 && form.models[0] === defaultUpstreamMonitorModel(previous)) {
+    form.models = [defaultUpstreamMonitorModel(provider)]
+  }
+}, { flush: 'sync' })
 const newapiEnabled = ref(false)
 const saving = ref(false), error = ref(''), modelsLoading = ref(false), modelError = ref(''), importing = ref(false)
 const discoveredModels = ref<string[]>([])

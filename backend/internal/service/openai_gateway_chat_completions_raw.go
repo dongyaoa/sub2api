@@ -71,7 +71,7 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletionsWithStartTime(
 	body []byte,
 	defaultMappedModel string,
 	startTime time.Time,
-) (*OpenAIForwardResult, error) {
+) (policyResult *OpenAIForwardResult, policyErr error) {
 
 	// 1. Parse minimal fields needed for routing/billing
 	originalModel := gjson.GetBytes(body, "model").String()
@@ -150,6 +150,15 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletionsWithStartTime(
 	if account.Platform == PlatformGrok {
 		bridgedBody, usage, bridged, bridgeErr := s.bridgeGrokComposerImageInputs(ctx, c, account, upstreamBody, token)
 		if bridgeErr != nil {
+			var policyErr *grokComposerContentPolicyError
+			if errors.As(bridgeErr, &policyErr) {
+				result := policyErr.result
+				result.Model = originalModel
+				result.BillingModel = billingModel
+				result.Stream = clientStream
+				result.Duration = time.Since(startTime)
+				return result, bridgeErr
+			}
 			var failoverErr *UpstreamFailoverError
 			if !errors.As(bridgeErr, &failoverErr) && c != nil && c.Writer != nil && !c.Writer.Written() {
 				writeChatCompletionsError(c, http.StatusBadGateway, "upstream_error", bridgeErr.Error())
@@ -218,6 +227,7 @@ func (s *OpenAIGatewayService) forwardAsRawChatCompletionsWithStartTime(
 		return nil, err
 	}
 	defer func() { _ = resp.Body.Close() }()
+	defer s.observeGrokContentPolicyResponse(resp, account, originalModel, clientStream, startTime, &policyResult, &policyErr)()
 
 	// 7. Handle error response with failover
 	if resp.StatusCode >= 400 {
@@ -544,7 +554,8 @@ func (s *OpenAIGatewayService) bufferRawChatCompletions(
 		usage = parsedUsage
 	}
 	responseModel := gjson.GetBytes(respBody, "model").String()
-	if requiresBillableGrokChatUsage(account, billingModel, upstreamModel, responseModel) && !hasBillableGrokChatUsage(usage) {
+	if requiresBillableGrokChatUsage(account, billingModel, upstreamModel, responseModel) && !hasBillableGrokChatUsage(usage) &&
+		!(account != nil && account.IsGrok() && isGrokBillableContentPolicyRejection(resp.StatusCode, respBody)) {
 		upstreamRequestID := firstNonEmpty(requestID, resp.Header.Get("xai-request-id"))
 		return nil, newGrokMissingUsageFailoverError(c, account, upstreamRequestID)
 	}

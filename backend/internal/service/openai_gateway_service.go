@@ -239,6 +239,9 @@ type OpenAIForwardResult struct {
 	UpstreamHeaders http.Header
 	Usage           OpenAIUsage
 	Model           string // 原始模型（用于响应和日志显示）
+	// GrokContentPolicyRejection replaces normal usage pricing with xAI's
+	// fixed per-request Usage Guidelines Violation Fee.
+	GrokContentPolicyRejection bool
 	// BillingModel is the model used for cost calculation.
 	// When non-empty, CalculateCost uses this instead of Model.
 	// This is set by the Anthropic Messages conversion path where
@@ -311,6 +314,9 @@ type OpenAIForwardResult struct {
 // that may clear model-scoped transient state. The zero value remains a success
 // for existing non-WS callers.
 func (r *OpenAIForwardResult) SucceededForScheduling() bool {
+	if r != nil && r.GrokContentPolicyRejection {
+		return false
+	}
 	if r == nil || !r.OpenAIWSMode || r.UpstreamTerminalEvent == "" {
 		return true
 	}

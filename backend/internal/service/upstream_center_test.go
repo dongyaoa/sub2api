@@ -75,26 +75,28 @@ func validUpstreamTestTarget() *UpstreamTarget {
 }
 
 func TestUpstreamCreateDefaultsAndExplicitConfiguration(t *testing.T) {
-	for _, supplier := range []json.RawMessage{nil, json.RawMessage("2")} {
-		repo := &upstreamTestRepo{}
-		svc := NewUpstreamCenterService(repo, upstreamTestEncryptor{}, nil, nil)
-		name, endpoint, key := "New monitor", "https://8.8.8.8", "private-test-key"
-		input := UpstreamTargetInput{SupplierID: supplier, Name: &name, Endpoint: &endpoint, APIKey: &key}
-		created, err := svc.SaveTarget(context.Background(), 0, input)
-		require.NoError(t, err)
-		require.Equal(t, []string{"gpt-5.6-sol"}, created.Models)
-		require.Equal(t, 30, created.IntervalSeconds)
-		require.Equal(t, created.Models, repo.saved.Models)
-		require.Equal(t, created.IntervalSeconds, repo.saved.IntervalSeconds)
-		models, interval := []string{"custom-model"}, 120
-		input.Models, input.IntervalSeconds = &models, &interval
-		created, err = svc.SaveTarget(context.Background(), 0, input)
-		require.NoError(t, err)
-		require.Equal(t, models, created.Models)
-		require.Equal(t, interval, created.IntervalSeconds)
-		models = []string{}
-		_, err = svc.SaveTarget(context.Background(), 0, input)
-		require.ErrorIs(t, err, ErrUpstreamInvalid, "an explicitly empty model list must not silently select the default")
+	for provider, model := range map[string]string{MonitorProviderOpenAI: "gpt-6.1-sol", MonitorProviderAnthropic: "claude-sonnet-5", MonitorProviderGemini: "gemini-2.5-flash"} {
+		for _, supplier := range []json.RawMessage{nil, json.RawMessage("2")} {
+			repo := &upstreamTestRepo{}
+			svc := NewUpstreamCenterService(repo, upstreamTestEncryptor{}, nil, nil)
+			name, endpoint, key := "New monitor", "https://8.8.8.8", "private-test-key"
+			input := UpstreamTargetInput{SupplierID: supplier, Name: &name, Provider: &provider, Endpoint: &endpoint, APIKey: &key}
+			created, err := svc.SaveTarget(context.Background(), 0, input)
+			require.NoError(t, err)
+			require.Equal(t, []string{model}, created.Models)
+			require.Equal(t, 60, created.IntervalSeconds)
+			require.Equal(t, created.Models, repo.saved.Models)
+			require.Equal(t, created.IntervalSeconds, repo.saved.IntervalSeconds)
+			models, interval := []string{"custom-model"}, 120
+			input.Models, input.IntervalSeconds = &models, &interval
+			created, err = svc.SaveTarget(context.Background(), 0, input)
+			require.NoError(t, err)
+			require.Equal(t, models, created.Models)
+			require.Equal(t, interval, created.IntervalSeconds)
+			models = []string{}
+			_, err = svc.SaveTarget(context.Background(), 0, input)
+			require.ErrorIs(t, err, ErrUpstreamInvalid, "an explicitly empty model list must not silently select the default")
+		}
 	}
 }
 

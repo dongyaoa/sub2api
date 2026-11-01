@@ -39,7 +39,7 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 	originalModel string,
 	reqStream bool,
 	startTime time.Time,
-) (*OpenAIForwardResult, error) {
+) (policyResult *OpenAIForwardResult, policyErr error) {
 	if account.Type != AccountTypeOAuth && !account.IsGrokAPIKeyLike() {
 		return nil, fmt.Errorf("grok account type %s is not supported by Responses forwarding", account.Type)
 	}
@@ -131,6 +131,10 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 		if resp.Body != nil {
 			_ = resp.Body.Close()
 		}
+		if isGrokContentPolicyRejection(resp.StatusCode, respBody) {
+			resp.Body = io.NopCloser(bytes.NewReader(respBody))
+			break
+		}
 		invalidEncryptedContent := isGrokInvalidEncryptedContentResponse(resp.StatusCode, respBody)
 		if !invalidEncryptedContent && !isGrokCompactionReplayDecodeError(resp.StatusCode, respBody) {
 			resp.Body = io.NopCloser(bytes.NewReader(respBody))
@@ -157,6 +161,7 @@ func (s *OpenAIGatewayService) forwardGrokResponses(
 		slog.Info("grok_replay_decode_retry", "account_id", account.ID, "cache_identity_present", cacheIdentity != "")
 	}
 	defer func() { _ = resp.Body.Close() }()
+	defer s.observeGrokContentPolicyResponse(resp, account, originalModel, reqStream, startTime, &policyResult, &policyErr)()
 
 	if resp.StatusCode >= 400 {
 		respBody := s.readUpstreamErrorBody(resp)
@@ -1416,6 +1421,11 @@ func (s *OpenAIGatewayService) describeGrokComposerImage(
 
 	if resp.StatusCode >= 400 {
 		respBody := s.readUpstreamErrorBody(resp)
+		if isGrokBillableContentPolicyRejection(resp.StatusCode, respBody) {
+			result, policyErr := s.grokContentPolicyErrorResponse(resp, c, account, respBody, grokComposerImageBridgeVisionModel)
+			result.UpstreamEndpoint = openAIResponsesUpstreamEndpoint
+			return "", OpenAIUsage{}, &grokComposerContentPolicyError{result: result, err: policyErr}
+		}
 		upstreamMsg := sanitizeUpstreamErrorMessage(extractUpstreamErrorMessage(respBody))
 		if upstreamMsg == "" {
 			upstreamMsg = fmt.Sprintf("xAI image bridge upstream returned status %d", resp.StatusCode)
@@ -1456,6 +1466,11 @@ func (s *OpenAIGatewayService) describeGrokComposerImage(
 	respBody, err := ReadUpstreamResponseBody(resp.Body, s.cfg, c, nil)
 	if err != nil {
 		return "", OpenAIUsage{}, fmt.Errorf("read grok composer image bridge response: %w", err)
+	}
+	if isGrokBillableContentPolicyRejection(resp.StatusCode, respBody) {
+		result, policyErr := s.grokContentPolicyErrorResponse(resp, c, account, respBody, grokComposerImageBridgeVisionModel)
+		result.UpstreamEndpoint = openAIResponsesUpstreamEndpoint
+		return "", OpenAIUsage{}, &grokComposerContentPolicyError{result: result, err: policyErr}
 	}
 
 	var parsed apicompat.ResponsesResponse
