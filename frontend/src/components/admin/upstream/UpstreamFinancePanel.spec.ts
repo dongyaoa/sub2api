@@ -110,6 +110,29 @@ describe('upstream consumption and profit totals', () => {
     wrapper.unmount()
   })
 
+  it('keeps local 30-day revenue but stops displaying disabled New API period costs and profit', async () => {
+    financeSummary.mockResolvedValue({
+      today: summary(),
+      last_30_days: summary({ revenue: 120, remote_used: 40, profit: 80, period_cost_disabled: true, remote_stale: true, cost_partial: true, missing_key_count: 1 }),
+    })
+    const wrapper = mountPanel()
+    await flushPromises()
+    const today = wrapper.get('[data-period="today"]')
+    const month = wrapper.get('[data-period="last30Days"]')
+    for (const value of [12, 4, 8]) expect(today.text()).toContain(money(value))
+    expect(today.find('[data-testid="newapi-today-only"]').exists()).toBe(false)
+    expect(month.text()).toContain(money(120))
+    expect(month.findAll('.text-lg').map(metric => metric.text())).toEqual([
+      'upstreamCenter.newapi.periodNotCalculated', money(120), 'upstreamCenter.newapi.periodNotCalculated',
+    ])
+    expect(month.get('[data-testid="newapi-today-only"]').text()).toBe('upstreamCenter.newapi.todayOnlyHint')
+    for (const hidden of [money(40), money(80), 'upstreamCenter.finance.pending', 'upstreamCenter.financeUnavailable', 'upstreamCenter.finance.stale', 'upstreamCenter.wallet.syncedAt']) {
+      expect(month.text()).not.toContain(hidden)
+    }
+    expect(month.find('[data-testid="finance-partial"]').exists()).toBe(false)
+    wrapper.unmount()
+  })
+
   it('does not fabricate a zero cost or profit when upstream usage is missing', async () => {
     financeSummary.mockResolvedValue({
       today: summary({ remote_used: null, profit: -99, cost_source: 'estimated' }),

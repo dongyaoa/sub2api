@@ -97,6 +97,7 @@ export interface UpstreamFinanceSummary {
   remote_used: number | null
   remote_synced_at: string | null
   remote_stale?: boolean
+  period_cost_disabled?: boolean
   remote_raw_used?: number | null
   conversion_applied?: boolean
   cost_partial?: boolean

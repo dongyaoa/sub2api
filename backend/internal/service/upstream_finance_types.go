@@ -15,6 +15,9 @@ type UpstreamFinanceSummary struct {
 	RequestCount int64    `json:"request_count"`
 	// Pending account imports make local revenue incomplete until the worker finishes.
 	HistorySyncPending int `json:"history_sync_pending"`
+	// New API synchronizes today's actual usage only; historical cost and profit
+	// must not reuse previously stored 30-day observations as current data.
+	PeriodCostDisabled bool `json:"period_cost_disabled,omitempty"`
 	// Includes input, output, cache creation and cache read tokens. An expired
 	// source usage log without a token snapshot makes the aggregate unknown.
 	TotalTokens          *int64 `json:"total_tokens"`

@@ -232,10 +232,21 @@ func (s *UpstreamFinanceService) syncBalance(ctx context.Context, targetID int64
 	}
 	cancelFetch()
 	interval := upstreamBalanceInterval
-	if snapshot.Billing != nil && snapshot.Billing.Source == "newapi_token" && snapshot.Status == "ok" {
-		// New API's key-usage endpoint defaults to 20 requests / 20 minutes per
-		// source IP; this metadata cadence never changes availability probes.
-		interval = 20 * time.Minute
+	if snapshot.Billing != nil {
+		switch snapshot.Billing.Source {
+		case "newapi_account":
+			// Today's usage has a short shared cache. Resume interrupted scans on
+			// the next pass instead of waiting behind historical backfill.
+			if snapshot.Status == "ok" {
+				interval = 30 * time.Second
+			}
+		case "newapi_token":
+			if snapshot.Status == "ok" {
+				// Key-only reads share a site limit; the quota gate rotates pending
+				// Keys fairly and still leaves room under the upstream IP limit.
+				interval = newAPIQuotaRequestGap
+			}
+		}
 	}
 	if err = s.repo.SaveBalance(ctx, target, upstreamBalanceIdentity(target), snapshot, token, s.now().Add(interval)); err != nil {
 		return nil, err

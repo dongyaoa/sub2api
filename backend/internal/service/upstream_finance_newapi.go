@@ -133,7 +133,7 @@ func (s *UpstreamFinanceService) fetchNewAPIBalance(ctx context.Context, target 
 	base := strings.TrimSuffix(usageURL, "/v1/usage")
 	recognized := false
 	if target.NewAPIAccessTokenEncrypted == "" {
-		if !s.allowNewAPIQuota(base) {
+		if !s.allowNewAPIQuota(base, target.ID) {
 			_, _ = fail("newapi_rate_limited")
 			return snapshot, s.isNewAPISite(base)
 		}

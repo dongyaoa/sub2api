@@ -75,6 +75,7 @@ func applyUpstreamPeriodProfit(summary *UpstreamFinanceSummary, q UpstreamFinanc
 	keys := make(map[string]*keyObservation)
 	missing, archived, inactive := 0, 0, 0
 	summary.HistorySyncPending = 0
+	summary.PeriodCostDisabled = false
 	pendingHistory := make(map[int64]int)
 	for _, window := range sources.PendingHistory {
 		if window.From.Before(q.To) && window.Until.After(q.From) &&
@@ -101,6 +102,10 @@ func applyUpstreamPeriodProfit(summary *UpstreamFinanceSummary, q UpstreamFinanc
 		participates := q.TargetID != nil || !lastBusiness.Before(periodStart) && lastBusiness.Before(dayEnd)
 		if !participates {
 			inactive++
+		}
+		if last30Days && participates && isNewAPIFinanceTarget(target, sources.Balances[id]) {
+			summary.PeriodCostDisabled = true
+			continue
 		}
 		endpoint, err := upstreamUsageURL(target.Endpoint)
 		if err != nil || target.APIKeyFingerprint == "" {
@@ -201,6 +206,12 @@ func applyUpstreamPeriodProfit(summary *UpstreamFinanceSummary, q UpstreamFinanc
 	summary.RemoteSyncedAt, summary.Profit = nil, nil
 	summary.RemoteStale = stale
 	summary.CostSource = "unknown"
+	if summary.PeriodCostDisabled {
+		// Local 30-day revenue remains useful, but a mixed total cannot present
+		// only the other providers' costs as the complete 30-day upstream cost.
+		summary.CostPartial, summary.RemoteStale, summary.ConversionApplied = false, false, false
+		return
+	}
 	if known == 0 && missing > 0 {
 		return
 	}

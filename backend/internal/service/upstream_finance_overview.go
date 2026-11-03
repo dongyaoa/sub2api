@@ -102,6 +102,9 @@ func completeUpstreamBalanceSnapshot(snapshot *UpstreamBalanceSnapshot, target *
 	if snapshot.Billing == nil {
 		snapshot.Billing = pendingUpstreamRemoteBilling()
 	}
+	if isNewAPIFinanceTarget(target, snapshot) {
+		snapshot.Last30DaysUsed, snapshot.PeriodStart, snapshot.PeriodEnd, snapshot.PeriodSyncedAt = nil, nil, nil, nil
+	}
 	// Usage fallback can outlive midnight even though the wallet remains valid.
 	// Never label a prior day's retained amount as today's key spending.
 	today := timezone.StartOfDay(now)

@@ -18,6 +18,8 @@ const (
 	// Reserve two reads for each Key-only synchronization.
 	newAPIQuotaRequestGap  = 130 * time.Second
 	newAPISearchRequestGap = 7 * time.Second
+	newAPIQuotaWaiterTTL   = 5 * time.Minute
+	newAPIQuotaWaiterLimit = 256
 )
 
 // Keep only verified identifiers, never keys, response bodies, or quota values.
@@ -34,6 +36,12 @@ type newAPIFinanceCache struct {
 type newAPIQuotaSite struct {
 	after      time.Time
 	knownUntil time.Time
+	waiters    []newAPIQuotaWaiter
+}
+
+type newAPIQuotaWaiter struct {
+	targetID int64
+	seenAt   time.Time
 }
 
 type newAPITokenIDEntry struct {
@@ -151,7 +159,7 @@ func (s *UpstreamFinanceService) lookupNewAPIToken(ctx context.Context, base, ke
 
 // The key-only usage endpoint shares a default 20 requests / 20 minutes limit
 // across the calling IP. Different keys on the same site must share this gate.
-func (s *UpstreamFinanceService) allowNewAPIQuota(base string) bool {
+func (s *UpstreamFinanceService) allowNewAPIQuota(base string, targetIDs ...int64) bool {
 	identity := newAPIOriginIdentity(base)
 	if identity == "" {
 		return false
@@ -161,12 +169,62 @@ func (s *UpstreamFinanceService) allowNewAPIQuota(base string) bool {
 	cache.mu.Lock()
 	defer cache.mu.Unlock()
 	entry := cache.quotaSites[identity]
-	if now.Before(entry.after) || !cache.reserveQuotaSite(identity, now) {
+	if !cache.reserveQuotaSite(identity, now) {
 		return false
+	}
+	var targetID int64
+	if len(targetIDs) > 0 {
+		targetID = targetIDs[0]
+	}
+	entry.waiters = activeNewAPIQuotaWaiters(entry.waiters, now)
+	if targetID > 0 {
+		found := false
+		for i := range entry.waiters {
+			if entry.waiters[i].targetID == targetID {
+				entry.waiters[i].seenAt = now
+				found = true
+				break
+			}
+		}
+		if !found {
+			if len(entry.waiters) >= newAPIQuotaWaiterLimit {
+				cache.quotaSites[identity] = entry
+				return false
+			}
+			entry.waiters = append(entry.waiters, newAPIQuotaWaiter{targetID: targetID, seenAt: now})
+		}
+	}
+	// The next available site slot belongs to the oldest active waiter. Without
+	// this queue, the first scheduled Key could continually win the shared gate.
+	if now.Before(entry.after) || len(entry.waiters) > 0 && entry.waiters[0].targetID != targetID {
+		cache.quotaSites[identity] = entry
+		return false
+	}
+	if len(entry.waiters) > 0 {
+		entry.waiters = entry.waiters[1:]
 	}
 	entry.after = now.Add(newAPIQuotaRequestGap)
 	cache.quotaSites[identity] = entry
 	return true
+}
+
+func activeNewAPIQuotaWaiters(waiters []newAPIQuotaWaiter, now time.Time) []newAPIQuotaWaiter {
+	active := waiters[:0]
+	for _, waiter := range waiters {
+		if now.Sub(waiter.seenAt) < newAPIQuotaWaiterTTL {
+			active = append(active, waiter)
+		}
+	}
+	return active
+}
+
+func hasActiveNewAPIQuotaWaiter(waiters []newAPIQuotaWaiter, now time.Time) bool {
+	for _, waiter := range waiters {
+		if now.Sub(waiter.seenAt) < newAPIQuotaWaiterTTL {
+			return true
+		}
+	}
+	return false
 }
 
 func newAPIOriginIdentity(base string) string {
@@ -201,7 +259,7 @@ func (cache *newAPIFinanceCache) reserveQuotaSite(identity string, now time.Time
 	oldestKey := ""
 	var oldest time.Time
 	for key, entry := range cache.quotaSites {
-		if !now.Before(entry.after) && (oldestKey == "" || entry.knownUntil.Before(oldest)) {
+		if !now.Before(entry.after) && !hasActiveNewAPIQuotaWaiter(entry.waiters, now) && (oldestKey == "" || entry.knownUntil.Before(oldest)) {
 			oldestKey, oldest = key, entry.knownUntil
 		}
 	}

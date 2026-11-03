@@ -18,6 +18,8 @@ const (
 	newAPIUsageMaxPages        = 512
 	newAPIUsageHistoryMaxPages = 8192
 	newAPIUsageCacheLimit      = 128
+	newAPIUsageCacheTTL        = 30 * time.Second
+	newAPIUsageRetryDelay      = 30 * time.Second
 )
 
 // Official contracts (QuantumNous/new-api v0.10.8 and v1.0.0-rc.40):
@@ -40,25 +42,21 @@ type newAPIUsagePage struct {
 	Items    []newAPIUsageLog `json:"items"`
 }
 
-func setNewAPIUsageWindow(snapshot *UpstreamBalanceSnapshot, start time.Time, amount float64, month bool) {
+func setNewAPIUsageWindow(snapshot *UpstreamBalanceSnapshot, start time.Time, amount float64) {
 	end := start.AddDate(0, 0, 1)
-	if month {
-		from := start.AddDate(0, 0, -29)
-		snapshot.Last30DaysUsed, snapshot.PeriodStart, snapshot.PeriodEnd = &amount, &from, &end
-	} else {
-		snapshot.DayUsed, snapshot.DayStart, snapshot.DayEnd = &amount, &start, &end
-	}
+	snapshot.DayUsed, snapshot.DayStart, snapshot.DayEnd = &amount, &start, &end
 }
 
 func (s *UpstreamFinanceService) fetchNewAPIRecentUsage(ctx context.Context, base, key string, snapshot *UpstreamBalanceSnapshot, dayStart time.Time) string {
+	snapshot.Last30DaysUsed, snapshot.PeriodStart, snapshot.PeriodEnd, snapshot.PeriodSyncedAt = nil, nil, nil, nil
 	raw, code := s.newAPIGet(ctx, base, "/api/log/token", key, 0, nil)
 	data, ok := newAPIData(raw)
 	var logs []newAPIUsageLog
 	if code != "" || !ok || !decodeNewAPI(data, &logs) || logs == nil {
 		return "newapi_usage_unavailable"
 	}
-	monthStart, end := dayStart.AddDate(0, 0, -29).Unix(), dayStart.AddDate(0, 0, 1).Unix()
-	var day, month, total float64
+	end := dayStart.AddDate(0, 0, 1).Unix()
+	var day, total float64
 	var owner, token, oldest int64
 	for i, log := range logs {
 		if log.UserID <= 0 || log.TokenID <= 0 || log.CreatedAt <= 0 || log.CreatedAt >= end ||
@@ -79,9 +77,6 @@ func (s *UpstreamFinanceService) fetchNewAPIRecentUsage(ctx context.Context, bas
 		if log.CreatedAt >= dayStart.Unix() {
 			day += *log.Quota
 		}
-		if log.CreatedAt >= monthStart {
-			month += *log.Quota
-		}
 	}
 	if !newAPIQuota(&total, false) {
 		return "newapi_usage_incomplete"
@@ -91,12 +86,9 @@ func (s *UpstreamFinanceService) fetchNewAPIRecentUsage(ctx context.Context, bas
 	// cumulative raw quota (which proves no positive charge is omitted).
 	all := snapshot.TotalUsed != nil && total == *snapshot.TotalUsed
 	if all || (oldest > 0 && oldest < dayStart.Unix()) {
-		setNewAPIUsageWindow(snapshot, dayStart, day, false)
+		setNewAPIUsageWindow(snapshot, dayStart, day)
 	}
-	if all || (oldest > 0 && oldest < monthStart) {
-		setNewAPIUsageWindow(snapshot, dayStart, month, true)
-	}
-	if snapshot.DayUsed == nil || snapshot.Last30DaysUsed == nil {
+	if snapshot.DayUsed == nil {
 		return "newapi_usage_account_auth_required"
 	}
 	return ""
@@ -293,14 +285,19 @@ func (s *UpstreamFinanceService) newAPIAccountLogTotals(ctx context.Context, bas
 		entry.scan = nil
 	}
 	entry.syncedAt, entry.errorCode = scan.until, code
-	ttl := 2 * time.Minute
+	ttl := newAPIUsageCacheTTL
 	if history {
 		ttl = 30 * time.Minute
 	}
 	if code != "" {
-		ttl = 3 * time.Minute
+		ttl = newAPIUsageRetryDelay
 	}
 	entry.expiresAt = s.now().Add(ttl)
+	if code == "" && !history && scan.until.Add(ttl).Before(entry.expiresAt) {
+		// Completing a long resumed scan must not impose another cache wait
+		// before its old cutoff can be caught up to current consumption.
+		entry.expiresAt = scan.until.Add(ttl)
+	}
 	close(entry.ready)
 	cache.mu.Unlock()
 	return entry.used, entry.syncedAt, code
@@ -506,29 +503,30 @@ func (s *UpstreamFinanceService) resumeNewAPIAccountLogWindow(ctx context.Contex
 func ptrNewAPIQuota(value float64) *float64 { return &value }
 
 func (s *UpstreamFinanceService) fetchNewAPIAccountUsage(ctx context.Context, base, key string, target *UpstreamFinanceTarget, tokenID int64, snapshot *UpstreamBalanceSnapshot, dayStart time.Time) string {
+	snapshot.Last30DaysUsed, snapshot.PeriodStart, snapshot.PeriodEnd, snapshot.PeriodSyncedAt = nil, nil, nil, nil
 	// Freeze the time boundary before any page is requested. Calls posted after
 	// it cannot shift offsets while a busy account is being paginated.
 	until := s.now().UTC().Truncate(time.Second)
 	dayCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
 	today, syncedAt, code := s.newAPIAccountLogTotals(dayCtx, base, key, target.NewAPIUserID, dayStart, until, false)
-	cancel()
 	if code != "" {
 		return code
 	}
-	setNewAPIUsageWindow(snapshot, dayStart, today[tokenID], false)
-	snapshot.SyncedAt = &syncedAt
-	// Historical cost has a separate, smaller budget. Failure must not discard
-	// a valid today result; the repository retains any previous period snapshot.
-	monthCtx, cancel := context.WithTimeout(ctx, 8*time.Second)
-	history, _, code := s.newAPIAccountLogTotals(monthCtx, base, key, target.NewAPIUserID, dayStart.AddDate(0, 0, -29), dayStart, true)
-	cancel()
-	if code != "" {
-		return "newapi_usage_incomplete"
+	latestUntil := s.now().UTC().Truncate(time.Second)
+	if dayCtx.Err() == nil && latestUntil.Sub(syncedAt) >= newAPIUsageCacheTTL && latestUntil.Before(dayStart.AddDate(0, 0, 1)) {
+		// A resumed scan can finish with a much older fixed upper bound. Spend
+		// the remaining daily budget on one delta rather than reading history
+		// or delaying the catch-up until a later polling round.
+		catchupCtx := context.WithValue(dayCtx, newAPIUsageForceKey{}, true)
+		updated, updatedAt, updateCode := s.newAPIAccountLogTotals(catchupCtx, base, key, target.NewAPIUserID, dayStart, latestUntil, false)
+		if updateCode == "" {
+			today, syncedAt = updated, updatedAt
+		} else {
+			code = updateCode
+		}
 	}
-	month := today[tokenID] + history[tokenID]
-	if !newAPIQuota(&month, false) {
-		return "newapi_usage_incomplete"
-	}
-	setNewAPIUsageWindow(snapshot, dayStart, month, true)
-	return ""
+	setNewAPIUsageWindow(snapshot, dayStart, today[tokenID])
+	snapshot.SyncedAt, snapshot.DaySyncedAt = &syncedAt, &syncedAt
+	return code
 }

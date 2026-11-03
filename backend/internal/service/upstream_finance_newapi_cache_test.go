@@ -239,6 +239,39 @@ func TestNewAPICacheGatesQuotaPerOriginAndSearchPerUser(t *testing.T) {
 	require.False(t, svc.allowNewAPIQuota("https://key@example.com"))
 }
 
+func TestNewAPIQuotaGateRotatesWaitingKeysWithoutBypassingOriginLimit(t *testing.T) {
+	svc, _, now := newAPICacheFixture(t)
+	base := "https://example.com/prefix"
+	require.True(t, svc.allowNewAPIQuota(base, 1))
+	require.False(t, svc.allowNewAPIQuota(base, 2))
+	require.False(t, svc.allowNewAPIQuota(base, 3))
+	*now = now.Add(newAPIQuotaRequestGap)
+	require.False(t, svc.allowNewAPIQuota(base, 1), "a recently served Key must yield to the oldest waiter")
+	require.True(t, svc.allowNewAPIQuota("https://example.com/other", 2), "paths share the origin queue")
+	require.False(t, svc.allowNewAPIQuota(base, 3), "only one Key gets each 130-second site slot")
+	*now = now.Add(newAPIQuotaRequestGap)
+	require.False(t, svc.allowNewAPIQuota(base, 1))
+	require.True(t, svc.allowNewAPIQuota(base, 3))
+	*now = now.Add(newAPIQuotaRequestGap)
+	require.True(t, svc.allowNewAPIQuota(base, 1))
+}
+
+func TestNewAPIQuotaGateDropsInactiveWaitersAndBoundsQueue(t *testing.T) {
+	svc, _, now := newAPICacheFixture(t)
+	base := "https://example.com"
+	require.True(t, svc.allowNewAPIQuota(base, 1))
+	for id := int64(2); id <= newAPIQuotaWaiterLimit+1; id++ {
+		require.False(t, svc.allowNewAPIQuota(base, id))
+	}
+	require.False(t, svc.allowNewAPIQuota(base, newAPIQuotaWaiterLimit+2))
+	require.Len(t, svc.newAPICache.quotaSites[newAPIOriginIdentity(base)].waiters, newAPIQuotaWaiterLimit)
+	*now = now.Add(newAPIQuotaRequestGap)
+	require.False(t, svc.allowNewAPIQuota(base, 1), "queue pressure never permits skipping the oldest active Key")
+	*now = now.Add(newAPIQuotaWaiterTTL)
+	require.True(t, svc.allowNewAPIQuota(base, 1), "removed or disabled targets must not block the site indefinitely")
+	require.Empty(t, svc.newAPICache.quotaSites[newAPIOriginIdentity(base)].waiters)
+}
+
 func TestNewAPICacheRecognitionIsBoundedAndDoesNotCrossPathPrefixes(t *testing.T) {
 	svc, _, now := newAPICacheFixture(t)
 	require.False(t, svc.isNewAPISite("https://example.com/newapi"))

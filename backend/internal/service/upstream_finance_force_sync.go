@@ -42,6 +42,15 @@ func newAPIUsageSyncStatus(snapshot *UpstreamBalanceSnapshot, now time.Time) str
 	if snapshot == nil {
 		return "failed"
 	}
+	// New API no longer has a historical backfill. An incomplete result now
+	// means today's scan/delta is still pending, even if a prior verified cutoff
+	// from this attempt is recent enough to remain visible.
+	if snapshot.Error == "newapi_usage_incomplete" || snapshot.Error == "newapi_rate_limited" {
+		return "pending"
+	}
+	if snapshot.Error != "" {
+		return "failed"
+	}
 	dayStart := timezone.StartOfDay(now)
 	observed := snapshot.DaySyncedAt
 	if observed == nil {
@@ -53,8 +62,5 @@ func newAPIUsageSyncStatus(snapshot *UpstreamBalanceSnapshot, now time.Time) str
 		observed != nil && !observed.Before(dayStart) && !observed.After(now) && now.Sub(*observed) <= upstreamProfitSnapshotMaxAge {
 		return "synced"
 	}
-	if snapshot.Error == "" || snapshot.Error == "newapi_usage_incomplete" || snapshot.Error == "newapi_rate_limited" {
-		return "pending"
-	}
-	return "failed"
+	return "pending"
 }

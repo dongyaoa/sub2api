@@ -148,9 +148,9 @@ func TestUpstreamNewAPIQuotaCadenceAndAccountRefresh(t *testing.T) {
 			svc.SyncDueBalances(context.Background())
 			require.NotNil(t, repo.snapshot)
 			require.Equal(t, "ok", repo.snapshot.Status)
-			interval := 20 * time.Minute
+			interval := newAPIQuotaRequestGap
 			if authorized {
-				interval = time.Minute
+				interval = 30 * time.Second
 			}
 			require.Equal(t, now.Add(interval), repo.next)
 			initialRequests := len(*paths)
@@ -162,7 +162,7 @@ func TestUpstreamNewAPIQuotaCadenceAndAccountRefresh(t *testing.T) {
 			svc.SyncDueBalances(context.Background())
 			require.Equal(t, "ok", repo.snapshot.Status)
 			if authorized {
-				require.Equal(t, []string{"/api/status", "/api/user/self", "/api/token/13", "/api/user/self/groups"}, (*paths)[initialRequests:])
+				require.Equal(t, []string{"/api/status", "/api/user/self", "/api/token/13", "/api/log/self", "/api/user/self/groups"}, (*paths)[initialRequests:])
 				require.Equal(t, 0.0, *repo.snapshot.Billing.EffectiveRateMultiplier)
 			}
 		})

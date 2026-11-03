@@ -29,6 +29,7 @@ func TestNewAPIForceSyncBypassesUsageCacheAndPublishesActualDay(t *testing.T) {
 			return metadata.RoundTrip(req)
 		}
 		from, _ := strconv.ParseInt(req.URL.Query().Get("start_timestamp"), 10, 64)
+		require.GreaterOrEqual(t, from, dayStart.Unix(), "force sync must never fetch historical New API consumption")
 		items, total := "[]", 0
 		if from >= dayStart.Unix() {
 			dayCalls++
@@ -53,7 +54,7 @@ func TestNewAPIForceSyncBypassesUsageCacheAndPublishesActualDay(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "synced", forced.UsageSyncStatus)
 	require.Equal(t, 1.0, *forced.DayUsed)
-	require.Equal(t, 1.0, *forced.Last30DaysUsed)
+	require.Nil(t, forced.Last30DaysUsed)
 	require.Equal(t, 2, dayCalls)
 	require.True(t, forced.SyncedAt.Equal(now))
 	require.Empty(t, repo.token, "force sync must release the regular lease")
@@ -85,7 +86,7 @@ func TestNewAPIForceSyncStatusRequiresFreshConsumptionNotWallet(t *testing.T) {
 		change     func(*UpstreamBalanceSnapshot)
 	}{
 		{"complete zero", "synced", func(*UpstreamBalanceSnapshot) {}},
-		{"today ready history pending", "synced", func(s *UpstreamBalanceSnapshot) { s.Error = "newapi_usage_incomplete" }},
+		{"recent cutoff with daily catchup pending", "pending", func(s *UpstreamBalanceSnapshot) { s.Error = "newapi_usage_incomplete" }},
 		{"wallet only", "pending", func(s *UpstreamBalanceSnapshot) { s.DayUsed = nil }},
 		{"old resumed scan", "pending", func(s *UpstreamBalanceSnapshot) { s.SyncedAt = &old }},
 		{"independent old day", "pending", func(s *UpstreamBalanceSnapshot) { s.DaySyncedAt = &old }},
