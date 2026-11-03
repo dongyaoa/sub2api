@@ -37,6 +37,7 @@
       </div>
     </dl>
     <UpstreamHistoryBar class="mt-2.5" :records="statistics?.timeline || []" :last-checked-at="statistics?.last_checked_at" :enabled="target.enabled" :legend="!compact" @select="record => emit('details', target, selectedModel, record)" />
+    <p v-if="usageSyncError" class="mt-2 text-[10px] leading-5 text-amber-600 dark:text-amber-400" data-testid="target-usage-sync-notice">{{ upstreamSyncError(usageSyncError, t) }}</p>
     <div v-if="!compact" class="mt-1.5 flex min-w-0 items-center justify-between gap-2 text-[10px] leading-4 text-gray-400 dark:text-dark-400">
       <span class="shrink-0">{{ t('upstreamCenter.nextCheck') }}</span>
       <time v-if="target.enabled" class="min-w-0 truncate text-right tabular-nums" :datetime="target.next_check_at || undefined" :title="dateTime(target.next_check_at)" data-testid="upstream-next-check">{{ dateTime(target.next_check_at) }}</time>
@@ -68,6 +69,7 @@ import UpstreamRateBadge from './UpstreamRateBadge.vue'
 import UpstreamStatusBadge from './UpstreamStatusBadge.vue'
 import { availability, availabilityColor, dateTime, latency, latencyColor, targetStatus } from './format'
 import { safeWebsite } from './safeWebsite'
+import { upstreamSyncError, walletUsageError } from './newapi'
 const props = withDefaults(defineProps<{ target: UpstreamTarget; compact?: boolean; busy?: boolean; running?: boolean }>(), { compact: false, busy: false, running: false })
 const emit = defineEmits<{ details: [target: UpstreamTarget, model: string, record?: UpstreamHistoryRecord]; run: [target: UpstreamTarget]; toggle: [target: UpstreamTarget]; edit: [target: UpstreamTarget]; delete: [target: UpstreamTarget] }>()
 const { t } = useI18n()
@@ -82,6 +84,7 @@ const selectedModel = ref(props.target.models?.[0] || '')
 watch(() => props.target.models, models => { if (!models.includes(selectedModel.value)) selectedModel.value = models[0] || '' })
 const modelOptions = computed(() => props.target.models.map(model => ({ value: model, label: `${model} · ${t(`upstreamCenter.status.${targetStatus(props.target, model)}`)}` })))
 const statistics = computed(() => props.target.statistics?.find(item => item.model === selectedModel.value))
+const usageSyncError = computed(() => props.target.balance?.status === 'ok' ? walletUsageError(props.target.balance) : '')
 const modelIssues = computed(() => props.target.models.filter(model => ['degraded', 'failed', 'error', 'stale'].includes(targetStatus(props.target, model))).length)
 </script>
 <style scoped>

@@ -3,9 +3,6 @@ package service
 import (
 	"context"
 	"encoding/json"
-	"fmt"
-	"io"
-	"net/http"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -75,40 +72,24 @@ func (s *UpstreamFinanceService) fetchRemoteBilling(ctx context.Context, target 
 	}
 	reqCtx, cancel := context.WithTimeout(ctx, upstreamBalanceTimeout)
 	defer cancel()
-	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, requestURL, nil)
-	if err != nil {
-		return fail("request_invalid")
-	}
-	req.Header.Set("Authorization", "Bearer "+key)
-	req.Header.Set("Accept", "application/json")
 	snapshot.Source = "sub2api_billing"
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return fail("upstream_request_failed")
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusMethodNotAllowed {
+	body, code := s.fetchUpstreamFinanceJSON(reqCtx, requestURL, key, upstreamBillingProbeMaxBodyBytes, upstreamBalanceTimeout, 2)
+	if code == "upstream_http_404" || code == "upstream_http_405" {
 		snapshot.Status = "unsupported"
 		return fail("billing_endpoint_unsupported")
 	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fail(fmt.Sprintf("upstream_http_%d", resp.StatusCode))
-	}
-	body, err := io.ReadAll(io.LimitReader(resp.Body, upstreamBillingProbeMaxBodyBytes+1))
-	if err != nil {
-		return fail("response_read_failed")
-	}
-	if len(body) > upstreamBillingProbeMaxBodyBytes {
-		return fail("response_too_large")
+	if code != "" {
+		return fail(code)
 	}
 	parsed, err := parseUpstreamRemoteBilling(body, "sub2api_billing")
 	if err != nil {
 		snapshot.Status = "unsupported"
 		return fail("billing_response_unsupported")
 	}
-	parsed.SyncedAt = &now
-	parsed.LastAttemptAt = &now
-	markUpstreamRemoteBillingStale(parsed, now)
+	completedAt := s.now().UTC()
+	parsed.SyncedAt = &completedAt
+	parsed.LastAttemptAt = &completedAt
+	markUpstreamRemoteBillingStale(parsed, completedAt)
 	return parsed
 }
 

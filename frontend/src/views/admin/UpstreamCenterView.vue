@@ -17,7 +17,6 @@
           <section v-if="overview" class="grid grid-cols-2 gap-3 lg:grid-cols-4" :aria-label="t(tab === 'suppliers' ? 'upstreamCenter.finance.title' : 'upstreamCenter.tabs.monitors')">
             <div v-for="metric in tab === 'suppliers' ? supplierMetrics : monitorMetrics" :key="metric.key" class="card flex min-w-0 items-center gap-3 px-3 py-3 sm:px-4"><div class="shrink-0 rounded-lg bg-primary-50 p-2 text-primary-600 dark:bg-primary-500/10 dark:text-primary-400"><Icon :name="metric.icon" size="md" :stroke-width="2" /></div><div class="min-w-0"><p class="text-[11px] font-medium text-gray-500 dark:text-dark-400">{{ t(metric.key) }}</p><p class="mt-0.5 truncate text-xl font-bold tabular-nums text-gray-900 dark:text-white" :class="metric.color">{{ metric.value }}</p><p v-if="metric.note" class="mt-0.5 truncate text-[10px] text-gray-400 dark:text-dark-400">{{ metric.note }}</p></div></div>
           </section>
-          <UpstreamFinanceNotice v-if="overview && tab === 'suppliers'" :summary="overview.summary" />
           <div class="flex flex-wrap items-center justify-between gap-2">
             <div class="relative w-full sm:max-w-[280px]"><Icon name="search" size="sm" class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" /><input v-model="search" class="input !py-2 !pl-9 !text-xs" :aria-label="t('upstreamCenter.search')" :placeholder="t('upstreamCenter.search')" /></div>
             <div class="flex w-full flex-wrap items-center justify-between gap-3 sm:w-auto">
@@ -33,7 +32,7 @@
           <div v-else-if="overview" class="supplier-browse grid min-w-0 gap-4" :class="{ 'supplier-browse-with-navigation': showSupplierNavigation }" :data-navigation-side="navigationSide" data-testid="supplier-browse">
             <UpstreamSupplierNavigation v-if="showSupplierNavigation" :items="supplierTabs" :selected-id="selectedSupplierId" @select="selectSupplier" />
             <div ref="supplierResults" class="supplier-results min-w-0" :class="showSupplierNavigation ? 'scroll-mt-[13rem] xl:scroll-mt-20' : 'scroll-mt-20'" :id="tab === 'suppliers' ? 'supplier-results' : undefined" :role="showSupplierNavigation ? 'tabpanel' : undefined" :aria-labelledby="showSupplierNavigation ? `supplier-filter-${selectedSupplierId ?? 'all'}` : undefined">
-            <div v-if="tab === 'suppliers' && filteredSuppliers.length" class="space-y-4"><UpstreamSupplierCard v-for="supplier in filteredSuppliers" :key="supplier.id" :supplier="supplier" :busy-ids="busyIds" :running-ids="runningIds" @edit="openSupplier" @delete="confirmSupplierDelete" @add-target="supplier => openTarget(null, supplier)" @order-groups="openGroupOrder" @edit-target="item => openTarget(item)" @delete-target="confirmTargetDelete" @intelligence="openGroupIntelligence" @target-details="showTargetDetails" @finance="showSupplierDetails" @run="runTarget" @toggle="toggleTarget" @sync="syncBalance" /></div>
+            <div v-if="tab === 'suppliers' && filteredSuppliers.length" class="space-y-4"><UpstreamSupplierCard v-for="supplier in filteredSuppliers" :key="supplier.id" :supplier="supplier" :busy-ids="busyIds" :running-ids="runningIds" :syncing-ids="forceSyncingIds" @edit="openSupplier" @delete="confirmSupplierDelete" @add-target="supplier => openTarget(null, supplier)" @order-groups="openGroupOrder" @edit-target="item => openTarget(item)" @delete-target="confirmTargetDelete" @intelligence="openGroupIntelligence" @force-sync="forceSyncTarget" @target-details="showTargetDetails" @finance="showSupplierDetails" @run="runTarget" @toggle="toggleTarget" @sync="syncBalance" /></div>
             <div v-else-if="tab === 'monitors' && filteredMonitors.length" class="grid grid-cols-[repeat(auto-fill,minmax(min(100%,22rem),1fr))] items-start gap-3"><UpstreamTargetCard v-for="target in filteredMonitors" :key="target.id" :target="target" :busy="busyIds.has(target.id)" :running="runningIds.has(target.id)" @edit="item => openTarget(item)" @delete="confirmTargetDelete" @details="showTargetDetails" @run="runTarget" @toggle="toggleTarget" /></div>
             <EmptyState v-else-if="search" class="card py-12" :title="t('upstreamCenter.noMatches')" />
             <EmptyState v-else class="card py-12" :title="t(tab === 'suppliers' ? 'upstreamCenter.emptySuppliers' : 'upstreamCenter.emptyMonitors')" :description="t(tab === 'suppliers' ? 'upstreamCenter.emptySuppliersHint' : 'upstreamCenter.emptyMonitorsHint')" :action-text="t(tab === 'suppliers' ? 'upstreamCenter.addSupplier' : 'upstreamCenter.addMonitor')" @action="tab === 'suppliers' ? openSupplier() : openTarget()"><template #icon><Icon :name="tab === 'suppliers' ? 'server' : 'chart'" size="xl" class="text-primary-500" /></template></EmptyState>
@@ -64,7 +63,6 @@ import Icon from '@/components/icons/Icon.vue'
 import EmptyState from '@/components/common/EmptyState.vue'
 import UpstreamDeleteDialog from '@/components/admin/upstream/UpstreamDeleteDialog.vue'
 import UpstreamStorageDialog from '@/components/admin/upstream/UpstreamStorageDialog.vue'
-import UpstreamFinanceNotice from '@/components/admin/upstream/UpstreamFinanceNotice.vue'
 import UpstreamSupplierNavigation from '@/components/admin/upstream/UpstreamSupplierNavigation.vue'
 import UpstreamSettingsDialog from '@/components/admin/upstream/UpstreamSettingsDialog.vue'
 import UpstreamBackToTop from '@/components/admin/upstream/UpstreamBackToTop.vue'
@@ -81,6 +79,7 @@ import { extractApiErrorMessage } from '@/utils/apiError'
 import { useAppStore } from '@/stores/app'
 import { useMonitorRefresh } from '@/composables/useMonitorRefresh'
 import { reconcileMonitorData } from '@/components/admin/upstream/monitorReconcile'
+import { hasFreshNewapiDailyUsage, isNewapiTarget, upstreamSyncError } from '@/components/admin/upstream/newapi'
 const IntelligenceConcurrencyDialog = defineAsyncComponent(() => import('@/components/admin/upstream/IntelligenceConcurrencyDialog.vue'))
 const UpstreamIntelligenceDialog = defineAsyncComponent(() => import('@/components/admin/upstream/UpstreamIntelligenceDialog.vue'))
 const { t } = useI18n()
@@ -130,7 +129,7 @@ watch(() => overview.value?.suppliers, suppliers => {
 })
 const storageDialog = ref(false), concurrencyDialog = ref(false), storageRevision = ref(0)
 function storageChanged() { storageRevision.value++; void reload() }
-const busyIds = ref(new Set<number>()), runningIds = ref(new Set<number>())
+const busyIds = ref(new Set<number>()), runningIds = ref(new Set<number>()), forceSyncingIds = ref(new Set<number>())
 const allGroups = computed(() => overview.value?.suppliers.flatMap(supplier => supplier.targets) || [])
 const intelligenceTargetId = ref<number | null>(null)
 const intelligenceTarget = computed(() => tab.value === 'suppliers' ? allGroups.value.find(target => target.id === intelligenceTargetId.value && target.provider === 'openai') || null : null)
@@ -211,7 +210,46 @@ function runTarget(target: UpstreamTarget) {
   })
 }
 function toggleTarget(target: UpstreamTarget) { void targetAction(target.id, async () => { await upstreamCenterAPI.updateTarget(target.id, { enabled: !target.enabled }) }) }
-function syncBalance(id: number) { void targetAction(id, async () => { const balance = await upstreamCenterAPI.syncBalance(id); if (balance.status === 'ok') app.showSuccess(t('upstreamCenter.balanceSynced')); else if (balance.status === 'unsupported') app.showInfo(t('upstreamCenter.wallet.unsupported')); else app.showError(balance.error || t('upstreamCenter.balanceFailed')) }) }
+function syncBalance(id: number) {
+  void targetAction(id, async () => {
+    try {
+      const balance = await upstreamCenterAPI.syncBalance(id)
+      if (disposed) return
+      const detail = upstreamSyncError(balance.error, t)
+      if (balance.status === 'ok') {
+        if (detail) app.showInfo(`${t('upstreamCenter.balanceSynced')} · ${detail}`)
+        else app.showSuccess(t('upstreamCenter.balanceSynced'))
+      } else if (balance.status === 'unsupported') app.showInfo(detail || t('upstreamCenter.wallet.unsupported'))
+      else app.showError(detail || t('upstreamCenter.balanceFailed'))
+    } catch (err) {
+      if (!disposed) app.showError(upstreamSyncError(extractApiErrorMessage(err, t('upstreamCenter.balanceFailed')), t))
+    }
+  })
+}
+function forceSyncTarget(target: UpstreamTarget) {
+  if (!isNewapiTarget(target) || busyIds.value.has(target.id)) return
+  void targetAction(target.id, async () => {
+    forceSyncingIds.value = new Set([...forceSyncingIds.value, target.id])
+    try {
+      const snapshot = await upstreamCenterAPI.forceSync(target.id)
+      if (disposed) return
+      const state = snapshot.usage_sync_status || (hasFreshNewapiDailyUsage(snapshot) ? 'synced' : snapshot.status === 'error' || snapshot.status === 'unsupported' ? 'failed' : 'pending')
+      const detail = upstreamSyncError(snapshot.error, t)
+      if (state === 'synced') {
+        if (detail) app.showInfo(`${t('upstreamCenter.newapi.forceSyncPartial')} · ${detail}`)
+        else app.showSuccess(t('upstreamCenter.newapi.forceSyncComplete'))
+      } else if (state === 'pending') {
+        app.showInfo(`${t('upstreamCenter.newapi.forceSyncPending')}${detail ? ` · ${detail}` : ''}`)
+      } else {
+        app.showError(`${t('upstreamCenter.newapi.forceSyncFailed')}${detail ? ` · ${detail}` : ''}`)
+      }
+    } catch (err) {
+      if (!disposed) app.showError(upstreamSyncError(extractApiErrorMessage(err, t('upstreamCenter.newapi.forceSyncFailed')), t))
+    } finally {
+      const ids = new Set(forceSyncingIds.value); ids.delete(target.id); forceSyncingIds.value = ids
+    }
+  })
+}
 const deleteItem = ref<{ kind: 'supplier' | 'target'; id: number; name: string } | null>(null)
 const deleting = ref(false), deleteError = ref('')
 function confirmSupplierDelete(supplier: UpstreamSupplier) { deleteError.value = ''; deleteItem.value = { kind: 'supplier', id: supplier.id, name: supplier.name } }

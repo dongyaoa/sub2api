@@ -44,12 +44,21 @@ export interface UpstreamBalanceSnapshot {
   quota_remaining: number | null
   unlimited_quota?: boolean
   today_used: number | null
+  day_used?: number | null
+  day_start?: string | null
+  day_end?: string | null
+  day_synced_at?: string | null
+  last_30_days_used?: number | null
+  period_start?: string | null
+  period_end?: string | null
+  period_synced_at?: string | null
   total_used: number | null
   currency: string
   status: 'ok' | 'error' | 'unsupported' | 'pending'
   synced_at: string | null
   last_attempt_at?: string | null
   currency_source?: 'reported' | 'sub2api_default' | 'newapi_status'
+  usage_sync_status?: 'synced' | 'pending' | 'failed'
   error: string
   billing?: UpstreamBillingSnapshot | null
 }
@@ -275,6 +284,9 @@ export const upstreamCenterAPI = {
   },
   async syncBalance(id: number): Promise<UpstreamBalanceSnapshot> {
     return (await apiClient.post<UpstreamBalanceSnapshot>(`${base}/targets/${id}/sync-balance`, undefined, { timeout: 60000 })).data
+  },
+  async forceSync(id: number): Promise<UpstreamBalanceSnapshot> {
+    return (await apiClient.post<UpstreamBalanceSnapshot>(`${base}/targets/${id}/force-sync`, undefined, { timeout: 60000 })).data
   },
   async models(input: { target_id?: number; account_id?: number; source_target_id?: number; provider: UpstreamProvider; endpoint: string; api_key?: string }): Promise<string[]> {
     return (await apiClient.post<{ models: string[] }>(`${base}/models`, input, { timeout: 60000 })).data.models

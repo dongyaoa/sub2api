@@ -8,8 +8,9 @@
         <UpstreamRateBadge :billing="target.balance?.billing" />
         <span class="font-mono text-[10px] text-gray-400 dark:text-dark-400">{{ target.api_key_masked }}</span>
       </div>
-      <div class="flex shrink-0 items-center gap-0.5">
+      <div class="flex max-w-full flex-wrap items-center gap-0.5">
         <button type="button" class="mr-1 inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium text-violet-700 transition-colors hover:bg-violet-50 hover:text-violet-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/40 disabled:cursor-not-allowed disabled:opacity-40 dark:text-violet-300 dark:hover:bg-violet-500/10 dark:hover:text-violet-200" :disabled="target.provider !== 'openai'" :title="target.provider === 'openai' ? t('intelligenceMonitor.groupMonitor.open') : t('intelligenceMonitor.groupMonitor.unsupported')" data-testid="group-intelligence" @click="emit('intelligence', target)"><Icon name="lightbulb" size="xs" />{{ t('intelligenceMonitor.groupMonitor.open') }}</button>
+        <button v-if="isNewapiTarget(target)" type="button" class="mr-1 inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium text-primary-600 hover:bg-primary-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-primary-400 dark:hover:bg-primary-500/10" :disabled="busy || syncing" :aria-busy="!!syncing" :title="t('upstreamCenter.newapi.forceSyncHint')" data-testid="group-force-sync" @click="emit('force-sync', target)"><Icon name="refresh" size="xs" :class="syncing && 'animate-spin'" />{{ t(syncing ? 'upstreamCenter.syncing' : 'upstreamCenter.newapi.forceSync') }}</button>
         <button type="button" class="mr-1 inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium text-primary-600 hover:bg-primary-50 disabled:opacity-50 dark:text-primary-400 dark:hover:bg-primary-500/10" :disabled="busy || running" @click="emit('run', target)">
           <Icon :name="running ? 'refresh' : 'play'" size="xs" :class="running && 'animate-spin'" />{{ t(running ? 'upstreamCenter.running' : 'upstreamCenter.run') }}
         </button>
@@ -76,6 +77,7 @@
     </div>
     <p v-if="target.finance?.remote_stale && target.finance.remote_synced_at" class="mt-2 text-[10px] text-amber-600 dark:text-amber-400">{{ t('upstreamCenter.finance.stale') }} · {{ t('upstreamCenter.wallet.syncedAt', { time: dateTime(target.finance.remote_synced_at) }) }}</p>
     <UpstreamFinanceNotice class="mt-2" :summary="target.finance" />
+    <p v-if="usageSyncError" class="mt-2 text-[10px] text-amber-600 dark:text-amber-400" data-testid="group-usage-sync-notice">{{ upstreamSyncError(usageSyncError, t) }}</p>
     <p v-if="target.balance?.status === 'error'" class="mt-2 truncate text-[10px] text-amber-600 dark:text-amber-400" :title="upstreamSyncError(target.balance.error, t)">{{ t('upstreamCenter.balanceFailed') }}<span v-if="target.balance.error"> · {{ upstreamSyncError(target.balance.error, t) }}</span></p>
   </section>
 </template>
@@ -91,17 +93,18 @@ import UpstreamStatusBadge from './UpstreamStatusBadge.vue'
 import UpstreamProviderBadge from './UpstreamProviderBadge.vue'
 import UpstreamRateBadge from './UpstreamRateBadge.vue'
 import UpstreamFinanceNotice from './UpstreamFinanceNotice.vue'
-import { upstreamSyncError } from './newapi'
+import { isNewapiTarget, upstreamSyncError, walletUsageError } from './newapi'
 import { actualProfit, actualUpstreamUsed, profitPendingKey, amount, availability, availabilityColor, compactTokens, dateTime, latency, latencyColor, money, targetStatus } from './format'
 
-const props = defineProps<{ target: UpstreamTarget; busy: boolean; running: boolean }>()
-const emit = defineEmits<{ details: [target: UpstreamTarget, model: string, record?: UpstreamHistoryRecord]; intelligence: [target: UpstreamTarget]; run: [target: UpstreamTarget]; toggle: [target: UpstreamTarget]; edit: [target: UpstreamTarget]; delete: [target: UpstreamTarget] }>()
+const props = defineProps<{ target: UpstreamTarget; busy: boolean; running: boolean; syncing?: boolean }>()
+const emit = defineEmits<{ details: [target: UpstreamTarget, model: string, record?: UpstreamHistoryRecord]; intelligence: [target: UpstreamTarget]; 'force-sync': [target: UpstreamTarget]; run: [target: UpstreamTarget]; toggle: [target: UpstreamTarget]; edit: [target: UpstreamTarget]; delete: [target: UpstreamTarget] }>()
 const { t } = useI18n()
 const selectedModel = ref(props.target.models[0] || '')
 watch(() => props.target.models, models => { if (!models.includes(selectedModel.value)) selectedModel.value = models[0] || '' })
 const modelOptions = computed(() => props.target.models.map(model => ({ value: model, label: `${model} · ${t(`upstreamCenter.status.${targetStatus(props.target, model)}`)}` })))
 const statistics = computed(() => props.target.statistics?.find(item => item.model === selectedModel.value))
 const profit = computed(() => actualProfit(props.target.finance))
+const usageSyncError = computed(() => props.target.balance?.status === 'ok' ? walletUsageError(props.target.balance) : '')
 const modelIssues = computed(() => props.target.models.filter(model => ['degraded', 'failed', 'error', 'stale'].includes(targetStatus(props.target, model))).length)
 </script>
 

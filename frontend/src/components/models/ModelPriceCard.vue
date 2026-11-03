@@ -195,8 +195,11 @@ const { t } = useI18n({ useScope: 'local', messages: modelSquareMessages })
 const { copyToClipboard } = useClipboard()
 const showIntervals = ref(false)
 const pricing = computed(() => props.variant?.pricing ?? null)
-const showAdjustedPrice = computed(
-  () => props.showMultiplier && pricing.value?.billing_mode !== BILLING_MODE_IMAGE)
+// Image and per-second video prices stay at their configured unit prices.
+const showAdjustedPrice = computed(() =>
+  props.showMultiplier &&
+  pricing.value?.billing_mode !== BILLING_MODE_IMAGE &&
+  pricing.value?.billing_mode !== BILLING_MODE_VIDEO)
 const isRequestBasedPricing = computed(() =>
   pricing.value?.billing_mode === BILLING_MODE_IMAGE ||
   pricing.value?.billing_mode === BILLING_MODE_PER_REQUEST ||

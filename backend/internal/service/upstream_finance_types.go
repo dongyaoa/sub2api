@@ -42,6 +42,9 @@ type UpstreamFinanceSummary struct {
 }
 
 type UpstreamBalanceSnapshot struct {
+	// Only populated on a force-sync response; never inferred from wallet status.
+	UsageSyncStatus string `json:"usage_sync_status,omitempty"`
+
 	TargetID       int64      `json:"target_id"`
 	WalletRef      string     `json:"wallet_ref"`
 	Kind           string     `json:"kind"`

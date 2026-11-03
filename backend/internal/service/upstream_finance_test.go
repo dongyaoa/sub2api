@@ -135,7 +135,7 @@ func TestUpstreamFinanceHTTPPublicIPWithPort(t *testing.T) {
 		blocked := svc.fetchSub2APIBalance(context.Background(), &UpstreamFinanceTarget{ID: 1, Endpoint: endpoint, APIKeyEncrypted: "test-secret"})
 		require.Equal(t, "endpoint_unavailable", blocked.Error)
 	}
-	require.Equal(t, 1, calls, "private endpoints must fail before any request")
+	require.Equal(t, 2, calls, "only the public endpoint's today and history requests are sent")
 }
 
 type financeTestCipher struct{}
@@ -179,9 +179,14 @@ func TestUpstreamFinanceFetchSeparatesTodayFrom30DayHistory(t *testing.T) {
 	svc := NewUpstreamFinanceService(nil, financeTestCipher{}, nil, nil, nil)
 	svc.now = func() time.Time { return now }
 	svc.client.Transport = financeRoundTrip(func(req *http.Request) (*http.Response, error) {
-		require.Equal(t, "30", req.URL.Query().Get("days"))
+		days := req.URL.Query().Get("days")
+		require.Contains(t, []string{"1", "30"}, days)
 		require.Equal(t, timezone.Name(), req.URL.Query().Get("timezone"))
-		require.Equal(t, "2026-09-06", req.URL.Query().Get("start_date"))
+		if days == "1" {
+			require.Equal(t, "2026-10-05", req.URL.Query().Get("start_date"))
+		} else {
+			require.Equal(t, "2026-09-06", req.URL.Query().Get("start_date"))
+		}
 		require.Equal(t, "2026-10-05", req.URL.Query().Get("end_date"))
 		body := `{"balance":99,"usage":{"today":{"actual_cost":1},"total":{"actual_cost":999}},"daily_usage":[{"date":"2026-10-04","actual_cost":2},{"date":"2026-10-05","actual_cost":1}]}`
 		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(body)), Request: req}, nil
@@ -194,7 +199,11 @@ func TestUpstreamFinanceFetchSeparatesTodayFrom30DayHistory(t *testing.T) {
 	require.True(t, snapshot.PeriodStart.Equal(timezone.StartOfDay(now).AddDate(0, 0, -29)))
 	require.True(t, snapshot.PeriodEnd.Equal(timezone.StartOfDay(now).AddDate(0, 0, 1)))
 	svc.client.Transport = financeRoundTrip(func(req *http.Request) (*http.Response, error) {
-		require.Equal(t, "2026-09-06", req.URL.Query().Get("start_date"))
+		if req.URL.Query().Get("days") == "1" {
+			require.Equal(t, "2026-10-05", req.URL.Query().Get("start_date"))
+		} else {
+			require.Equal(t, "2026-09-06", req.URL.Query().Get("start_date"))
+		}
 		require.Equal(t, "2026-10-05", req.URL.Query().Get("end_date"))
 		body := `{"balance":99,"usage":{"today":{"actual_cost":1},"total":{"actual_cost":999}},"model_stats":[{"model":"a","actual_cost":4},{"model":"b","actual_cost":5}]}`
 		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(body)), Request: req}, nil

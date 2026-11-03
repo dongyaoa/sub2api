@@ -2,7 +2,7 @@ import type { UpstreamFinanceSummary, UpstreamHistoryRecord, UpstreamTarget } fr
 export { hslForPct as availabilityColor } from '@/composables/useChannelMonitorFormat'
 
 export function actualProfit(summary: UpstreamFinanceSummary | null | undefined): number | null {
-  return summary?.cost_source === 'reported' && summary.remote_used != null && !summary.cost_partial && !summary.history_sync_pending ? summary.profit : null
+  return summary?.cost_source === 'reported' && summary.remote_used != null && !summary.cost_partial && !summary.remote_stale && !summary.history_sync_pending ? summary.profit : null
 }
 
 export function profitPendingKey(summary: UpstreamFinanceSummary | null | undefined): string {

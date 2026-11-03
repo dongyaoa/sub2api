@@ -338,14 +338,48 @@ describe('ModelPriceCard group multiplier prices', () => {
     expect(input.get('.multiplier-pill').text()).toBe('×0.12345678')
   })
 
-  it('preserves per-second units for both the adjusted and original video price', () => {
-    const wrapper = mountAdjustedCard(videoVariant(0.3))
+  it.each([0.15, 2.5])('keeps the video price per second fixed when toggling multiplier display at ×%s', async (rate) => {
+    const wrapper = mountAdjustedCard(videoVariant(0.3), rate)
 
-    expect(wrapper.classes()).toContain('premium-model-card--adjusted')
-    expect(wrapper.get('.price').text()).toBe('$0.045')
-    expect(wrapper.get('.unit').text()).toBe('modelSquare.perSecond')
-    expect(wrapper.get('.base-price').text()).toBe('$0.3 modelSquare.perSecond')
-    expect(wrapper.get('.multiplier-pill').text()).toBe('×0.15')
-    expect(wrapper.get('.type-badge').text()).toBe('modelSquare.billingVideo')
+    for (const showMultiplier of [true, false, true]) {
+      await wrapper.setProps({ showMultiplier })
+
+      expect(wrapper.get('.price').text()).toBe('$0.3')
+      expect(wrapper.get('.price').attributes('title')).toBe('$0.3')
+      expect(wrapper.get('.unit').text()).toBe('modelSquare.perSecond')
+      expect(wrapper.get('.type-badge').text()).toBe('modelSquare.billingVideo')
+      expect(wrapper.classes()).not.toContain('premium-model-card--adjusted')
+      expect(wrapper.find('.base-price, .multiplier-pill, .price--adjusted').exists()).toBe(false)
+    }
+  })
+
+  it('keeps all video resolution prices fixed in the card and tier dialog with multiplier display enabled', async () => {
+    const intervals: UserPricingInterval[] = [
+      { tier_label: '480p', per_request_price: 0.1 },
+      { tier_label: '720p', per_request_price: 0.15 },
+      { tier_label: '1080p', per_request_price: 0.2 },
+    ].map((tier) => ({
+      min_tokens: 0,
+      max_tokens: null,
+      input_price: null,
+      output_price: null,
+      cache_write_price: null,
+      cache_read_price: null,
+      ...tier,
+    }))
+    const wrapper = mountAdjustedCard(videoVariant(null, intervals))
+
+    expect(wrapper.findAll('.metric-tier').map((tier) => tier.text())).toEqual(['480p', '720p', '1080p'])
+    expect(wrapper.findAll('.price').map((price) => price.text())).toEqual(['$0.1', '$0.15', '$0.2'])
+    expect(wrapper.findAll('.unit').map((unit) => unit.text())).toEqual(Array(3).fill('modelSquare.perSecond'))
+    expect(wrapper.find('.base-price, .multiplier-pill').exists()).toBe(false)
+
+    await wrapper.get('.tier-btn').trigger('click')
+    const dialog = wrapper.get('[role="dialog"]')
+    expect(dialog.findAll('tbody tr').map((row) => row.findAll('td')[1].text())).toEqual([
+      '$0.1 modelSquare.perSecond',
+      '$0.15 modelSquare.perSecond',
+      '$0.2 modelSquare.perSecond',
+    ])
   })
 })

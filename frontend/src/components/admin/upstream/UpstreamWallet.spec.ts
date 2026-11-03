@@ -4,6 +4,16 @@ import UpstreamWallet from './UpstreamWallet.vue'
 import type { UpstreamBalanceSnapshot, UpstreamBillingSnapshot } from '@/api/admin/upstreamCenter'
 vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (key: string, params?: { time?: string }) => `${key}${params?.time ? ` ${params.time}` : ''}` }) }))
 describe('upstream wallet sync failure', () => {
+  it('shows Sub2API history failure only with key usage while preserving a successful wallet', async () => {
+    const wallet = { target_id: 7, wallet_ref: 'default', kind: 'wallet', balance: 42, today_used: 3, currency: 'USD', status: 'ok', error: 'sub2api_history_sync_failed: upstream_timeout' } as UpstreamBalanceSnapshot
+    const wrapper = mount(UpstreamWallet, { props: { wallets: [wallet] }, global: { stubs: { Icon: true } } })
+    expect(wrapper.text()).not.toContain('upstreamCenter.syncErrors.historyFailed')
+    expect(wrapper.text()).not.toContain('upstreamCenter.wallet.error')
+    await wrapper.setProps({ showKeyUsage: true })
+    expect(wrapper.get('[data-testid="key-upstream-usage-notice"]').text()).toBe('upstreamCenter.syncErrors.historyFailed: upstreamCenter.syncErrors.timeout')
+    expect(wrapper.get('[data-testid="key-upstream-today"]').text()).toContain('3.00')
+    wrapper.unmount()
+  })
   it('adds separators only after the first wallet', () => {
     const wallet: UpstreamBalanceSnapshot = { target_id: 7, wallet_ref: 'default', kind: 'wallet', balance: 42, quota_remaining: null, today_used: null, total_used: null, currency: 'USD', status: 'ok', synced_at: null, error: '' }
     const wrapper = mount(UpstreamWallet, { props: { wallets: [wallet, { ...wallet, target_id: 8 }] }, global: { stubs: { Icon: true } } })

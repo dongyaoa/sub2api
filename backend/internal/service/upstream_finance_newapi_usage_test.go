@@ -349,3 +349,215 @@ func TestNewAPIUsageMidnightEmptyWindowDoesNotBecomePermanentPendingScan(t *test
 	require.Empty(t, code)
 	require.Empty(t, got)
 }
+
+func TestNewAPIUsageCountCapSplitsRangesAndResumesWithoutDoubleCounting(t *testing.T) {
+	svc, _, now := newAPICacheFixture(t)
+	*now = now.Add(12 * time.Hour)
+	day, until := timezone.StartOfDay(*now), *now
+	middle := day.Add(until.Sub(day) / 2).Unix()
+	var failed atomic.Bool
+	var calls atomic.Int64
+	var expected, expectedTail float64
+	logs := make([]newAPIUsageLog, 350)
+	for i := range logs {
+		created := day.Unix() + int64(i)*(until.Unix()-day.Unix()-1)/int64(len(logs)-1)
+		quota := float64(i + 1)
+		logs[i] = newAPIUsageLog{42, int64(13 + i%2), created, 2, &quota}
+		if logs[i].TokenID == 13 {
+			expected += quota
+			if created >= until.Add(-30*time.Second).Unix() {
+				expectedTail += quota
+			}
+		}
+	}
+	svc.client.Transport = financeRoundTrip(func(req *http.Request) (*http.Response, error) {
+		calls.Add(1)
+		from, _ := strconv.ParseInt(req.URL.Query().Get("start_timestamp"), 10, 64)
+		end, _ := strconv.ParseInt(req.URL.Query().Get("end_timestamp"), 10, 64)
+		page, _ := strconv.Atoi(req.URL.Query().Get("p"))
+		require.Less(t, end, until.Unix(), "split ranges retain the original frozen upper bound")
+		if from >= middle && failed.CompareAndSwap(false, true) {
+			return newAPICacheResponse(req, 429, "limited"), nil
+		}
+		matching := []newAPIUsageLog{}
+		for i := len(logs) - 1; i >= 0; i-- {
+			if logs[i].CreatedAt >= from && logs[i].CreatedAt <= end {
+				matching = append(matching, logs[i])
+			}
+		}
+		start := min((page-1)*100, len(matching))
+		finish := min(page*100, len(matching))
+		return newAPICacheResponse(req, 200, newAPIUsagePageBody(page, 100, int64(min(100, len(matching))), matching[start:finish])), nil
+	})
+	got, _, code := svc.newAPIAccountLogTotals(context.Background(), "https://example.com/prefix", "console-key", 42, day, until, false)
+	require.NotEmpty(t, code)
+	require.Nil(t, got, "completed left ranges are not published while the right range remains incomplete")
+	*now = now.Add(3 * time.Minute)
+	got, synced, code := svc.newAPIAccountLogTotals(context.Background(), "https://example.com/prefix", "console-key", 42, day, *now, false)
+	require.Empty(t, code)
+	require.Equal(t, expected, got[13])
+	require.True(t, synced.Equal(until))
+	require.Less(t, calls.Load(), int64(25), "capped counts must converge by narrowing the query, not repeatedly restarting it")
+	for _, entry := range svc.newAPICache.usage {
+		require.Equal(t, expectedTail, entry.baseline.tail[13], "split windows share the root overlap boundary")
+	}
+}
+
+func TestNewAPIUsageOverDailyPageLimitMakesBoundedProgress(t *testing.T) {
+	svc, _, now := newAPICacheFixture(t)
+	*now = now.Add(12 * time.Hour)
+	day, until := timezone.StartOfDay(*now), *now
+	const count = newAPIUsageMaxPages*newAPIUsagePageSize + 1
+	var calls atomic.Int64
+	svc.client.Transport = financeRoundTrip(func(req *http.Request) (*http.Response, error) {
+		calls.Add(1)
+		from, _ := strconv.ParseInt(req.URL.Query().Get("start_timestamp"), 10, 64)
+		end, _ := strconv.ParseInt(req.URL.Query().Get("end_timestamp"), 10, 64)
+		page, _ := strconv.Atoi(req.URL.Query().Get("p"))
+		matching := []newAPIUsageLog{}
+		for i := count - 1; i >= 0; i-- {
+			created := day.Unix() + int64(i)*(until.Unix()-day.Unix()-1)/(count-1)
+			if created >= from && created <= end {
+				matching = append(matching, newAPIUsageLog{42, int64(13 + i%2), created, 2, financeFloat(1)})
+			}
+		}
+		start := min((page-1)*100, len(matching))
+		finish := min(page*100, len(matching))
+		return newAPICacheResponse(req, 200, newAPIUsagePageBody(page, 100, int64(len(matching)), matching[start:finish])), nil
+	})
+	var got map[int64]float64
+	var synced time.Time
+	var code string
+	for attempt := 0; attempt < 8; attempt++ {
+		before := calls.Load()
+		got, synced, code = svc.newAPIAccountLogTotals(context.Background(), "https://example.com/prefix", "console-key", 42, day, *now, false)
+		require.LessOrEqual(t, calls.Load()-before, int64(120), "splitting must not bypass the site's request budget")
+		if code == "" {
+			break
+		}
+		require.Nil(t, got)
+		*now = now.Add(3 * time.Minute)
+	}
+	require.Empty(t, code, "large daily windows must eventually finish across bounded synchronization rounds")
+	require.Equal(t, float64(count/2+1), got[13])
+	require.Equal(t, float64(count/2), got[14])
+	require.True(t, synced.Equal(until), "completion time is not the data coverage time")
+}
+
+func TestNewAPIUsageCannotSplitAnOverfullSingleSecond(t *testing.T) {
+	svc, _, now := newAPICacheFixture(t)
+	from := *now
+	svc.client.Transport = financeRoundTrip(func(req *http.Request) (*http.Response, error) {
+		return newAPICacheResponse(req, 200, newAPIUsagePageBody(1, 100, newAPIUsageMaxPages*100+1, []newAPIUsageLog{})), nil
+	})
+	got, code := svc.scanNewAPIAccountLogs(context.Background(), "https://example.com/prefix", "console-key", 42, from, from.Add(time.Second))
+	require.Nil(t, got)
+	require.Equal(t, "newapi_usage_incomplete", code)
+}
+
+func TestNewAPIForceUsageBypassesOnlyCompletedCache(t *testing.T) {
+	svc, _, now := newAPICacheFixture(t)
+	*now = now.Add(12 * time.Hour)
+	day := timezone.StartOfDay(*now)
+	var calls int
+	svc.client.Transport = financeRoundTrip(func(req *http.Request) (*http.Response, error) {
+		calls++
+		return newAPICacheResponse(req, 200, newAPIUsagePageBody(1, 100, 0, []newAPIUsageLog{})), nil
+	})
+	_, _, code := svc.newAPIAccountLogTotals(context.Background(), "https://example.com/prefix", "console-key", 42, day, *now, false)
+	require.Empty(t, code)
+	*now = now.Add(time.Second)
+	_, _, code = svc.newAPIAccountLogTotals(context.Background(), "https://example.com/prefix", "console-key", 42, day, *now, false)
+	require.Empty(t, code)
+	require.Equal(t, 1, calls)
+	ctx := context.WithValue(context.Background(), newAPIUsageForceKey{}, true)
+	_, _, code = svc.newAPIAccountLogTotals(ctx, "https://example.com/prefix", "console-key", 42, day, *now, false)
+	require.Empty(t, code)
+	require.Equal(t, 2, calls)
+	for svc.allowNewAPILogRead("https://example.com/prefix", false) {
+	}
+	_, _, code = svc.newAPIAccountLogTotals(ctx, "https://example.com/prefix", "console-key", 42, day, *now, false)
+	require.Equal(t, "newapi_usage_incomplete", code)
+	require.Equal(t, 2, calls, "manual refresh cannot bypass upstream throttling")
+}
+
+func TestNewAPIUsageExpiredInFlightEntryRemainsSingleFlight(t *testing.T) {
+	svc, _, now := newAPICacheFixture(t)
+	*now = now.Add(12 * time.Hour)
+	day, until := timezone.StartOfDay(*now), *now
+	entered, release := make(chan struct{}), make(chan struct{})
+	var calls atomic.Int64
+	svc.client.Transport = financeRoundTrip(func(req *http.Request) (*http.Response, error) {
+		if calls.Add(1) == 1 {
+			close(entered)
+			<-release
+		}
+		return newAPICacheResponse(req, 200, newAPIUsagePageBody(1, 100, 0, []newAPIUsageLog{})), nil
+	})
+	done := make(chan string, 1)
+	go func() {
+		_, _, code := svc.newAPIAccountLogTotals(context.Background(), "https://example.com/prefix", "console-key", 42, day, until, false)
+		done <- code
+	}()
+	<-entered
+	svc.newAPICache.mu.Lock()
+	for _, entry := range svc.newAPICache.usage {
+		entry.expiresAt, entry.retainUntil = now.Add(-time.Hour), now.Add(-time.Hour)
+	}
+	svc.newAPICache.mu.Unlock()
+	ctx, cancel := context.WithCancel(context.WithValue(context.Background(), newAPIUsageForceKey{}, true))
+	cancel()
+	_, _, code := svc.newAPIAccountLogTotals(ctx, "https://example.com/prefix", "console-key", 42, day, until, false)
+	require.Equal(t, "newapi_usage_incomplete", code)
+	require.Equal(t, int64(1), calls.Load())
+	close(release)
+	require.Empty(t, <-done)
+}
+
+func TestNewAPIUsageCountCapBetweenPageBoundaries(t *testing.T) {
+	svc, _, now := newAPICacheFixture(t)
+	from, until := *now, now.Add(250*time.Second)
+	svc.client.Transport = financeRoundTrip(func(req *http.Request) (*http.Response, error) {
+		begin, _ := strconv.ParseInt(req.URL.Query().Get("start_timestamp"), 10, 64)
+		end, _ := strconv.ParseInt(req.URL.Query().Get("end_timestamp"), 10, 64)
+		page, _ := strconv.Atoi(req.URL.Query().Get("p"))
+		matching := []newAPIUsageLog{}
+		for at := end; at >= begin; at-- {
+			matching = append(matching, newAPIUsageLog{42, 13, at, 2, financeFloat(1)})
+		}
+		return newAPICacheResponse(req, 200, newAPIUsagePageBody(page, 100, int64(min(125, len(matching))), matching[min((page-1)*100, len(matching)):min(page*100, len(matching))])), nil
+	})
+	got, code := svc.scanNewAPIAccountLogs(context.Background(), "https://example.com/prefix", "console-key", 42, from, until)
+	require.Empty(t, code)
+	require.Equal(t, 250.0, got.used[13])
+	require.Equal(t, 30.0, got.tail[13], "inclusive upstream end timestamps must neither overlap nor omit a boundary second")
+}
+
+func TestNewAPIUsageRevalidatesFirstPageBeforePublishing(t *testing.T) {
+	svc, _, now := newAPICacheFixture(t)
+	from, until := *now, now.Add(time.Hour)
+	var firstPages int
+	svc.client.Transport = financeRoundTrip(func(req *http.Request) (*http.Response, error) {
+		page, _ := strconv.Atoi(req.URL.Query().Get("p"))
+		if page == 1 {
+			firstPages++
+		}
+		logs := []newAPIUsageLog{}
+		for i := (page - 1) * 100; i < min(page*100, 101); i++ {
+			quota := float64(1)
+			if page == 1 && firstPages >= 2 && i == 0 {
+				quota = 2
+			}
+			logs = append(logs, newAPIUsageLog{42, 13, from.Unix(), 2, &quota})
+		}
+		return newAPICacheResponse(req, 200, newAPIUsagePageBody(page, 100, 101, logs)), nil
+	})
+	scan := &newAPIUsageScan{from: from, until: until, nextPage: 1}
+	got, code := svc.resumeNewAPIAccountLogs(context.Background(), "https://example.com/prefix", "console-key", 42, scan)
+	require.Nil(t, got)
+	require.Equal(t, "newapi_usage_incomplete", code)
+	require.Equal(t, 1, scan.nextPage)
+	got, code = svc.resumeNewAPIAccountLogs(context.Background(), "https://example.com/prefix", "console-key", 42, scan)
+	require.Empty(t, code)
+	require.Equal(t, 102.0, got.used[13])
+}

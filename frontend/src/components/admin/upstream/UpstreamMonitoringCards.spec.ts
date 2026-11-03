@@ -22,6 +22,14 @@ function target(): UpstreamTarget {
 }
 
 describe('upstream card headline measurements', () => {
+  it.each([UpstreamGroupRow, UpstreamTargetCard])('keeps a history sync failure visible separately from successful wallet data', (component) => {
+    const item = target()
+    item.balance = { ...item.balance, status: 'ok', error: 'sub2api_history_sync_failed: upstream_timeout' } as UpstreamTarget['balance']
+    const wrapper = mount(component, { props: { target: item, busy: false, running: false }, global: { stubs } })
+    expect(wrapper.text()).toContain('upstreamCenter.syncErrors.historyFailed: upstreamCenter.syncErrors.timeout')
+    expect(wrapper.text()).not.toContain('upstreamCenter.balanceFailed')
+    wrapper.unmount()
+  })
   it.each([['openai', 'OpenAI', 'bg-emerald-50'], ['anthropic', 'Anthropic', 'bg-orange-50'], ['gemini', 'Gemini', 'bg-sky-50']] as const)('labels %s key groups before their names with the protocol color', (provider, label, color) => {
     const wrapper = mount(UpstreamGroupRow, { props: { target: { ...target(), provider }, busy: false, running: false }, global: { stubs } })
     expect(wrapper.get('[data-testid="upstream-provider"]').text()).toBe(label)
@@ -40,6 +48,25 @@ describe('upstream card headline measurements', () => {
     await wrapper.setProps({ target: { ...item, provider: 'anthropic' } })
     expect(wrapper.get('[data-testid="group-intelligence"]').attributes('disabled')).toBeDefined()
     expect(wrapper.get('[data-testid="group-intelligence"]').attributes('title')).toBe('intelligenceMonitor.groupMonitor.unsupported')
+    wrapper.unmount()
+  })
+
+  it('offers force sync only for New API groups and blocks clicks while busy', async () => {
+    const item = target()
+    const wrapper = mount(UpstreamGroupRow, { props: { target: item, busy: false, running: false }, global: { stubs } })
+    expect(wrapper.find('[data-testid="group-force-sync"]').exists()).toBe(false)
+    const newapi = { ...item, newapi_user_id: 9, newapi_access_token_configured: true }
+    await wrapper.setProps({ target: newapi })
+    await wrapper.get('[data-testid="group-force-sync"]').trigger('click')
+    expect(wrapper.emitted('force-sync')).toEqual([[newapi]])
+    expect(wrapper.emitted('run')).toBeUndefined()
+    await wrapper.setProps({ busy: true, syncing: true })
+    const button = wrapper.get('[data-testid="group-force-sync"]')
+    expect(button.attributes('disabled')).toBeDefined()
+    expect(button.attributes('aria-busy')).toBe('true')
+    expect(button.text()).toBe('upstreamCenter.syncing')
+    await button.trigger('click')
+    expect(wrapper.emitted('force-sync')).toHaveLength(1)
     wrapper.unmount()
   })
 

@@ -113,7 +113,7 @@ func TestUpstreamIndependentScheduledBillingAndReadOnlyOverview(t *testing.T) {
 			require.NotNil(t, repo.snapshot)
 			require.Equal(t, "ok", repo.snapshot.Billing.Status)
 			require.Equal(t, rate, *repo.snapshot.Billing.EffectiveRateMultiplier)
-			expectedPaths := []string{"/v1/usage"}
+			expectedPaths := []string{"/v1/usage", "/v1/usage"}
 			if !embedded {
 				expectedPaths = append(expectedPaths, "/v1/sub2api/billing")
 			}
@@ -125,7 +125,7 @@ func TestUpstreamIndependentScheduledBillingAndReadOnlyOverview(t *testing.T) {
 			now = now.Add(30 * time.Second)
 			rate = 0
 			finance.SyncDueBalances(context.Background())
-			require.Len(t, paths, 2*len(expectedPaths))
+			require.Len(t, paths, 2*len(expectedPaths)-1, "the second wallet refresh does not repeat the historical query")
 			require.Equal(t, float64(0), *repo.snapshot.Billing.EffectiveRateMultiplier, "periodic refresh must preserve an upstream-declared zero multiplier")
 			calls := len(paths)
 			after, err := center.Overview(context.Background(), "24h")

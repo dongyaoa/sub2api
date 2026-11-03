@@ -184,8 +184,10 @@ func applyUpstreamPeriodProfit(summary *UpstreamFinanceSummary, q UpstreamFinanc
 		used, rawUsed = nextUsed, nextRaw
 		known++
 		converted = converted || observation.conversionConfigured
-		stale = stale || latest.Status != "ok" || now.Sub(*syncedAt) > upstreamProfitSnapshotMaxAge ||
-			latest.LastAttemptAt != nil && latest.LastAttemptAt.After(*syncedAt)
+		// Wallet polling and historical backfill may run after this window's
+		// successful usage scan. Judge its freshness by the usage observation,
+		// not by the latest unrelated attempt timestamp.
+		stale = stale || latest.Status != "ok" || now.Sub(*syncedAt) > upstreamProfitSnapshotMaxAge
 		if oldest.IsZero() || syncedAt.Before(oldest) {
 			oldest = *syncedAt
 		}
@@ -208,7 +210,9 @@ func applyUpstreamPeriodProfit(summary *UpstreamFinanceSummary, q UpstreamFinanc
 	if !oldest.IsZero() {
 		summary.RemoteSyncedAt = &oldest
 	}
-	if !summary.CostPartial && summary.HistorySyncPending == 0 {
+	// Keep the last reported cost for inspection, but never subtract an expired
+	// cost snapshot from live local revenue and present that as current profit.
+	if !summary.CostPartial && !summary.RemoteStale && summary.HistorySyncPending == 0 {
 		profit := summary.Revenue - used
 		summary.Profit = &profit
 	}

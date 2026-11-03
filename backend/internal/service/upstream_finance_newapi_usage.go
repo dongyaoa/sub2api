@@ -124,12 +124,18 @@ type newAPIUsageBaseline struct {
 
 type newAPIUsageScan struct {
 	from, until time.Time
+	tailFrom    time.Time
 	history     bool
 	total       int64
 	nextPage    int
 	firstHash   [32]byte
 	used, tail  map[int64]float64
 	baseline    *newAPIUsageBaseline
+	// Oversized or count-capped ranges are divided into disjoint time windows.
+	// Only fully verified children are merged; incomplete children retain their
+	// own pagination cursor. Completed children are released immediately.
+	parts     []*newAPIUsageScan
+	partIndex int
 }
 
 type newAPILogRequestBudget struct {
@@ -198,13 +204,23 @@ func (s *UpstreamFinanceService) newAPIAccountLogTotals(ctx context.Context, bas
 	now := s.now()
 	cache.mu.Lock()
 	previous := cache.usage[identity]
-	if entry := previous; entry != nil && now.Before(entry.expiresAt) {
-		cache.mu.Unlock()
+	if entry := previous; entry != nil {
 		select {
 		case <-entry.ready:
-			return entry.used, entry.syncedAt, entry.errorCode
-		case <-ctx.Done():
-			return nil, time.Time{}, "newapi_usage_incomplete"
+			if !newAPIUsageForceRequested(ctx) && now.Before(entry.expiresAt) {
+				cache.mu.Unlock()
+				return entry.used, entry.syncedAt, entry.errorCode
+			}
+		default:
+			// An in-flight scan must not be replaced after its TTL expires:
+			// its mutable cursor belongs to exactly one worker.
+			cache.mu.Unlock()
+			select {
+			case <-entry.ready:
+				return entry.used, entry.syncedAt, entry.errorCode
+			case <-ctx.Done():
+				return nil, time.Time{}, "newapi_usage_incomplete"
+			}
 		}
 	}
 	if previous == nil || !now.Before(previous.retainUntil) {
@@ -215,7 +231,11 @@ func (s *UpstreamFinanceService) newAPIAccountLogTotals(ctx context.Context, bas
 	}
 	for id, entry := range cache.usage {
 		if !now.Before(entry.retainUntil) {
-			delete(cache.usage, id)
+			select {
+			case <-entry.ready:
+				delete(cache.usage, id)
+			default:
+			}
 		}
 	}
 	if _, exists := cache.usage[identity]; !exists && len(cache.usage) >= newAPIUsageCacheLimit {
@@ -291,9 +311,62 @@ func (s *UpstreamFinanceService) scanNewAPIAccountLogs(ctx context.Context, base
 }
 
 func (s *UpstreamFinanceService) resumeNewAPIAccountLogs(ctx context.Context, base, key string, userID int64, scan *newAPIUsageScan) (*newAPIUsageLogTotals, string) {
+	if scan.tailFrom.IsZero() {
+		scan.tailFrom = scan.until.Add(-30 * time.Second)
+	}
+	if scan.parts == nil {
+		totals, code, split := s.resumeNewAPIAccountLogWindow(ctx, base, key, userID, scan)
+		if !split {
+			return totals, code
+		}
+		// New API deployments may cap total, or this account can outgrow our
+		// page bound. Retrying the same full range forever cannot make progress.
+		// Split on whole seconds because New API's bounds have second precision.
+		seconds := scan.until.Unix() - scan.from.Unix()
+		if seconds <= 1 {
+			return nil, "newapi_usage_incomplete"
+		}
+		middle := time.Unix(scan.from.Unix()+seconds/2, 0).In(scan.from.Location())
+		scan.parts = []*newAPIUsageScan{
+			{from: scan.from, until: middle, tailFrom: scan.tailFrom, history: scan.history, nextPage: 1},
+			{from: middle, until: scan.until, tailFrom: scan.tailFrom, history: scan.history, nextPage: 1},
+		}
+		scan.used, scan.tail = make(map[int64]float64), make(map[int64]float64)
+	}
+	for scan.partIndex < len(scan.parts) {
+		part := scan.parts[scan.partIndex]
+		totals, code := s.resumeNewAPIAccountLogs(ctx, base, key, userID, part)
+		if code != "" {
+			return nil, code
+		}
+		for tokenID, amount := range totals.used {
+			value := scan.used[tokenID] + amount
+			if !newAPIQuota(&value, false) {
+				return nil, "newapi_usage_incomplete"
+			}
+		}
+		// Validate before mutating the parent's totals so a failed merge can
+		// never add a verified child twice on the following synchronization.
+		for tokenID, amount := range totals.used {
+			scan.used[tokenID] += amount
+			scan.tail[tokenID] += totals.tail[tokenID]
+		}
+		scan.parts[scan.partIndex] = nil
+		scan.partIndex++
+		if len(scan.used) > newAPIUsageHistoryMaxPages {
+			return nil, "newapi_usage_incomplete"
+		}
+	}
+	if len(scan.used) > newAPIUsageHistoryMaxPages {
+		return nil, "newapi_usage_incomplete"
+	}
+	return &newAPIUsageLogTotals{used: scan.used, tail: scan.tail}, ""
+}
+
+func (s *UpstreamFinanceService) resumeNewAPIAccountLogWindow(ctx context.Context, base, key string, userID int64, scan *newAPIUsageScan) (*newAPIUsageLogTotals, string, bool) {
 	from, until := scan.from, scan.until
 	if !until.After(from) {
-		return nil, "newapi_usage_incomplete"
+		return nil, "newapi_usage_incomplete", false
 	}
 	load := func(requestCtx context.Context, page int) (*newAPIUsagePage, string) {
 		if !s.allowNewAPILogRead(base, scan.history) {
@@ -310,7 +383,7 @@ func (s *UpstreamFinanceService) resumeNewAPIAccountLogs(ctx context.Context, ba
 	}
 	first, code := load(ctx, 1)
 	if code != "" {
-		return nil, code
+		return nil, code, false
 	}
 	total := *first.Total
 	maxPages := newAPIUsageMaxPages
@@ -318,7 +391,7 @@ func (s *UpstreamFinanceService) resumeNewAPIAccountLogs(ctx context.Context, ba
 		maxPages = newAPIUsageHistoryMaxPages
 	}
 	if total > int64(newAPIUsagePageSize*maxPages) {
-		return nil, "newapi_usage_incomplete"
+		return nil, "newapi_usage_incomplete", true
 	}
 	pages := (int(total) + newAPIUsagePageSize - 1) / newAPIUsagePageSize
 	if pages < 1 {
@@ -333,7 +406,11 @@ func (s *UpstreamFinanceService) resumeNewAPIAccountLogs(ctx context.Context, ba
 		scan.used, scan.tail = make(map[int64]float64), make(map[int64]float64)
 	}
 	used, tail := scan.used, scan.tail
-	tailFrom := until.Add(-30 * time.Second).Unix()
+	tailFrom := scan.tailFrom.Unix()
+	beyondReportedCount := func(page *newAPIUsagePage) bool {
+		want := max(0, min(newAPIUsagePageSize, int(total)-(page.Page-1)*newAPIUsagePageSize))
+		return *page.Total == total && len(page.Items) > want && len(page.Items) <= newAPIUsagePageSize
+	}
 	merge := func(page *newAPIUsagePage) bool {
 		want := int(total) - (page.Page-1)*newAPIUsagePageSize
 		if want > newAPIUsagePageSize {
@@ -357,9 +434,12 @@ func (s *UpstreamFinanceService) resumeNewAPIAccountLogs(ctx context.Context, ba
 		return len(used) <= newAPIUsageHistoryMaxPages
 	}
 	if scan.nextPage == 1 {
+		if beyondReportedCount(first) {
+			return nil, "newapi_usage_incomplete", true
+		}
 		if !merge(first) {
 			scan.nextPage = 1
-			return nil, "newapi_usage_incomplete"
+			return nil, "newapi_usage_incomplete", false
 		}
 		scan.nextPage = 2
 	}
@@ -382,12 +462,15 @@ func (s *UpstreamFinanceService) resumeNewAPIAccountLogs(ctx context.Context, ba
 			})
 		}
 		if group.Wait() != nil {
-			return nil, "newapi_usage_incomplete"
+			return nil, "newapi_usage_incomplete", false
 		}
 		for _, page := range batch {
+			if beyondReportedCount(page) {
+				return nil, "newapi_usage_incomplete", true
+			}
 			if !merge(page) {
 				scan.nextPage = 1
-				return nil, "newapi_usage_incomplete"
+				return nil, "newapi_usage_incomplete", false
 			}
 		}
 		scan.nextPage = start + count
@@ -400,10 +483,24 @@ func (s *UpstreamFinanceService) resumeNewAPIAccountLogs(ctx context.Context, ba
 			if code == "" {
 				scan.nextPage = 1
 			}
-			return nil, "newapi_usage_incomplete"
+			return nil, "newapi_usage_incomplete", code == "" && *tail.Total == total && len(tail.Items) > 0
 		}
 	}
-	return &newAPIUsageLogTotals{used: used, tail: tail}, ""
+	if pages > 1 {
+		// Logs can be posted late into a fixed timestamp range. Do not publish
+		// offsets collected before that insertion, even if it happened during
+		// this last batch. A following attempt restarts only the affected range.
+		latest, code := load(ctx, 1)
+		if code != "" {
+			return nil, code, false
+		}
+		latestJSON, _ := json.Marshal(latest.Items)
+		if *latest.Total != total || sha256.Sum256(latestJSON) != firstHash {
+			scan.nextPage = 1
+			return nil, "newapi_usage_incomplete", false
+		}
+	}
+	return &newAPIUsageLogTotals{used: used, tail: tail}, "", false
 }
 
 func ptrNewAPIQuota(value float64) *float64 { return &value }

@@ -124,16 +124,16 @@ describe('upstream consumption and profit totals', () => {
     wrapper.unmount()
   })
 
-  it('keeps actual usage and profit visible during a delayed upstream sync, including zero usage', async () => {
+  it('keeps last reported usage visible but waits for current cost before displaying profit', async () => {
     const stale = summary({ remote_stale: true, remote_used: 0, profit: 12 })
     financeSummary.mockResolvedValue({ today: stale, last_30_days: stale })
     const wrapper = mountPanel()
     await flushPromises()
     expect(wrapper.get('[data-period="today"]').text()).toContain(money(0))
-    expect(wrapper.get('[data-period="today"]').text()).toContain(money(12))
+    expect(wrapper.get('[data-period="today"]').text()).toContain('upstreamCenter.finance.pending')
     expect(wrapper.text()).toContain('upstreamCenter.finance.stale')
     expect(wrapper.text()).toContain('upstreamCenter.wallet.syncedAt')
-    expect(wrapper.text()).not.toContain('upstreamCenter.finance.pending')
+    expect(wrapper.findAll('[data-period] .text-lg').filter(value => value.text() === money(12))).toHaveLength(2)
     wrapper.unmount()
   })
 

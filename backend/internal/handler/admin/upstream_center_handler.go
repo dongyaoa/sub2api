@@ -155,6 +155,19 @@ func (h *UpstreamCenterHandler) SyncBalance(c *gin.Context) {
 	}
 	response.Success(c, result)
 }
+func (h *UpstreamCenterHandler) ForceSync(c *gin.Context) {
+	id, ok := parseUpstreamID(c)
+	if !ok {
+		return
+	}
+	c.Header("Cache-Control", "no-store")
+	result, err := h.finance.ForceSyncNewAPIBalance(c.Request.Context(), id)
+	if response.ErrorFrom(c, err) {
+		return
+	}
+	response.Success(c, result)
+}
+
 func (h *UpstreamCenterHandler) Finance(c *gin.Context) {
 	from, to, ok := parseUpstreamOptionalRange(c)
 	if !ok {

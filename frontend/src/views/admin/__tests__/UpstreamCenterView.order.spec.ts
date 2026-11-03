@@ -4,9 +4,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import UpstreamCenterView from '../UpstreamCenterView.vue'
 import type { UpstreamOverview, UpstreamSupplier, UpstreamTarget } from '@/api/admin/upstreamCenter'
 
-const mocks = vi.hoisted(() => ({ overview: vi.fn(), showSuccess: vi.fn(), deleteSupplier: vi.fn(), deleteTarget: vi.fn(), purge: vi.fn() }))
-vi.mock('@/api/admin/upstreamCenter', () => ({ upstreamCenterAPI: { overview: mocks.overview, deleteSupplier: mocks.deleteSupplier, deleteTarget: mocks.deleteTarget, purge: mocks.purge } }))
-vi.mock('@/stores/app', () => ({ useAppStore: () => ({ showSuccess: mocks.showSuccess }) }))
+const mocks = vi.hoisted(() => ({ overview: vi.fn(), showSuccess: vi.fn(), showInfo: vi.fn(), showError: vi.fn(), syncBalance: vi.fn(), forceSync: vi.fn(), deleteSupplier: vi.fn(), deleteTarget: vi.fn(), purge: vi.fn() }))
+vi.mock('@/api/admin/upstreamCenter', () => ({ upstreamCenterAPI: { overview: mocks.overview, syncBalance: mocks.syncBalance, forceSync: mocks.forceSync, deleteSupplier: mocks.deleteSupplier, deleteTarget: mocks.deleteTarget, purge: mocks.purge } }))
+vi.mock('@/stores/app', () => ({ useAppStore: () => ({ showSuccess: mocks.showSuccess, showInfo: mocks.showInfo, showError: mocks.showError }) }))
 vi.mock('vue-i18n', async importOriginal => {
   const original = await importOriginal<typeof import('vue-i18n')>()
   const { default: messages } = await import('@/i18n/locales/zh/upstreamCenter')
@@ -15,7 +15,7 @@ vi.mock('vue-i18n', async importOriginal => {
     return section === 'finance' ? (messages.upstreamCenter.finance as Record<string, string>)[name!] || key : key
   } }) }
 })
-const supplierCard = defineComponent({ props: ['supplier'], emits: ['order-groups', 'delete', 'intelligence'], template: '<article data-supplier><h2>{{ supplier.name }}</h2><button data-group-order @click="$emit(\'order-groups\',supplier)">groups</button></article>' })
+const supplierCard = defineComponent({ props: ['supplier', 'syncingIds', 'busyIds'], emits: ['order-groups', 'delete', 'intelligence', 'force-sync', 'sync'], template: '<article data-supplier><h2>{{ supplier.name }}</h2><button data-group-order @click="$emit(\'order-groups\',supplier)">groups</button></article>' })
 const targetCard = defineComponent({ props: ['target'], template: '<article data-monitor>{{ target.name }}</article>' })
 const orderDialog = defineComponent({ name: 'UpstreamOrderDialog', props: ['show','scope','supplierId','supplierName'], emits: ['close','saved'], template: '<div v-if="show" data-order-dialog><button data-cancel-order @click="$emit(\'close\')">cancel</button><button data-save-order @click="$emit(\'saved\')">save</button></div>' })
 const target = (id: number, name: string) => ({ id, name, endpoint: 'https://example.com', provider: 'openai', models: ['model'], statistics: [] } as unknown as UpstreamTarget)
@@ -34,6 +34,52 @@ beforeEach(() => { vi.resetAllMocks(); localStorage.removeItem('upstream-supplie
 afterEach(() => { wrapper?.unmount(); wrapper=undefined; vi.useRealTimers(); vi.restoreAllMocks() })
 
 describe('upstream center manual ordering', () => {
+  it('reports partial Sub2API usage sync and translates a subsequent statistics failure', async () => {
+    mocks.syncBalance.mockResolvedValueOnce({ status: 'ok', error: 'sub2api_history_sync_failed: upstream_timeout' })
+    const view = render(); await flushPromises()
+    view.findAllComponents(supplierCard)[0].vm.$emit('sync', 10); await flushPromises()
+    expect(mocks.showSuccess).not.toHaveBeenCalled()
+    expect(mocks.showInfo).toHaveBeenCalledWith('upstreamCenter.balanceSynced · upstreamCenter.syncErrors.historyFailed: upstreamCenter.syncErrors.timeout')
+    mocks.syncBalance.mockResolvedValueOnce({ status: 'error', error: 'upstream_dns_failed' })
+    view.findAllComponents(supplierCard)[0].vm.$emit('sync', 10); await flushPromises()
+    expect(mocks.showError).toHaveBeenCalledWith('upstreamCenter.syncErrors.dnsFailed')
+  })
+  it('forces New API usage sync once, refreshes finance and releases the busy state', async () => {
+    const data = overview()
+    const item = { ...data.suppliers[0].targets[0], newapi_user_id: 9, newapi_access_token_configured: true }
+    data.suppliers[0].targets[0] = item
+    mocks.overview.mockResolvedValue(data)
+    let finish!: (value: unknown) => void
+    mocks.forceSync.mockImplementation(() => new Promise(resolve => { finish = resolve }))
+    const view = render(); await flushPromises()
+    const card = view.findAllComponents(supplierCard)[0]
+    card.vm.$emit('force-sync', item); card.vm.$emit('force-sync', item)
+    await flushPromises()
+    expect(mocks.forceSync).toHaveBeenCalledTimes(1)
+    expect(mocks.forceSync).toHaveBeenCalledWith(item.id)
+    expect(card.props('syncingIds').has(item.id)).toBe(true)
+    expect(card.props('busyIds').has(item.id)).toBe(true)
+    finish({ status: 'ok', usage_sync_status: 'synced', error: '' }); await flushPromises()
+    expect(mocks.showSuccess).toHaveBeenCalledWith('upstreamCenter.newapi.forceSyncComplete')
+    expect(mocks.overview).toHaveBeenCalledTimes(2)
+    expect(card.props('syncingIds').has(item.id)).toBe(false)
+    expect(card.props('busyIds').has(item.id)).toBe(false)
+  })
+
+  it.each([
+    [{ status: 'ok', error: '' }, 'info', 'forceSyncPending'],
+    [{ status: 'ok', usage_sync_status: 'pending', error: 'newapi_usage_incomplete' }, 'info', 'forceSyncPending'],
+    [{ status: 'ok', usage_sync_status: 'synced', error: 'newapi_usage_incomplete' }, 'info', 'forceSyncPartial'],
+    [{ status: 'error', usage_sync_status: 'failed', error: 'newapi_account_auth_failed' }, 'error', 'forceSyncFailed'],
+  ])('does not report a successful usage sync for partial or failed data %#', async (snapshot, kind, message) => {
+    const view = render(); await flushPromises()
+    const card = view.findAllComponents(supplierCard)[0]
+    const item = { ...supplier(1, 'Alpha').targets[0], newapi_user_id: 9, newapi_access_token_configured: true }
+    mocks.forceSync.mockResolvedValue(snapshot)
+    card.vm.$emit('force-sync', item); await flushPromises()
+    expect(mocks.showSuccess).not.toHaveBeenCalled()
+    expect(kind === 'info' ? mocks.showInfo : mocks.showError).toHaveBeenCalledWith(expect.stringContaining(`upstreamCenter.newapi.${message}`))
+  })
   it('shows unreconciled Chinese labels instead of a legacy estimated negative profit', async () => {
     const data = overview()
     data.summary = { revenue: 0, remote_used: null, profit: -0.007152, cost_source: 'estimated', currency: 'USD', request_count: 0 } as UpstreamOverview['summary']

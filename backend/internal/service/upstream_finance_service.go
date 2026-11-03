@@ -6,7 +6,6 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
-	"io"
 	"math"
 	"net/http"
 	"net/url"
@@ -32,18 +31,21 @@ var (
 )
 
 type UpstreamFinanceService struct {
-	repo        UpstreamFinanceRepository
-	encryptor   SecretEncryptor
-	billing     *BillingService
-	channels    *ChannelService
-	accounts    AccountRepository
-	client      *http.Client
-	now         func() time.Time
-	newAPICache newAPIFinanceCache
+	repo           UpstreamFinanceRepository
+	encryptor      SecretEncryptor
+	billing        *BillingService
+	channels       *ChannelService
+	accounts       AccountRepository
+	client         *http.Client
+	now            func() time.Time
+	newAPICache    newAPIFinanceCache
+	sub2APIHistory sub2APIHistorySchedule
 }
 
 func NewUpstreamFinanceService(repo UpstreamFinanceRepository, encryptor SecretEncryptor, billing *BillingService, channels *ChannelService, accounts AccountRepository) *UpstreamFinanceService {
-	client := newSSRFSafeHTTPClient(upstreamBalanceTimeout)
+	// Each adapter still sets its own per-request deadline. Sub2API summaries
+	// can take longer than the lightweight New API reads (which remain 12s).
+	client := newSSRFSafeHTTPClient(30 * time.Second)
 	// Redirects can change the credential recipient and are not part of this API.
 	client.CheckRedirect = func(_ *http.Request, _ []*http.Request) error { return http.ErrUseLastResponse }
 	return &UpstreamFinanceService{repo: repo, encryptor: encryptor, billing: billing, channels: channels, accounts: accounts, client: client, now: time.Now}
@@ -187,6 +189,10 @@ func (s *UpstreamFinanceService) LatestBalance(ctx context.Context, targetID int
 }
 
 func (s *UpstreamFinanceService) SyncBalance(ctx context.Context, targetID int64) (*UpstreamBalanceSnapshot, error) {
+	return s.syncBalance(ctx, targetID, false)
+}
+
+func (s *UpstreamFinanceService) syncBalance(ctx context.Context, targetID int64, force bool) (*UpstreamBalanceSnapshot, error) {
 	// Capture identity after obtaining the lease; SaveBalance verifies it again.
 	token := uuid.NewString()
 	now := s.now().UTC()
@@ -211,6 +217,12 @@ func (s *UpstreamFinanceService) SyncBalance(ctx context.Context, targetID int64
 	if err != nil {
 		return nil, err
 	}
+	if force {
+		if err := s.validateNewAPIForceTarget(ctx, target); err != nil {
+			return nil, err
+		}
+		ctx = context.WithValue(ctx, newAPIUsageForceKey{}, true)
+	}
 	// Adapters can require several reads. Their combined budget must remain
 	// shorter than the one-minute lease, including persistence and release.
 	fetchCtx, cancelFetch := context.WithTimeout(ctx, 45*time.Second)
@@ -228,7 +240,12 @@ func (s *UpstreamFinanceService) SyncBalance(ctx context.Context, targetID int64
 	if err = s.repo.SaveBalance(ctx, target, upstreamBalanceIdentity(target), snapshot, token, s.now().Add(interval)); err != nil {
 		return nil, err
 	}
-	return s.LatestBalance(ctx, targetID)
+	result, err := s.LatestBalance(ctx, targetID)
+	if err == nil && force {
+		result.UsageSyncStatus = newAPIUsageSyncStatus(snapshot, s.now())
+		result.Error = snapshot.Error
+	}
+	return result, err
 }
 
 func (s *UpstreamFinanceService) SyncDueBalances(ctx context.Context) {
@@ -280,11 +297,12 @@ func (s *UpstreamFinanceService) fetchSub2APIBalance(ctx context.Context, target
 		return fail("invalid_endpoint")
 	}
 	query := request.Query()
-	query.Set("days", "30")
+	query.Set("days", "1")
 	query.Set("timezone", timezone.Name())
-	// model_stats uses date parameters on Sub2API versions that do not expose
-	// daily_usage. Its default is a rolling 30 days, which is a different range.
-	query.Set("start_date", dayStart.AddDate(0, 0, -29).Format("2006-01-02"))
+	// Fetch the smaller today window before expensive historical aggregates.
+	// Both parameters matter: compatible versions use separate date filters for
+	// daily_usage and model_stats. Neither may default to a rolling 30 days here.
+	query.Set("start_date", dayStart.Format("2006-01-02"))
 	query.Set("end_date", dayStart.Format("2006-01-02"))
 	request.RawQuery = query.Encode()
 	requestURL = request.String()
@@ -300,33 +318,16 @@ func (s *UpstreamFinanceService) fetchSub2APIBalance(ctx context.Context, target
 	if err != nil || strings.TrimSpace(key) == "" {
 		return fail("credential_unavailable")
 	}
-	reqCtx, cancel := context.WithTimeout(ctx, upstreamBalanceTimeout)
-	defer cancel()
-	req, err := http.NewRequestWithContext(reqCtx, http.MethodGet, requestURL, nil)
-	if err != nil {
-		return fail("request_invalid")
-	}
-	req.Header.Set("Authorization", "Bearer "+key)
-	req.Header.Set("Accept", "application/json")
-	resp, err := s.client.Do(req)
-	if err != nil {
-		return fail("upstream_request_failed")
-	}
-	defer func() { _ = resp.Body.Close() }()
-	if resp.StatusCode == http.StatusNotFound || resp.StatusCode == http.StatusMethodNotAllowed {
+	reqCtx, cancel := context.WithTimeout(ctx, 26*time.Second)
+	body, code := s.fetchUpstreamFinanceJSON(reqCtx, requestURL, key, upstreamBalanceMaxBody, 20*time.Second, 2)
+	cancel()
+	if code == "upstream_http_404" || code == "upstream_http_405" {
 		snapshot.Kind = "unsupported"
 		snapshot.Status = "unsupported"
 		return fail("usage_endpoint_unsupported")
 	}
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		return fail(fmt.Sprintf("upstream_http_%d", resp.StatusCode))
-	}
-	body, err := io.ReadAll(io.LimitReader(resp.Body, upstreamBalanceMaxBody+1))
-	if err != nil {
-		return fail("response_read_failed")
-	}
-	if len(body) > upstreamBalanceMaxBody {
-		return fail("response_too_large")
+	if code != "" {
+		return fail(code)
 	}
 	parsed, err := parseUpstreamUsage(body)
 	if err != nil {
@@ -346,17 +347,18 @@ func (s *UpstreamFinanceService) fetchSub2APIBalance(ctx context.Context, target
 			parsed.DayStart, parsed.DayEnd = &dayStart, &dayEnd
 			parsed.DaySyncedAt = &completedAt
 		}
-		parsed.Last30DaysUsed = parseUpstreamPeriodUsed(body)
-		if parsed.Last30DaysUsed != nil {
-			periodStart := dayStart.AddDate(0, 0, -29)
-			parsed.PeriodStart, parsed.PeriodEnd = &periodStart, &dayEnd
-			parsed.PeriodSyncedAt = &completedAt
-		}
+	} else {
+		// The request may have been served before midnight. Do not label that
+		// unverified prior-day amount as today's usage using a new timestamp.
+		parsed.TodayUsed = nil
 	}
 	parsed.Billing = parseUpstreamBillingFromUsage(body)
 	if parsed.Billing != nil {
 		parsed.Billing.SyncedAt = &completedAt
 		parsed.Billing.LastAttemptAt = &completedAt
+	}
+	if timezone.StartOfDay(completedAt).Equal(dayStart) {
+		parsed.Error = s.fetchSub2APIHistory(ctx, target, key, request, parsed, dayStart)
 	}
 	return parsed
 }

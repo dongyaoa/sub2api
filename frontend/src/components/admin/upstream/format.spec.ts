@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import type { UpstreamHistoryRecord, UpstreamTarget } from '@/api/admin/upstreamCenter'
-import { amount, availability, availabilityColor, compactTokens, latencyColor, money, overallTargetStatus, recentHistory, targetStatus } from './format'
+import type { UpstreamFinanceSummary, UpstreamHistoryRecord, UpstreamTarget } from '@/api/admin/upstreamCenter'
+import { actualProfit, actualUpstreamUsed, amount, availability, availabilityColor, compactTokens, latencyColor, money, overallTargetStatus, profitPendingKey, recentHistory, targetStatus } from './format'
 
 function record(id: number, checked_at: string, status: UpstreamHistoryRecord['status'] = 'operational'): UpstreamHistoryRecord {
   return { id, checked_at, status, target_id: 1, model: 'test-model', latency_ms: 800, ping_latency_ms: null, http_status: 200, message: '', cost: null, cost_source: 'unknown' }
@@ -11,6 +11,15 @@ function target(): UpstreamTarget {
 
 describe('upstream monitoring display invariants', () => {
   afterEach(() => vi.useRealTimers())
+  it('retains known upstream costs but hides profit while those costs are stale or incomplete', () => {
+    const summary = { cost_source: 'reported', remote_used: 14.85, revenue: 232.47, profit: 217.62, remote_stale: true } as UpstreamFinanceSummary
+    expect(actualUpstreamUsed(summary)).toBe(14.85)
+    expect(actualProfit(summary)).toBeNull()
+    expect(profitPendingKey(summary)).toBe('upstreamCenter.finance.pending')
+    expect(actualProfit({ ...summary, remote_stale: false })).toBe(217.62)
+    expect(actualProfit({ ...summary, remote_stale: false, cost_partial: true })).toBeNull()
+    expect(actualProfit({ ...summary, remote_stale: false, remote_used: 0, profit: 232.47 })).toBe(232.47)
+  })
   it('keeps missing samples neutral and displays the most recent records chronologically without mutating the API response', () => {
     const records = [record(2, '2026-09-23T10:05:00Z', 'degraded'), record(1, '2026-09-23T10:00:00Z', 'error')]
     const bars = recentHistory(records)

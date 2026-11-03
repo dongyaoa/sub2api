@@ -23,7 +23,7 @@ func TestUpstreamDailyProfitKeepsLastSuccessfulAmountDuringRefresh(t *testing.T)
 	summary := &UpstreamFinanceSummary{Revenue: 2, CostSource: "unknown"}
 	applyUpstreamDailyProfit(summary, UpstreamFinanceQuery{From: start, To: end}, sources, now)
 	require.Equal(t, cost, *summary.RemoteUsed)
-	require.Equal(t, 1.0, *summary.Profit)
+	require.Nil(t, summary.Profit, "expired upstream costs cannot price current local revenue")
 	require.Equal(t, synced, *summary.RemoteSyncedAt)
 	require.True(t, summary.RemoteStale)
 	// A successful wallet response can omit best-effort usage fields. The
@@ -37,12 +37,56 @@ func TestUpstreamDailyProfitKeepsLastSuccessfulAmountDuringRefresh(t *testing.T)
 	require.Equal(t, cost, *partial.RemoteUsed)
 	require.Equal(t, synced, *partial.RemoteSyncedAt)
 	require.True(t, partial.RemoteStale)
+	require.Nil(t, partial.Profit)
 	// The stale copy cannot become today's cost after local midnight.
 	tomorrow := now.AddDate(0, 0, 1)
 	sources.LastBusinessAt[11] = tomorrow
 	next := &UpstreamFinanceSummary{Revenue: 2, CostSource: "unknown"}
 	applyUpstreamDailyProfit(next, UpstreamFinanceQuery{From: end, To: end.AddDate(0, 0, 1)}, sources, tomorrow)
 	require.Nil(t, next.Profit)
+}
+
+func TestUpstreamProfitUsesEachUsageWindowsFreshness(t *testing.T) {
+	now := time.Date(2026, 11, 3, 18, 30, 0, 0, timezone.Location())
+	start, end := timezone.StartOfDay(now), timezone.StartOfDay(now).AddDate(0, 0, 1)
+	periodStart := start.AddDate(0, 0, -29)
+	supplier := int64(7)
+	fresh, expired := now.Add(-time.Minute), now.Add(-13*time.Hour)
+	balance := &UpstreamBalanceSnapshot{
+		Status: "ok", Currency: "USD", DayUsed: financeFloat(14.85), DayStart: &start, DayEnd: &end,
+		DaySyncedAt: &fresh, Last30DaysUsed: financeFloat(50), PeriodStart: &periodStart, PeriodEnd: &end,
+		PeriodSyncedAt: &expired, SyncedAt: &now, LastAttemptAt: &now, Error: "newapi_usage_incomplete",
+	}
+	sources := &UpstreamProfitSources{
+		LastBusinessAt: map[int64]time.Time{11: now},
+		Targets:        map[int64]*UpstreamFinanceTarget{11: {ID: 11, SupplierID: &supplier, Endpoint: "https://example.com", APIKeyFingerprint: "key"}},
+		Balances:       map[int64]*UpstreamBalanceSnapshot{11: balance},
+	}
+	daily := &UpstreamFinanceSummary{Revenue: 232.47}
+	applyUpstreamDailyProfit(daily, UpstreamFinanceQuery{From: start, To: end}, sources, now)
+	require.False(t, daily.RemoteStale, "a later wallet attempt or pending history does not invalidate fresh daily usage")
+	require.InDelta(t, 217.62, *daily.Profit, 1e-9)
+
+	month := &UpstreamFinanceSummary{Revenue: 400}
+	applyUpstreamPeriodProfit(month, UpstreamFinanceQuery{From: periodStart, To: end}, sources, now, true)
+	require.True(t, month.RemoteStale)
+	require.Nil(t, month.Profit)
+	require.Equal(t, 50.0, *month.RemoteUsed)
+	require.Equal(t, expired, *month.RemoteSyncedAt)
+
+	// A current wallet balance cannot make a thirteen-hour-old daily cost fresh.
+	balance.DaySyncedAt = &expired
+	applyUpstreamDailyProfit(daily, UpstreamFinanceQuery{From: start, To: end}, sources, now)
+	require.True(t, daily.RemoteStale)
+	require.Nil(t, daily.Profit)
+	require.Equal(t, 14.85, *daily.RemoteUsed)
+	require.Equal(t, expired, *daily.RemoteSyncedAt)
+
+	// Exact zero costs remain valid when the entire window is freshly reported.
+	balance.DaySyncedAt, balance.DayUsed = &fresh, financeFloat(0)
+	applyUpstreamDailyProfit(daily, UpstreamFinanceQuery{From: start, To: end}, sources, now)
+	require.Equal(t, daily.Revenue, *daily.Profit)
+	require.False(t, daily.RemoteStale)
 }
 
 func TestUpstreamPeriodProfitUses30DayChargeAndDeduplicatesKeys(t *testing.T) {

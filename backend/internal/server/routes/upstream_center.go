@@ -34,6 +34,7 @@ func registerUpstreamCenterRoutes(admin *gin.RouterGroup, h *handler.Handlers) {
 	center.DELETE("/targets/:id", api.DeleteTarget)
 	center.POST("/targets/:id/run", api.Run)
 	center.POST("/targets/:id/sync-balance", api.SyncBalance)
+	center.POST("/targets/:id/force-sync", api.ForceSync)
 	center.GET("/targets/:id/history", api.History)
 	center.POST("/models", api.Models)
 	center.GET("/finance", api.Finance)
