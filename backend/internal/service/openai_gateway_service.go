@@ -304,6 +304,10 @@ type OpenAIForwardResult struct {
 	SearchCount int
 	// AudioUsage carries Voice billing units when present.
 	AudioUsage *AudioUsage
+	// AudioSpeech identifies binary /audio/speech responses, which carry no token usage.
+	AudioSpeech bool
+	// AudioSpeechBilling is resolved before forwarding and shared with reservation.
+	AudioSpeechBilling *AudioSpeechBillingSnapshot
 
 	wsReplayInput                []json.RawMessage
 	wsReplayInputExists          bool

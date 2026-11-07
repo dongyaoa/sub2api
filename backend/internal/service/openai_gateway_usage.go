@@ -249,6 +249,11 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	if input.BillingModelSource == BillingModelSourceRequested && input.OriginalModel != "" {
 		billingModel = input.OriginalModel
 	}
+	if result.AudioSpeech && result.AudioSpeechBilling != nil {
+		// The price was selected before forwarding, possibly using a fallback
+		// model card. Keep accounting labels aligned with that frozen price.
+		billingModel = result.AudioSpeechBilling.BillingModel
+	}
 	billingModels := usageBillingModelCandidates(
 		billingModel,
 		result.BillingModel,
@@ -312,7 +317,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		result.UpstreamResponseModel,
 		result.UpstreamResponseModelConflict,
 		result.ImageCount > 0 || result.VideoCount > 0 || result.WebSearchCalls > 0 ||
-			result.AudioUsage != nil || result.SearchCount > 0,
+			result.AudioUsage != nil || result.AudioSpeech || result.SearchCount > 0,
 	); !grokContentPolicyRejection && responseModel != "" && !strings.EqualFold(responseModel, baselineBillingModel) {
 		if identified, responseChannelPriced := s.hasIdentifiedOpenAIResponsePricing(ctx, responseModel, apiKey); identified {
 			responseModels := s.filterCNProviderBillingModelCandidates(ctx, account, apiKey, usageBillingModelCandidates(responseModel))
@@ -396,6 +401,13 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 	if input.OriginalModel != "" {
 		requestedModel = input.OriginalModel
 	}
+	usageModel := result.Model
+	if result.AudioSpeech && result.AudioSpeechBilling != nil {
+		usageModel = result.AudioSpeechBilling.BillingModel
+		if publicModel, ok := RequestedPublicModelFromContext(ctx); ok {
+			requestedModel = publicModel
+		}
+	}
 	sentModel := upstreamSentModel(result.Model, result.UpstreamModel)
 	if result.UpstreamResponseModelConflict {
 		logger.L().Warn("upstream_response_model_conflict",
@@ -421,7 +433,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		AccountID:                account.ID,
 		RequestID:                requestID,
 		UpstreamRequestID:        usageUpstreamRequestIDPtr(account, result.UpstreamHeaders, result.OpenAIWSMode),
-		Model:                    result.Model,
+		Model:                    usageModel,
 		RequestedModel:           requestedModel,
 		UpstreamModel:            optionalTrimmedStringPtr(result.UpstreamModel),
 		UpstreamResponseModel:    optionalTrimmedStringPtr(result.UpstreamResponseModel),
@@ -445,7 +457,7 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		ImageSizeBreakdown:       imageSizeBreakdown,
 		NativeCompactionV2:       input.NativeCompactionV2,
 	}
-	isVideoUsage := !grokContentPolicyRejection && isGrokVideoUsageResult(result, billingModels)
+	isVideoUsage := !grokContentPolicyRejection && !result.AudioSpeech && isGrokVideoUsageResult(result, billingModels)
 	if isVideoUsage {
 		usageLog.VideoCount = result.VideoCount
 		videoModel := videoUsageModel(result, billingModel)
@@ -464,7 +476,9 @@ func (s *OpenAIGatewayService) RecordUsage(ctx context.Context, input *OpenAIRec
 		usageLog.ActualCost = cost.ActualCost
 		usageLog.LongContextBillingApplied = cost.LongContextBillingApplied
 	}
-	if isVideoUsage && cost != nil && cost.BillingMode == string(BillingModePerRequest) {
+	if result.AudioSpeech && result.AudioSpeechBilling != nil {
+		usageLog.RateMultiplier = result.AudioSpeechBilling.RateMultiplier
+	} else if isVideoUsage && cost != nil && cost.BillingMode == string(BillingModePerRequest) {
 		usageLog.RateMultiplier = baseMultiplier
 	} else if isVideoUsage && (cost == nil || cost.BillingMode != string(BillingModeToken)) {
 		usageLog.RateMultiplier = videoMultiplier
@@ -627,6 +641,9 @@ func (s *OpenAIGatewayService) calculateOpenAIRecordUsageCost(
 	modelLongContextExempt bool,
 	pricingAt time.Time,
 ) (*CostBreakdown, error) {
+	if result != nil && result.AudioSpeech {
+		return result.AudioSpeechBilling.cost()
+	}
 	billingModel := firstUsageBillingModel(billingModels)
 	if result != nil && result.WebSearchCalls > 0 {
 		// Codex alpha/search 网页搜索按次计费：上游不返回 usage/token 字段，单价只取

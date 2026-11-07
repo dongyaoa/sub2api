@@ -100,6 +100,7 @@ const openAILongContextBillingEnabledKey = "openai_long_context_billing_enabled"
 const (
 	OpenAIEndpointCapabilityChatCompletions OpenAIEndpointCapability = "chat_completions"
 	OpenAIEndpointCapabilityEmbeddings      OpenAIEndpointCapability = "embeddings"
+	OpenAIEndpointCapabilityAudioSpeech     OpenAIEndpointCapability = "audio_speech"
 	OpenAIEndpointCapabilityAlphaSearch     OpenAIEndpointCapability = "alpha_search"
 	OpenAIEndpointCapabilityLive            OpenAIEndpointCapability = "live"
 	// Muse video uses a custom OpenAI API-key upstream, never an OAuth account.
@@ -1934,6 +1935,9 @@ func (a *Account) GetOpenAISessionID() string {
 func (a *Account) SupportsOpenAIEndpointCapability(capability OpenAIEndpointCapability) bool {
 	if a == nil {
 		return false
+	}
+	if capability == OpenAIEndpointCapabilityAudioSpeech {
+		return SupportsAudioSpeechAccount(a)
 	}
 	if capability == OpenAIEndpointCapabilityMuseVideo {
 		return SupportsMuseVideoAccount(a)

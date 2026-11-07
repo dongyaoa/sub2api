@@ -298,8 +298,8 @@ func NormalizeOpenAICompatiblePlatform(platform string) string {
 	return PlatformOpenAI
 }
 
-// Gemini uses this scheduler only for the explicitly supported Omni Videos
-// capability. Keep general OpenAI protocol normalization unchanged.
+// Gemini uses this scheduler only for explicitly supported media capabilities.
+// Keep general OpenAI protocol normalization unchanged.
 func normalizeOpenAISchedulingPlatform(platform string) string {
 	if platform == PlatformGemini {
 		return platform
@@ -312,7 +312,14 @@ func accountMatchesOpenAISchedulingPlatform(account *Account, platform string, c
 		return false
 	}
 	if platform == PlatformGemini {
-		return capability == OpenAIEndpointCapabilityGeminiOmniVideo && SupportsGeminiOmniVideoAccount(account)
+		switch capability {
+		case OpenAIEndpointCapabilityGeminiOmniVideo:
+			return SupportsGeminiOmniVideoAccount(account)
+		case OpenAIEndpointCapabilityAudioSpeech:
+			return SupportsAudioSpeechAccount(account)
+		default:
+			return false
+		}
 	}
 	return account.IsOpenAICompatible()
 }

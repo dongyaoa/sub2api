@@ -696,6 +696,8 @@ func TestEmbeddedFrontendBypassesBareAPIAliases(t *testing.T) {
 	for _, path := range []string{
 		"/chat/completions",
 		"/embeddings",
+		"/audio/speech",
+		"/audio/voices",
 		"/messages/count_tokens",
 		"/models/gpt-5.5",
 		"/videos",

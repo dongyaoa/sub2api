@@ -365,6 +365,8 @@ const (
 	InflightEstimateVideo
 	// InflightEstimateAudio 语音（tts/stt/realtime）：按 AudioMode/AudioUnits 计。
 	InflightEstimateAudio
+	// InflightEstimateAudioSpeech uses a validated per-request pricing snapshot.
+	InflightEstimateAudioSpeech
 )
 
 // InflightEstimateRequest 单请求估算输入。
@@ -381,8 +383,9 @@ type InflightEstimateRequest struct {
 	VideoResolution      string
 	VideoDurationSeconds int
 	// 音频：模式（tts/stt/realtime）与计量单位（百万字符/小时/分钟）。
-	AudioMode  string
-	AudioUnits float64
+	AudioMode          string
+	AudioUnits         float64
+	AudioSpeechBilling *AudioSpeechBillingSnapshot
 }
 
 // inflightEstimateDeps 两种网关 service 共用的估算依赖。
@@ -653,6 +656,13 @@ func (d inflightEstimateDeps) estimateOne(ctx context.Context, apiKey *APIKey, m
 func (d inflightEstimateDeps) estimate(ctx context.Context, apiKey *APIKey, req InflightEstimateRequest) (float64, bool) {
 	if apiKey == nil || apiKey.User == nil {
 		return 0, false
+	}
+	if req.Kind == InflightEstimateAudioSpeech {
+		cost, err := req.AudioSpeechBilling.cost()
+		if err != nil {
+			return 0, false
+		}
+		return cost.ActualCost, true
 	}
 	if req.Model == "" || (req.Kind == InflightEstimateAudio && req.AudioUnits <= 0) {
 		// 非计量请求（媒体状态查询、custom-voices 等）：无需预留，也不算「无法定价」。

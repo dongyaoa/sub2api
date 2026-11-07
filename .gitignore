@@ -122,6 +122,16 @@ tests
 CLAUDE.md
 .claude
 scripts
+!/scripts/
+/scripts/*
+!/scripts/test_audio_speech.py
+!/scripts/test_google_voice_replication.py
+!/scripts/audio-playground.html
+!/scripts/serve_audio_playground.py
+!/scripts/tests/
+/scripts/tests/*
+!/scripts/tests/test_audio_speech_clients.py
+!/scripts/tests/test_audio_playground.py
 !backend/scripts/
 !backend/scripts/resolve-version.sh
 .code-review-state
@@ -133,6 +143,7 @@ deploy/docker-compose.override.yml
 .gocache/
 vite.config.js
 docs/*
+!docs/audio-speech.md
 !docs/muse-video-integration.md
 !docs/gemini-omni-video-integration.md
 !docs/admin-api-keys.md

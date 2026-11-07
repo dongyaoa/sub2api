@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="referrer" content="no-referrer">
+  <title>Sub2API · 声音实验室</title>
+  <style>
+    [hidden]{display:none!important}
+    :root{color-scheme:light;--ink:#172c3a;--muted:#667b88;--line:#dce5e9;--paper:#fff;--bg:#f3f6f7;--accent:#007d77;--accent-dark:#00645f;--accent-soft:#e5f5f1;--danger:#ae3444;--shadow:0 12px 38px #18374408;font-family:"Segoe UI","Microsoft YaHei",sans-serif}
+    *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font-size:14px;line-height:1.6}button,input,textarea,select{font:inherit}button,a,input,textarea,select{-webkit-tap-highlight-color:transparent}button{cursor:pointer}button:disabled{cursor:not-allowed;opacity:.45}button:focus-visible,a:focus-visible{outline:3px solid #74d7c5;outline-offset:3px}input:focus,textarea:focus,select:focus{outline:0;border-color:var(--accent);box-shadow:0 0 0 3px #007d7712}a{color:var(--accent)}.page{max-width:1120px;margin:auto;padding:40px 30px 46px}.topline{display:flex;justify-content:space-between;gap:20px;align-items:center;margin-bottom:28px}.brand{display:flex;align-items:center;gap:10px;font-weight:700;letter-spacing:.5px}.mark{width:34px;height:34px;background:var(--ink);border-radius:10px;display:flex;align-items:center;justify-content:center;gap:3px}.mark i{display:block;width:3px;background:#85e0ca;border-radius:3px}.mark i:nth-child(1),.mark i:nth-child(5){height:9px}.mark i:nth-child(2),.mark i:nth-child(4){height:17px}.mark i:nth-child(3){height:23px}.badge{font-size:12px;color:var(--accent);background:var(--accent-soft);padding:5px 10px;border-radius:999px;white-space:nowrap}.hero{display:flex;align-items:center;justify-content:space-between;gap:32px;margin-bottom:26px}.eyebrow{font-size:11px;letter-spacing:2px;color:var(--accent);font-weight:700;margin:0 0 7px}h1{margin:0;font-size:34px;letter-spacing:-1px;line-height:1.35}.subtitle{color:var(--muted);margin:9px 0 0;font-size:14px}.hero-note{max-width:235px;border-left:2px solid #b9d7ce;padding-left:16px;color:var(--muted);font-size:12px}.card{background:var(--paper);border:1px solid var(--line);border-radius:17px;box-shadow:var(--shadow)}.connection{padding:21px 24px;margin-bottom:22px}.section-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:15px}h2{font-size:15px;margin:0;font-weight:650}.section-number{color:var(--accent);font-size:11px;letter-spacing:1px;margin-right:8px}.hint{font-size:12px;color:var(--muted);margin:7px 0 0}.connection-grid{display:grid;grid-template-columns:1.3fr 1.1fr 1fr;gap:16px}label.field{display:block}.label{font-size:12px;font-weight:650;display:flex;align-items:center;justify-content:space-between;margin-bottom:6px}.optional{color:var(--muted);font-weight:400;font-size:11px}input[type=text],input[type=password],textarea,select{width:100%;border:1px solid #cedbdf;border-radius:9px;padding:10px 11px;background:#fff;color:var(--ink);transition:border-color .15s,box-shadow .15s}input[readonly]{background:#f3f6f7;color:#617683}.key-wrap{position:relative}.key-wrap input{padding-right:52px}.key-toggle{position:absolute;right:6px;top:6px;border:0;background:transparent;color:var(--muted);font-size:12px;padding:5px 6px;border-radius:5px}.workspace{overflow:hidden}.tabs{display:flex;gap:27px;padding:0 26px;border-bottom:1px solid var(--line);background:#fbfcfc}.tab{border:0;background:transparent;color:var(--muted);padding:17px 0 14px;position:relative;font-size:14px;font-weight:650}.tab[aria-selected=true]{color:var(--accent)}.tab[aria-selected=true]:after{content:"";position:absolute;bottom:-1px;left:0;right:0;height:3px;background:var(--accent);border-radius:3px}.tab .tiny{font-size:10px;font-weight:500;background:#e8eff0;padding:2px 5px;border-radius:4px;margin-left:4px}.panel{padding:25px 26px}.panel[hidden]{display:none}.editor-grid{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(230px,1fr);gap:24px}.editor textarea{min-height:214px;resize:vertical;line-height:1.85;padding:14px}.controls{display:grid;gap:15px;align-content:start}.controls textarea{min-height:97px;resize:vertical}.editor-footer{display:flex;justify-content:space-between;gap:8px;margin-top:7px;color:var(--muted);font-size:11px}.actions{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:23px}.button{border:1px solid var(--line);border-radius:9px;padding:10px 17px;background:white;color:var(--ink);font-weight:600;font-size:13px;display:inline-flex;gap:8px;align-items:center;justify-content:center;text-decoration:none;transition:background .15s,transform .15s}.button:not(:disabled):hover{background:#f0f5f4}.primary{background:var(--accent);border-color:var(--accent);color:white;min-width:135px}.primary:not(:disabled):hover{background:var(--accent-dark)}.small{padding:6px 10px;font-size:12px}.ghost{background:transparent;border-color:transparent;color:var(--muted)}.billing-note{font-size:12px;color:var(--muted);margin:0 0 0 auto}.recording-grid{display:grid;grid-template-columns:1fr 1fr;gap:17px;margin:17px 0}.recording{padding:17px;border:1px dashed #bbcdd1;border-radius:12px;background:#f9fbfb}.recording h3{margin:0 0 4px;font-size:13px}.recording .hint{margin:0 0 13px}.recording input[type=file]{max-width:100%;font-size:12px;color:var(--muted)}input[type=file]::file-selector-button{padding:7px 12px;background:white;border:1px solid #cedbdf;border-radius:7px;color:var(--ink);font:inherit;margin-right:8px;cursor:pointer}.file-status{min-height:19px;margin-top:10px;color:var(--muted);font-size:11px;overflow-wrap:anywhere}.file-status.error{color:var(--danger)}.recording audio{display:block;width:100%;height:34px;margin-top:11px}.recording audio[hidden]{display:none}.consent-copy{background:#f0f7f4;border:1px solid #d6e9df;padding:13px 15px;border-radius:10px;display:flex;gap:15px;align-items:center;justify-content:space-between;margin:0 0 16px}.consent-copy .label{margin-bottom:3px;color:#526c61}.consent-quote{margin:0;font-size:13px;color:#234f40}.consent-check{display:flex;align-items:flex-start;gap:8px;font-size:12px;color:#4b626e;margin-bottom:20px}.consent-check input{accent-color:var(--accent);margin-top:4px}.clone-form{display:grid;grid-template-columns:1.5fr 1fr;gap:18px}.clone-form textarea{min-height:112px;resize:vertical}.voice-result{margin-top:18px;padding:14px 16px;background:#f1f7f6;border:1px solid #cde4dd;border-radius:10px;display:flex;justify-content:space-between;align-items:center;gap:10px}.voice-result[hidden]{display:none}.voice-result code{font-size:12px;overflow-wrap:anywhere}.voice-result .hint{margin-top:3px}.result{padding:23px 26px;margin-top:22px}.status-dot{width:8px;height:8px;background:#a6b7bc;border-radius:50%;display:inline-block;margin-right:7px}.result[data-state=working] .status-dot{background:#d7a644;animation:pulse 1s infinite}.result[data-state=success] .status-dot{background:var(--accent)}.result[data-state=error] .status-dot{background:var(--danger)}.result[data-state=error] #resultTitle{color:var(--danger)}.result-head{display:flex;justify-content:space-between;gap:12px;align-items:center}.result-caption{color:var(--muted);font-size:12px;margin:7px 0 0}.result-meta{display:flex;flex-wrap:wrap;gap:8px 20px;margin-top:13px;font-size:11px;color:var(--muted)}.result-meta span{overflow-wrap:anywhere}.audio-output{display:flex;gap:14px;align-items:center;margin-top:18px}.audio-output[hidden]{display:none}.audio-output audio{width:100%;height:42px}.details{margin-top:16px;border-top:1px solid #e9eef0;padding-top:12px}.details summary{color:var(--muted);cursor:pointer;font-size:12px}.details pre{background:#f5f7f8;padding:12px;border-radius:8px;color:#425d6b;font:12px/1.65 Consolas,monospace;white-space:pre-wrap;overflow-wrap:anywhere;max-height:230px;overflow:auto}.footer{display:flex;justify-content:space-between;gap:20px;margin-top:20px;font-size:11px;color:#83959e}.inline-alert{border-left:3px solid #d3a05c;background:#fff8ed;padding:9px 12px;color:#88602d;font-size:12px;border-radius:4px;margin-top:12px}.inline-alert[hidden]{display:none}@keyframes pulse{50%{opacity:.35}}@media(max-width:760px){.page{padding:24px 16px 30px}.hero{align-items:flex-start;gap:18px}.hero-note{display:none}h1{font-size:28px}.connection{padding:18px}.connection-grid,.editor-grid,.clone-form{grid-template-columns:1fr}.connection-grid{gap:12px}.panel{padding:20px 18px}.tabs{padding:0 18px;gap:23px}.recording-grid{grid-template-columns:1fr}.billing-note{margin-left:0;flex-basis:100%}.editor textarea{min-height:180px}.result{padding:20px 18px}.audio-output{flex-wrap:wrap}.audio-output .button{width:100%}.footer{flex-direction:column;gap:4px}.section-head{align-items:flex-start}.badge{font-size:11px}.consent-copy{align-items:flex-start}.consent-copy .button{white-space:nowrap}.voice-result{align-items:flex-start;flex-direction:column}}
+  </style>
+</head>
+<body>
+<main class="page">
+  <header class="topline"><div class="brand"><span class="mark" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></span>SUB2API <span style="font-weight:400;color:var(--muted)">/</span> 声音实验室</div><span class="badge" id="connectionMode">正在检查连接方式</span></header>
+  <section class="hero"><div><p class="eyebrow">VOICE PLAYGROUND</p><h1>让文字拥有声音。</h1><p class="subtitle">预设音色合成，也可以用你自己的录音创建专属声音。</p></div><p class="hero-note">音频在本地试听和下载。<br>API Key 与音色凭据只保留在当前页面内存中。</p></section>
+  <section class="card connection" aria-labelledby="connectionHeading">
+    <div class="section-head"><h2 id="connectionHeading"><span class="section-number">01</span>连接到你的站点</h2><span class="hint" id="targetHint">使用本站用户 API Key</span></div>
+    <div class="connection-grid">
+      <label class="field"><span class="label">Base URL</span><input id="baseUrl" type="text" value="https://api.zicc.cc/v1" spellcheck="false" autocomplete="off"></label>
+      <label class="field"><span class="label">API Key</span><span class="key-wrap" style="display:block"><input id="apiKey" type="password" placeholder="输入本站用户 Key" autocomplete="off" spellcheck="false"><button id="toggleKey" class="key-toggle" type="button" aria-label="显示或隐藏 API Key">显示</button></span></label>
+      <label class="field"><span class="label">模型</span><input id="model" type="text" value="gemini-3.8-flash-tts" spellcheck="false" autocomplete="off"></label>
+    </div>
+    <p class="inline-alert" id="directHint" hidden>当前为浏览器直连模式。若站点未开放跨域，请运行 serve_audio_playground.py 后打开本地地址，无需修改服务器 CORS。</p>
+  </section>
+  <section class="card workspace">
+    <div class="tabs" role="tablist" aria-label="语音功能"><button class="tab" id="tabSpeech" role="tab" aria-selected="true" aria-controls="speechPanel" type="button">语音合成</button><button class="tab" id="tabClone" role="tab" aria-selected="false" aria-controls="clonePanel" type="button">录音克隆 <span class="tiny">专属音色</span></button></div>
+    <section class="panel" id="speechPanel" role="tabpanel" aria-labelledby="tabSpeech">
+      <div class="editor-grid">
+        <div class="editor"><label class="field"><span class="label">想让声音说些什么？</span><textarea id="speechText" placeholder="输入要朗读的文本……">你好，欢迎来到声音实验室。今天，让我们把文字变成温暖而自然的声音。</textarea></label><div class="editor-footer"><span>中文、英文及混合文本</span><span id="speechCount">0 字</span></div></div>
+        <div class="controls"><label class="field"><span class="label">音色 <span class="optional">可输入上游支持的音色</span></span><input id="voice" type="text" value="Kore" list="voiceOptions" autocomplete="off"><datalist id="voiceOptions"><option value="Kore"><option value="Zephyr"><option value="Puck"><option value="Charon"><option value="Fenrir"></datalist></label><label class="field"><span class="label">风格指令 <span class="optional">可选</span></span><textarea id="instructions" placeholder="例如：温暖自然的中文播客语气，语速稍慢。"></textarea></label><label class="field"><span class="label">上游音频格式</span><select id="format"><option value="wav">WAV · 可直接播放</option><option value="pcm">PCM · 本地包装为 WAV</option></select></label></div>
+      </div>
+      <div class="actions"><button class="button primary" id="synthesize" type="button">生成语音 <span aria-hidden="true">↗</span></button><p class="billing-note">合成成功按所选模型的模型广场价格计 1 次。</p></div>
+    </section>
+    <section class="panel" id="clonePanel" role="tabpanel" aria-labelledby="tabClone" hidden>
+      <div class="section-head"><h2>从你的录音创建声音</h2><span class="hint">两份录音 · 同一位成年说话人</span></div>
+      <p class="hint">在本地转换为 24 kHz、单声道、16-bit WAV 后上传。每份转换后的文件最多 10 MiB。</p>
+      <div class="recording-grid">
+        <div class="recording"><h3>参考录音</h3><p class="hint">10–30 秒，清晰自然，尽量没有背景音乐。</p><input id="referenceFile" type="file" accept="audio/*,.wav,.mp3,.m4a,.ogg,.flac" aria-label="选择参考录音"><div class="file-status" id="referenceStatus">尚未选择录音</div><audio id="referencePreview" controls hidden preload="metadata"></audio></div>
+        <div class="recording"><h3>本人授权录音</h3><p class="hint">由本人朗读下方完整授权句，最长 60 秒。</p><input id="consentFile" type="file" accept="audio/*,.wav,.mp3,.m4a,.ogg,.flac" aria-label="选择授权录音"><div class="file-status" id="consentStatus">尚未选择录音</div><audio id="consentPreview" controls hidden preload="metadata"></audio></div>
+      </div>
+      <div class="consent-copy"><div><span class="label">请本人清晰朗读</span><p class="consent-quote" id="consentPhrase">我是此声音的拥有者并授权谷歌使用此声音创建语音合成模型</p></div><button class="button small" id="copyConsent" type="button">复制文本</button></div>
+      <label class="consent-check"><input id="consentCheck" type="checkbox"><span>我是这位成年说话人，或已获得其明确授权；参考录音和授权录音来自同一人。</span></label>
+      <div class="clone-form"><label class="field"><span class="label">用新声音朗读</span><textarea id="cloneText">你好，这是通过我的录音创建的声音。欢迎收听今天的节目。</textarea></label><div class="controls"><label class="field"><span class="label">音色名称 <span class="optional">可选</span></span><input id="displayName" type="text" placeholder="例如：我的播客声音" maxlength="100"></label><label class="field"><span class="label">风格指令 <span class="optional">可选</span></span><input id="cloneInstructions" type="text" placeholder="例如：轻松、温暖，像面对面交谈。"></label></div></div>
+      <div class="actions"><button class="button primary" id="createAndSpeak" type="button" disabled>创建并合成</button><button class="button" id="createVoice" type="button" disabled>仅创建音色</button><p class="billing-note">创建音色计 1 次，合成语音再计 1 次；均按所选模型价格。</p></div>
+      <div class="voice-result" id="voiceResult" hidden><div><span class="label">专属音色已就绪</span><code id="voiceId"></code><p class="hint" id="voiceExpiry"></p></div><div style="display:flex;gap:8px"><button class="button small" id="copyVoice" type="button">复制凭据</button><button class="button small primary" id="speakClone" type="button">用此音色合成</button></div></div>
+      <p class="hint">音色凭据需配合创建时的本站 Key 使用。更换连接、Key、模型或录音会清除本页已有凭据。</p>
+    </section>
+  </section>
+  <section class="card result" id="result" data-state="idle" aria-live="polite">
+    <div class="result-head"><h2><span class="status-dot" aria-hidden="true"></span><span id="resultTitle">准备好听见你的文字</span></h2><button class="button small ghost" id="cancel" type="button" hidden>取消请求</button></div>
+    <p class="result-caption" id="resultCaption">填写连接信息，选择一种方式开始测试。</p>
+    <div class="result-meta" id="resultMeta" hidden><span id="httpStatus"></span><span id="elapsed"></span><span id="requestId"></span></div>
+    <div class="audio-output" id="audioOutput" hidden><audio id="outputAudio" controls preload="metadata"></audio><a class="button" id="download" download="speech.wav">下载 WAV <span aria-hidden="true">↓</span></a></div>
+    <details class="details" id="details"><summary>请求详情</summary><pre id="log">尚未发送请求。录音预处理在本地完成。</pre></details>
+  </section>
+  <footer class="footer"><span>Sub2API · 本地语音接口测试</span><span>不会自动保存 Key、录音或音色凭据到浏览器存储。</span></footer>
+</main>
+<script>
+"use strict";
+const $ = (id) => document.getElementById(id);
+const MAX_WAV = 10 * 1024 * 1024;
+const state = {proxy: null, busy: false, controller: null, files: {reference: null, consent: null}, revisions: {reference: 0, consent: 0}, processing: new Set(), voice: null, outputUrl: null, previewUrls: {}, logs: [], timedOut: false};
+function setStatus(kind, title, caption) { $("result").dataset.state = kind; $("resultTitle").textContent = title; $("resultCaption").textContent = caption; }
+function log(message) { state.logs.push(new Date().toLocaleTimeString("zh-CN") + "  " + message); state.logs = state.logs.slice(-30); $("log").textContent = state.logs.join("\n"); }
+function clearVoice(reason) { if (state.voice && reason) log(reason); state.voice = null; $("voiceResult").hidden = true; $("voiceId").textContent = ""; $("voiceExpiry").textContent = ""; updateControls(); }
+function voiceValid() { return state.voice && (!state.voice.expires_at || state.voice.expires_at * 1000 > Date.now()); }
+function updateControls() {
+  const processing = state.processing.size > 0;
+  const canCreate = !state.busy && !processing && state.files.reference && state.files.consent && $("consentCheck").checked;
+  $("createVoice").disabled = !canCreate; $("createAndSpeak").disabled = !canCreate;
+  $("synthesize").disabled = state.busy; $("speakClone").disabled = state.busy || !voiceValid(); $("copyVoice").disabled = state.busy || !state.voice;
+  $("cancel").hidden = !state.busy;
+  for (const id of ["baseUrl", "apiKey", "model", "referenceFile", "consentFile", "consentCheck", "speechText", "voice", "instructions", "format", "cloneText", "displayName", "cloneInstructions", "toggleKey"]) $(id).disabled = state.busy;
+}
+function normalizeBase(raw) {
+  let url;
+  try { url = new URL(raw.trim()); } catch { throw new Error("请填写有效的 Base URL。"); }
+  if (!["http:", "https:"].includes(url.protocol) || url.username || url.password || url.search || url.hash) throw new Error("Base URL 需使用 HTTP(S)，且不包含密码、查询参数或片段。");
+  let path = url.pathname.replace(/\/+$/, "");
+  if (path.endsWith("/audio/speech")) path = path.slice(0, -13);
+  if (!path.endsWith("/v1")) path += "/v1";
+  return url.origin + path;
+}
+function connection() {
+  const key = $("apiKey").value.trim(), model = $("model").value.trim();
+  if (!key) throw new Error("请先填写本站用户 API Key。");
+  if (!model) throw new Error("请填写模型名称。");
+  return {key, model, base: state.proxy ? state.proxy.base_url : normalizeBase($("baseUrl").value)};
+}
+function shortId(value) { return value.length > 50 ? value.slice(0, 25) + "…" + value.slice(-14) : value; }
+function errorText(bytes) {
+  const text = new TextDecoder().decode(bytes).slice(0, 8000);
+  try { const body = JSON.parse(text); return typeof body.error === "string" ? body.error : body.error?.message || body.message || text; } catch { return text || "服务未返回错误说明。"; }
+}
+async function api(path, body) {
+  const {key, base} = connection();
+  const url = state.proxy ? "/proxy/v1" + path : base + path;
+  const headers = {"Content-Type": "application/json", "Authorization": "Bearer " + key};
+  if (state.proxy) headers["X-Audio-Session"] = state.proxy.session_nonce;
+  const controller = new AbortController(); state.controller = controller; state.timedOut = false;
+  const timeout = setTimeout(() => { state.timedOut = true; controller.abort(); }, 180000);
+  const start = performance.now();
+  log("POST " + (state.proxy ? base + path : url));
+  try {
+    const response = await fetch(url, {method: "POST", headers, body: JSON.stringify(body), signal: controller.signal, credentials: "omit", redirect: "error"});
+    const data = await response.arrayBuffer(), seconds = (performance.now() - start) / 1000;
+    const requestId = response.headers.get("x-request-id") || response.headers.get("request-id") || "";
+    $("resultMeta").hidden = false; $("httpStatus").textContent = "HTTP " + response.status; $("elapsed").textContent = "耗时 " + seconds.toFixed(2) + " 秒"; $("requestId").textContent = requestId ? "请求 ID：" + requestId : "";
+    log("HTTP " + response.status + " · " + seconds.toFixed(2) + " 秒" + (requestId ? " · " + requestId : ""));
+    if (!response.ok) throw new Error("HTTP " + response.status + "：" + errorText(data));
+    return {data, type: response.headers.get("content-type") || ""};
+  } catch (error) {
+    if (error.name === "AbortError") throw new Error(state.timedOut ? "请求超过 180 秒，已停止等待。请查看站点记录，避免重复提交。" : "请求已取消。若上游已完成生成，本次仍可能产生费用，请查看站点记录。");
+    if (error instanceof TypeError) throw new Error(state.proxy ? "本地代理连接中断，请确认 Python 服务仍在运行。" : "浏览器未能读取响应，可能是跨域或网络错误。请用 serve_audio_playground.py 启动本地测试页。");
+    throw error;
+  } finally { clearTimeout(timeout); if (state.controller === controller) state.controller = null; }
+}
+async function run(action) {
+  if (state.busy) return;
+  state.busy = true; updateControls(); $("resultMeta").hidden = true; $("outputAudio").pause(); $("audioOutput").hidden = true;
+  try { connection(); await action(); }
+  catch (error) { setStatus("error", "本次测试未完成", error.message); log(error.message); $("details").open = true; }
+  finally { state.busy = false; updateControls(); }
+}
+function wavHeader(byteLength) {
+  const buffer = new ArrayBuffer(44 + byteLength), view = new DataView(buffer);
+  const ascii = (offset, value) => { for (let i = 0; i < value.length; i++) view.setUint8(offset + i, value.charCodeAt(i)); };
+  ascii(0, "RIFF"); view.setUint32(4, 36 + byteLength, true); ascii(8, "WAVE"); ascii(12, "fmt "); view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true); view.setUint32(24, 24000, true); view.setUint32(28, 48000, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true); ascii(36, "data"); view.setUint32(40, byteLength, true); return buffer;
+}
+function encodeWav(samples) {
+  const buffer = wavHeader(samples.length * 2), view = new DataView(buffer);
+  for (let i = 0; i < samples.length; i++) { const value = Math.max(-1, Math.min(1, samples[i])); view.setInt16(44 + i * 2, Math.round(value < 0 ? value * 32768 : value * 32767), true); }
+  return buffer;
+}
+function fourCC(bytes, offset) { return String.fromCharCode(...bytes.subarray(offset, offset + 4)); }
+function validateWav(buffer) {
+  const bytes = new Uint8Array(buffer), view = new DataView(buffer);
+  if (bytes.length < 44 || fourCC(bytes, 0) !== "RIFF" || fourCC(bytes, 8) !== "WAVE") throw new Error("响应不是有效 WAV 音频。");
+  let fmt = false, data = false;
+  for (let offset = 12; offset + 8 <= bytes.length;) { const length = view.getUint32(offset + 4, true), end = offset + 8 + length; if (end > bytes.length) throw new Error("WAV 数据被截断，未提供下载。"); if (fourCC(bytes, offset) === "fmt " && length >= 16) fmt = true; if (fourCC(bytes, offset) === "data" && length > 0) data = true; offset = end + length % 2; }
+  if (!fmt || !data) throw new Error("WAV 缺少音频数据或格式信息。");
+}
+function validAudio(buffer, contentType, format) {
+  const type = contentType.split(";", 1)[0].trim().toLowerCase(), bytes = new Uint8Array(buffer);
+  if ((!type.startsWith("audio/") && type !== "application/octet-stream") || !bytes.length) throw new Error("服务没有返回音频：" + errorText(buffer));
+  if (bytes.length > 128 * 1024 * 1024) throw new Error("音频超过测试页的 128 MiB 限制。");
+  const prefix = new TextDecoder().decode(bytes.subarray(0, 512)).trim().toLowerCase();
+  if (/^(<!doctype|<html|<head|<body|<script|<\?xml)/.test(prefix)) throw new Error("服务把网页标记成了音频，未生成下载。");
+  if ((prefix.startsWith("{") || prefix.startsWith("[")) && bytes.length < 1024 * 1024) { let json = false; try { JSON.parse(new TextDecoder().decode(bytes)); json = true; } catch {} if (json) throw new Error("服务返回 JSON 而非音频：" + errorText(buffer)); }
+  if (fourCC(bytes, 0) === "RIFF") { validateWav(buffer); return new Blob([buffer], {type: "audio/wav"}); }
+  if (format !== "pcm" || bytes.length % 2) throw new Error("音频格式与请求不符，或 PCM 字节数不完整。");
+  const wav = wavHeader(bytes.length); new Uint8Array(wav, 44).set(bytes); return new Blob([wav], {type: "audio/wav"});
+}
+function presentAudio(blob, cloned) {
+  if (state.outputUrl) URL.revokeObjectURL(state.outputUrl);
+  state.outputUrl = URL.createObjectURL(blob); $("outputAudio").src = state.outputUrl; $("download").href = state.outputUrl; $("download").download = (cloned ? "cloned-voice-" : "speech-") + new Date().toISOString().replace(/[:.]/g, "-") + ".wav"; $("audioOutput").hidden = false;
+  setStatus("success", "声音已经准备好了", "点击播放试听，或下载 WAV 文件。" + (cloned ? "本次使用你创建的专属音色。" : ""));
+  log("音频校验通过 · " + (blob.size / 1024).toFixed(1) + " KiB");
+}
+async function synthesize(cloned) {
+  const {model} = connection();
+  if (cloned && !voiceValid()) throw new Error("请先创建有效音色；已过期的音色需要重新创建。");
+  const text = $(cloned ? "cloneText" : "speechText").value.trim(); if (!text) throw new Error("请输入需要朗读的文本。");
+  const voice = cloned ? state.voice.id : $("voice").value.trim(); if (!voice) throw new Error("请填写音色。");
+  const format = cloned ? "wav" : $("format").value;
+  const payload = {model, input: text, voice, response_format: format}; const instructions = $(cloned ? "cloneInstructions" : "instructions").value.trim(); if (instructions) payload.instructions = instructions;
+  setStatus("working", cloned ? "正在用专属音色合成" : "正在生成语音", "请保持页面打开，音频生成可能需要一些时间。");
+  const result = await api("/audio/speech", payload); presentAudio(validAudio(result.data, result.type, format), cloned);
+}
+function base64(buffer) { const bytes = new Uint8Array(buffer); let value = ""; for (let offset = 0; offset < bytes.length; offset += 32768) value += String.fromCharCode(...bytes.subarray(offset, offset + 32768)); return btoa(value); }
+async function prepareFile(kind) {
+  const revision = ++state.revisions[kind], file = $(kind + "File").files[0]; state.files[kind] = null; state.processing.delete(kind); $("consentCheck").checked = false; clearVoice("录音已更换，已清除原音色凭据。");
+  if (state.previewUrls[kind]) URL.revokeObjectURL(state.previewUrls[kind]); $(kind + "Preview").hidden = true;
+  const status = $(kind + "Status"); status.classList.remove("error");
+  if (!file) { status.textContent = "尚未选择录音"; updateControls(); return; }
+  state.processing.add(kind); status.textContent = "正在本地解码并转换为 24 kHz WAV……"; updateControls();
+  let context;
+  try {
+    if (file.size > 25 * 1024 * 1024) throw new Error("原始录音超过 25 MiB，请先裁剪或压缩。");
+    const AudioContextClass = window.AudioContext || window.webkitAudioContext; if (!AudioContextClass || !window.OfflineAudioContext) throw new Error("当前浏览器不支持录音转换，请使用新版 Chrome 或 Edge。");
+    context = new AudioContextClass(); const decoded = await context.decodeAudioData(await file.arrayBuffer());
+    if (kind === "reference" && (decoded.duration < 10 || decoded.duration > 30)) throw new Error("参考录音需要 10–30 秒；当前为 " + decoded.duration.toFixed(2) + " 秒。");
+    if (kind === "consent" && (decoded.duration <= 0 || decoded.duration > 60)) throw new Error("授权录音需要大于 0 秒且不超过 60 秒；当前为 " + decoded.duration.toFixed(2) + " 秒。");
+    const length = Math.round(decoded.duration * 24000); if (!length || 44 + length * 2 > MAX_WAV) throw new Error("转换后的 WAV 为空或超过 10 MiB，请缩短录音。");
+    const offline = new OfflineAudioContext(1, length, 24000), source = offline.createBufferSource(); source.buffer = decoded; source.connect(offline.destination); source.start(); const rendered = await offline.startRendering(); const wav = encodeWav(rendered.getChannelData(0));
+    if (state.revisions[kind] !== revision) return;
+    state.files[kind] = {wav, duration: decoded.duration}; const url = URL.createObjectURL(new Blob([wav], {type: "audio/wav"})); state.previewUrls[kind] = url; $(kind + "Preview").src = url; $(kind + "Preview").hidden = false;
+    status.textContent = file.name + " · " + decoded.duration.toFixed(2) + " 秒 · " + (wav.byteLength / 1024).toFixed(0) + " KiB · 24 kHz / 单声道 / 16 bit";
+  } catch (error) { if (state.revisions[kind] === revision) { status.textContent = error.message || "浏览器无法解码此录音，请先导出为 WAV。"; status.classList.add("error"); } }
+  finally { if (context) await context.close(); if (state.revisions[kind] === revision) state.processing.delete(kind); updateControls(); }
+}
+async function createVoice() {
+  if (!state.files.reference || !state.files.consent || !$("consentCheck").checked) throw new Error("请准备两份录音，并确认声音使用授权。");
+  const {model} = connection(); const payload = {model, source_audio: {mime_type: "audio/wav", data: base64(state.files.reference.wav)}, consent_audio: {mime_type: "audio/wav", data: base64(state.files.consent.wav)}};
+  const name = $("displayName").value.trim(); if (name) payload.display_name = name;
+  setStatus("working", "正在创建你的专属音色", "正在上传参考与授权录音。创建成功会按模型价格计 1 次。");
+  const result = await api("/audio/voices", payload); let voice;
+  try { voice = JSON.parse(new TextDecoder().decode(result.data)); } catch { throw new Error("创建接口未返回有效 JSON。"); }
+  if (!voice || typeof voice.id !== "string" || !voice.id.startsWith("s2voice_")) throw new Error("创建响应缺少本站音色凭据 s2voice_…，请检查接口版本。");
+  state.voice = {id: voice.id, expires_at: typeof voice.expires_at === "number" ? voice.expires_at : 0}; $("voiceId").textContent = shortId(voice.id); $("voiceExpiry").textContent = state.voice.expires_at ? "有效至 " + new Date(state.voice.expires_at * 1000).toLocaleString("zh-CN") : "使用创建时的同一个本站 Key"; $("voiceResult").hidden = false;
+  setStatus("success", "专属音色创建成功", "音色凭据仅保留在本页，可复制后保存。继续合成将再计 1 次。"); log("专属音色创建成功；凭据未写入浏览器存储。"); updateControls();
+}
+async function copyText(value, button) {
+  try { await navigator.clipboard.writeText(value); } catch { const area = document.createElement("textarea"); area.value = value; area.style.position = "fixed"; area.style.opacity = "0"; document.body.appendChild(area); area.select(); document.execCommand("copy"); area.remove(); }
+  const label = button.textContent; button.textContent = "已复制"; setTimeout(() => { button.textContent = label; }, 1500);
+}
+function switchTab(clone) { $("speechPanel").hidden = clone; $("clonePanel").hidden = !clone; $("tabSpeech").setAttribute("aria-selected", String(!clone)); $("tabClone").setAttribute("aria-selected", String(clone)); }
+$("tabSpeech").addEventListener("click", () => switchTab(false)); $("tabClone").addEventListener("click", () => switchTab(true));
+for (const id of ["baseUrl", "apiKey", "model"]) $(id).addEventListener("input", () => clearVoice("连接、Key 或模型已更换，已清除音色凭据。"));
+$("toggleKey").addEventListener("click", () => { const visible = $("apiKey").type === "password"; $("apiKey").type = visible ? "text" : "password"; $("toggleKey").textContent = visible ? "隐藏" : "显示"; });
+$("speechText").addEventListener("input", () => { $("speechCount").textContent = Array.from($("speechText").value).length + " 字"; }); $("speechText").dispatchEvent(new Event("input"));
+$("referenceFile").addEventListener("change", () => prepareFile("reference")); $("consentFile").addEventListener("change", () => prepareFile("consent")); $("consentCheck").addEventListener("change", updateControls);
+$("synthesize").addEventListener("click", () => run(() => synthesize(false)));
+$("createVoice").addEventListener("click", () => run(createVoice));
+$("createAndSpeak").addEventListener("click", () => run(async () => { if (!$("cloneText").value.trim()) throw new Error("请先填写用新声音朗读的文本。"); await createVoice(); await synthesize(true); }));
+$("speakClone").addEventListener("click", () => run(() => synthesize(true)));
+$("copyConsent").addEventListener("click", () => copyText($("consentPhrase").textContent, $("copyConsent")));
+$("copyVoice").addEventListener("click", () => { if (state.voice) copyText(state.voice.id, $("copyVoice")); });
+$("cancel").addEventListener("click", () => { if (state.controller) state.controller.abort(); });
+window.addEventListener("beforeunload", () => { if (state.controller) state.controller.abort(); if (state.outputUrl) URL.revokeObjectURL(state.outputUrl); for (const url of Object.values(state.previewUrls)) URL.revokeObjectURL(url); });
+async function initialize() {
+  if (location.protocol !== "file:") {
+    try { const response = await fetch("/config", {cache: "no-store", credentials: "omit"}); if (response.ok) { const config = await response.json(); if (typeof config.base_url === "string" && typeof config.session_nonce === "string") { state.proxy = config; $("baseUrl").value = config.base_url; $("baseUrl").readOnly = true; $("connectionMode").textContent = "本地同源代理"; $("targetHint").textContent = "目标由 Python 启动参数固定"; updateControls(); return; } } } catch {}
+  }
+  $("connectionMode").textContent = "浏览器直连"; $("directHint").hidden = false; updateControls();
+}
+initialize();
+</script>
+</body>
+</html>
