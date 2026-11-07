@@ -15,9 +15,6 @@ type UpstreamFinanceSummary struct {
 	RequestCount int64    `json:"request_count"`
 	// Pending account imports make local revenue incomplete until the worker finishes.
 	HistorySyncPending int `json:"history_sync_pending"`
-	// New API synchronizes today's actual usage only; historical cost and profit
-	// must not reuse previously stored 30-day observations as current data.
-	PeriodCostDisabled bool `json:"period_cost_disabled,omitempty"`
 	// Includes input, output, cache creation and cache read tokens. An expired
 	// source usage log without a token snapshot makes the aggregate unknown.
 	TotalTokens          *int64 `json:"total_tokens"`
@@ -59,10 +56,6 @@ type UpstreamBalanceSnapshot struct {
 	DayStart       *time.Time `json:"day_start"`
 	DayEnd         *time.Time `json:"day_end"`
 	DaySyncedAt    *time.Time `json:"day_synced_at"`
-	Last30DaysUsed *float64   `json:"last_30_days_used"`
-	PeriodStart    *time.Time `json:"period_start"`
-	PeriodEnd      *time.Time `json:"period_end"`
-	PeriodSyncedAt *time.Time `json:"period_synced_at"`
 	TotalUsed      *float64   `json:"total_used"`
 	Currency       string     `json:"currency"`
 	Status         string     `json:"status"`
@@ -128,12 +121,6 @@ type UpstreamFinancePage struct {
 	Total    int64                   `json:"total"`
 	Page     int                     `json:"page"`
 	PageSize int                     `json:"page_size"`
-}
-
-// The two calendar windows include today and share the same upstream snapshots.
-type UpstreamFinancePeriods struct {
-	Today      *UpstreamFinanceSummary `json:"today"`
-	Last30Days *UpstreamFinanceSummary `json:"last_30_days"`
 }
 
 // UpstreamFinanceTarget is internal and deliberately has no exported JSON form.

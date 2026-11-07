@@ -54,7 +54,6 @@ func TestNewAPIForceSyncBypassesUsageCacheAndPublishesActualDay(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, "synced", forced.UsageSyncStatus)
 	require.Equal(t, 1.0, *forced.DayUsed)
-	require.Nil(t, forced.Last30DaysUsed)
 	require.Equal(t, 2, dayCalls)
 	require.True(t, forced.SyncedAt.Equal(now))
 	require.Empty(t, repo.token, "force sync must release the regular lease")

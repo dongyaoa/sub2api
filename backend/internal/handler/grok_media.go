@@ -133,7 +133,43 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 		}
 	}
 	requestModel := requestInfo.Model
+	videoBillingModel := ""
+	if endpoint == service.GrokMediaEndpointVideosGenerations && service.IsMuseVideoModel(requestModel) {
+		requestInfo, err = service.ParseMuseVideoRequest(body)
+		if err != nil {
+			h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", err.Error())
+			return
+		}
+		requestModel = requestInfo.Model
+		platform = service.PlatformOpenAI
+		noAccountCode, noAccountMessage = "muse_video_no_eligible_account", "No eligible Muse video API-key accounts"
+	}
+	if endpoint == service.GrokMediaEndpointVideosGenerations && service.IsGeminiOmniVideoModel(requestModel) {
+		requestInfo, err = service.ParseGeminiOmniVideoRequest(body)
+		if err != nil {
+			h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", err.Error())
+			return
+		}
+		requestModel = requestInfo.Model
+		platform = service.PlatformGemini
+		noAccountCode, noAccountMessage = "gemini_omni_video_no_eligible_account", "No eligible Gemini Omni video API-key accounts"
+	}
+	if endpoint.IsVideoLookupRequest() && !endpoint.IsSeedance() {
+		platform = videoLookupPlatform(apiKey.Group, videoRecord)
+		if videoRecord == nil && apiKey.Group != nil && apiKey.Group.Platform == service.PlatformComposite {
+			// Recover the submission platform when only the owner binding and
+			// pending billing snapshot survived a task-store outage.
+			if pending, pendingErr := h.gatewayService.LoadGrokVideoPendingBilling(c.Request.Context(), requestID, subject.UserID, apiKey.ID); pendingErr == nil && pending != nil {
+				platform = videoLookupPlatform(apiKey.Group, &service.VideoTaskRecord{
+					Metadata: service.VideoTaskMetadata{Model: pending.Model}, UpstreamModel: pending.UpstreamModel,
+				})
+			}
+		}
+	}
 	routingModel := service.NormalizeGrokMediaModelForEndpoint(endpoint, requestModel, requestInfo.HasInputImage())
+	if endpoint == service.GrokMediaEndpointVideosGenerations && (service.IsMuseVideoModel(requestModel) || service.IsGeminiOmniVideoModel(requestModel)) {
+		routingModel = h.gatewayService.ResolveVideoStudioRoutingModel(c.Request.Context(), apiKey.GroupID, requestModel)
+	}
 	if endpoint.IsGenerationRequest() && strings.TrimSpace(requestModel) == "" {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "model is required")
 		return
@@ -141,6 +177,11 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 	if endpoint.IsVideoLookupRequest() && strings.TrimSpace(requestID) == "" {
 		h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", "request_id is required")
 		return
+	}
+	if apiKey.Group != nil && apiKey.Group.Platform == service.PlatformComposite {
+		// Video lookups have no model for the routing middleware. Keep quota
+		// checks and usage attribution on the provider recovered above.
+		c.Request = c.Request.WithContext(service.WithResolvedTargetPlatform(c.Request.Context(), platform))
 	}
 
 	reqLog = reqLog.With(zap.String("model", requestModel))
@@ -151,6 +192,21 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 		if !service.GroupAllowsImageGeneration(apiKey.Group) {
 			h.errorResponse(c, http.StatusForbidden, "permission_error", service.ImageGenerationPermissionMessage())
 			return
+		}
+		if service.IsMuseVideoModel(requestModel) || service.IsGeminiOmniVideoModel(requestModel) {
+			// Do not incur upstream generation cost without a configured quote.
+			quote, pricingErr := h.gatewayService.VideoStudioPricing(c.Request.Context(), apiKey, requestModel)
+			if pricingErr != nil {
+				h.errorResponse(c, http.StatusServiceUnavailable, "video_pricing_unavailable", "Configure model pricing for "+requestModel+" before generating videos")
+				return
+			}
+			videoBillingModel = quote.BillingModel
+			if service.IsGeminiOmniVideoModel(requestModel) {
+				if tier, ok := quote.Tiers[requestInfo.Resolution]; !ok || !tier.Configured {
+					h.errorResponse(c, http.StatusServiceUnavailable, "video_pricing_unavailable", "Configure model pricing for the selected video resolution before generating")
+					return
+				}
+			}
 		}
 		if moderationBody := requestInfo.ModerationBody(); len(moderationBody) > 0 {
 			decision := h.checkSecurityAudit(c, reqLog, apiKey, subject, service.ContentModerationProtocolOpenAIImages, requestModel, moderationBody)
@@ -196,7 +252,13 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 	}
 
 	// 余额模式在途预留（与计费同口径估算；计费任务扣减余额缓存后才释放）。
-	inflightDone, inflightErr := reserveInflightBalance(c, h.billingCacheService, h.gatewayService, apiKey, subscription, grokMediaInflightEstimate(endpoint, routingModel, requestInfo, body))
+	estimateModel := routingModel
+	if service.IsMuseVideoModel(requestModel) || service.IsGeminiOmniVideoModel(requestModel) {
+		// The estimator resolves channel pricing itself and needs the public
+		// model to retain provider duration and resolution through aliases.
+		estimateModel = requestModel
+	}
+	inflightDone, inflightErr := reserveInflightBalance(c, h.billingCacheService, h.gatewayService, apiKey, subscription, grokMediaInflightEstimate(endpoint, estimateModel, requestInfo, body))
 	if inflightErr != nil {
 		status, code, message, retryAfter := billingErrorDetails(inflightErr)
 		if retryAfter > 0 {
@@ -275,6 +337,12 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 	}
 	routingStart := time.Now()
 	requiredCapability := grokMediaRequiredCapability(endpoint)
+	if endpoint == service.GrokMediaEndpointVideosGenerations && service.IsMuseVideoModel(requestModel) {
+		requiredCapability = service.OpenAIEndpointCapabilityMuseVideo
+	}
+	if endpoint == service.GrokMediaEndpointVideosGenerations && service.IsGeminiOmniVideoModel(requestModel) {
+		requiredCapability = service.OpenAIEndpointCapabilityGeminiOmniVideo
+	}
 	var accountReleaseFunc func()
 	releaseAccount := func() {
 		if accountReleaseFunc != nil {
@@ -389,7 +457,7 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 		if endpoint == service.GrokMediaEndpointVideoContent {
 			videoContentAccount = account
 		}
-		if endpoint.IsGenerationRequest() && !endpoint.IsSeedance() {
+		if endpoint.IsGenerationRequest() && platform == service.PlatformGrok {
 			eligible, eligibilityReason, eligibilityErr := h.ensureGrokMediaAccountEligibility(requestCtx, account)
 			if !eligible {
 				releaseAccount()
@@ -543,6 +611,7 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 
 		h.gatewayService.ReportOpenAIAccountScheduleResult(account, grokMediaScheduleModel(account, routingModel, result), true, nil)
 		if isGrokVideoCreateEndpoint(endpoint) && strings.TrimSpace(result.ResponseID) != "" {
+			snapshotBillingModel := firstNonEmptyString(videoBillingModel, result.BillingModel, requestModel)
 			groupID := int64(0)
 			subscriptionID := int64(0)
 			if subscription != nil {
@@ -552,7 +621,7 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 				groupID = *apiKey.GroupID
 			}
 			operation := "text"
-			if requestInfo.HasInputImage() {
+			if requestInfo.HasInputImage() || len(requestInfo.InputVideoURLs) > 0 {
 				operation = "image"
 			}
 			if h.videoTasks != nil {
@@ -569,7 +638,9 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 						Resolution:         requestInfo.Resolution,
 						AspectRatio:        requestInfo.AspectRatio,
 						Duration:           requestInfo.DurationSeconds,
+						Seed:               requestInfo.Seed,
 						UpstreamModel:      result.UpstreamModel,
+						BillingModel:       snapshotBillingModel,
 						RequestPayloadHash: service.HashUsageRequestPayload(body),
 						SubscriptionID:     subscriptionID,
 					},
@@ -593,7 +664,7 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 			// Retry once: missing pending causes silent underpricing (status omits resolution).
 			pending := service.GrokVideoPendingBilling{
 				Model:                requestModel,
-				BillingModel:         firstNonEmptyString(result.BillingModel, requestModel),
+				BillingModel:         snapshotBillingModel,
 				UpstreamModel:        result.UpstreamModel,
 				VideoResolution:      result.VideoResolution,
 				VideoDurationSeconds: result.VideoDurationSeconds,
@@ -658,6 +729,24 @@ func (h *OpenAIGatewayHandler) ensureGrokMediaAccountEligibility(ctx context.Con
 		return false, "billing_probe_unavailable", errors.New("grok media eligibility probe is not configured")
 	}
 	return h.grokMediaEligibilityProber.ProbeMediaEligibility(ctx, account.ID)
+}
+
+// A lookup carries no model. Recover its protocol from the owned task first;
+// the current group's platform alone cannot distinguish composite video tasks.
+func videoLookupPlatform(group *service.Group, record *service.VideoTaskRecord) string {
+	if record != nil {
+		if service.IsGeminiOmniVideoModel(record.Metadata.Model) || service.IsGeminiOmniVideoModel(record.UpstreamModel) {
+			return service.PlatformGemini
+		}
+		if service.IsMuseVideoModel(record.Metadata.Model) || service.IsMuseVideoModel(record.UpstreamModel) {
+			return service.PlatformOpenAI
+		}
+		return service.PlatformGrok
+	}
+	if group != nil && (group.Platform == service.PlatformOpenAI || group.Platform == service.PlatformGemini) {
+		return group.Platform
+	}
+	return service.PlatformGrok
 }
 
 func grokMediaRequiredCapability(endpoint service.GrokMediaEndpoint) service.OpenAIEndpointCapability {
@@ -800,9 +889,9 @@ func prepareGrokVideoCompletionBilling(
 	// Pure video: do not keep legacy ImageCount (avoids image-path heuristics).
 	merged.ImageCount = 0
 	// Official default resolution is 480p when the create request omitted it.
-	merged.VideoResolution = service.NormalizeVideoBillingResolutionOrDefault(merged.VideoResolution)
+	merged.VideoResolution = service.NormalizeVideoBillingResolutionForModelOrDefault(merged.Model, merged.VideoResolution)
 	// Official default duration is 8s when neither status nor create provided it.
-	merged.VideoDurationSeconds = service.NormalizeVideoBillingDurationSecondsOrDefault(merged.VideoDurationSeconds)
+	merged.VideoDurationSeconds = service.NormalizeVideoBillingDurationForModelOrDefault(merged.Model, merged.VideoDurationSeconds)
 	// E2E latency for async video: create accept → this discovery of done+url.
 	// Bill on discovery (status/content), not after further client polls; duration
 	// must not be only the single discovery hop (~hundreds of ms).
@@ -873,12 +962,20 @@ func recordDeliveredGrokVideoUsage(
 	if model == "" {
 		return errors.New("video billing model is missing")
 	}
+	billingModel := strings.TrimSpace(record.BillingModel)
+	if billingModel == "" {
+		var err error
+		billingModel, _, err = h.gatewayService.ResolveVideoStudioModels(billingCtx, apiKey, model)
+		if err != nil {
+			return err
+		}
+	}
 	createdAt := time.Unix(record.CreatedAt, 0).UTC()
 	result := &service.OpenAIForwardResult{
 		RequestID:            record.ID,
 		ResponseID:           record.ID,
 		Model:                model,
-		BillingModel:         model,
+		BillingModel:         billingModel,
 		UpstreamModel:        strings.TrimSpace(record.UpstreamModel),
 		VideoCount:           1,
 		VideoResolution:      record.Metadata.Resolution,
@@ -887,6 +984,10 @@ func recordDeliveredGrokVideoUsage(
 	if !createdAt.IsZero() {
 		result.Duration = time.Since(createdAt)
 	}
+	upstreamEndpoint := "/v1/videos/generations"
+	if service.IsMuseVideoModel(model) || service.IsGeminiOmniVideoModel(model) {
+		upstreamEndpoint = "/v1/videos"
+	}
 	return h.gatewayService.RecordUsage(billingCtx, &service.OpenAIRecordUsageInput{
 		Result:             result,
 		APIKey:             apiKey,
@@ -894,14 +995,14 @@ func recordDeliveredGrokVideoUsage(
 		Account:            account,
 		Subscription:       subscription,
 		InboundEndpoint:    "/v1/videos/generations",
-		UpstreamEndpoint:   "/v1/videos/generations",
+		UpstreamEndpoint:   upstreamEndpoint,
 		RequestPayloadHash: record.RequestPayloadHash,
 		APIKeyService:      h.apiKeyService,
-		QuotaPlatform:      service.PlatformGrok,
+		QuotaPlatform:      account.Platform,
 		PricingAt:          createdAt,
 		ChannelUsageFields: service.ChannelUsageFields{
 			OriginalModel:      model,
-			ChannelMappedModel: model,
+			ChannelMappedModel: billingModel,
 		},
 	})
 }
@@ -928,6 +1029,9 @@ func recordGrokMediaUsage(
 	inboundEndpoint := GetInboundEndpoint(c)
 	upstreamEndpoint := GetUpstreamEndpoint(c, account.Platform)
 	quotaPlatform := service.QuotaPlatform(c.Request.Context(), apiKey)
+	if result != nil && result.VideoCount > 0 && account != nil {
+		quotaPlatform = account.Platform
+	}
 	// OriginalModel 记录客户端请求的模型：composite 分组下 body 已被改写为具体模型，
 	// 公开别名需从 context 取回，与其他端点的用量归因口径一致（计费不受影响：
 	// BillingModelSource 为空不会触发来源覆盖）。

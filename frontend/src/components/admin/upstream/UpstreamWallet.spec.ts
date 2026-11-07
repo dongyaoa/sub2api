@@ -4,13 +4,13 @@ import UpstreamWallet from './UpstreamWallet.vue'
 import type { UpstreamBalanceSnapshot, UpstreamBillingSnapshot } from '@/api/admin/upstreamCenter'
 vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (key: string, params?: { time?: string }) => `${key}${params?.time ? ` ${params.time}` : ''}` }) }))
 describe('upstream wallet sync failure', () => {
-  it('shows Sub2API history failure only with key usage while preserving a successful wallet', async () => {
-    const wallet = { target_id: 7, wallet_ref: 'default', kind: 'wallet', balance: 42, today_used: 3, currency: 'USD', status: 'ok', error: 'sub2api_history_sync_failed: upstream_timeout' } as UpstreamBalanceSnapshot
+  it('shows incomplete daily usage only with key usage while preserving a successful wallet', async () => {
+    const wallet = { target_id: 7, wallet_ref: 'default', kind: 'wallet', balance: 42, today_used: 3, currency: 'USD', status: 'ok', error: 'newapi_usage_incomplete' } as UpstreamBalanceSnapshot
     const wrapper = mount(UpstreamWallet, { props: { wallets: [wallet] }, global: { stubs: { Icon: true } } })
-    expect(wrapper.text()).not.toContain('upstreamCenter.syncErrors.historyFailed')
+    expect(wrapper.text()).not.toContain('upstreamCenter.newapi.errors.usageIncomplete')
     expect(wrapper.text()).not.toContain('upstreamCenter.wallet.error')
     await wrapper.setProps({ showKeyUsage: true })
-    expect(wrapper.get('[data-testid="key-upstream-usage-notice"]').text()).toBe('upstreamCenter.syncErrors.historyFailed: upstreamCenter.syncErrors.timeout')
+    expect(wrapper.get('[data-testid="key-upstream-usage-notice"]').text()).toBe('upstreamCenter.newapi.errors.usageIncomplete')
     expect(wrapper.get('[data-testid="key-upstream-today"]').text()).toContain('3.00')
     wrapper.unmount()
   })

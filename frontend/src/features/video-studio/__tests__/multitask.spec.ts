@@ -6,13 +6,17 @@ import type { GenerateVideoRequest, VideoTask } from '../types'
 const api = vi.hoisted(() => ({
   listKeys: vi.fn(), listModels: vi.fn(), listTasks: vi.fn(), submitTask: vi.fn(),
   getTask: vi.fn(), downloadContent: vi.fn(), clearTasks: vi.fn(),
+  getPricing: vi.fn(),
   showError: vi.fn(), showSuccess: vi.fn(),
 }))
-vi.mock('../access', () => ({ listEligibleVideoKeys: api.listKeys }))
+vi.mock('../access', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../access')>(), listEligibleVideoKeys: api.listKeys,
+}))
 vi.mock('../api', () => ({
   listVideoModels: api.listModels, listVideoTasks: api.listTasks,
   submitVideoTask: api.submitTask, getVideoTask: api.getTask,
   downloadVideoContent: api.downloadContent, clearVideoTasks: api.clearTasks,
+  getVideoModelPricing: api.getPricing,
   getVideoRequestId: (task: VideoTask) => task.request_id || task.task_id || task.id || '',
 }))
 vi.mock('@/api/groups', () => ({ userGroupsAPI: { getUserGroupRates: async () => ({}) } }))
@@ -43,8 +47,9 @@ function content(id: string) {
 
 function deferred<T>() {
   let resolve!: (value: T) => void
-  const promise = new Promise<T>(done => { resolve = done })
-  return { promise, resolve }
+  let reject!: (reason: unknown) => void
+  const promise = new Promise<T>((done, fail) => { resolve = done; reject = fail })
+  return { promise, resolve, reject }
 }
 
 function mountStudio() {
@@ -65,6 +70,10 @@ beforeEach(() => {
   localStorage.clear()
   api.listKeys.mockResolvedValue(keys)
   api.listModels.mockResolvedValue({ data: [{ id: 'grok-imagine-video' }, { id: 'grok-imagine-video-1.5' }] })
+  api.getPricing.mockImplementation(async (_key: string, model: string) => ({
+    model, billing_mode: 'video', pricing_source: 'default', rate_multiplier: 1,
+    tiers: Object.fromEntries(['480p', '720p', '1080p'].map(resolution => [resolution, { base_price: 0.1, unit_price: 0.1, configured: true }])),
+  }))
   api.listTasks.mockResolvedValue({ tasks: [], retentionDays: 7, persistentHistory: false })
   api.submitTask.mockImplementation(async (_key: string, request: GenerateVideoRequest) => task(request.prompt))
   api.getTask.mockImplementation(() => new Promise<VideoTask>(() => {}))
@@ -78,6 +87,255 @@ beforeEach(() => {
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
 describe('video studio independent tasks', () => {
+  function configureOmni() {
+    api.listKeys.mockResolvedValue([{ ...keys[0], group: { ...keys[0]!.group, platform: 'gemini', name: 'Gemini' } }])
+    api.listModels.mockResolvedValue({ data: [{ id: 'gemini-omni-1.2-flash' }] })
+    api.getPricing.mockResolvedValue({ model: 'gemini-omni-1.2-flash', billing_mode: 'per_request', pricing_source: 'group', rate_multiplier: 1,
+      tiers: Object.fromEntries(['360p', '720p', '1080p', '4k'].map(resolution => [resolution, { base_price: 0.5, unit_price: 0.5, configured: true }])) })
+  }
+
+  it('offers Omni 3–15 seconds, 4K portrait dimensions, seed zero and per-request pricing', async () => {
+    configureOmni()
+    const wrapper = mountStudio()
+    try {
+      await flushPromises()
+      const range = wrapper.find('#video-studio-duration')
+      expect(range.attributes('min')).toBe('3')
+      expect(range.attributes('max')).toBe('15')
+      expect((range.element as HTMLInputElement).value).toBe('5')
+      await range.setValue('15')
+      await wrapper.findAll('button').find(button => button.text() === '4K')!.trigger('click')
+      await wrapper.findAll('button').find(button => button.text() === '9:16')!.trigger('click')
+      await wrapper.find('#video-studio-seed').setValue('0')
+      await wrapper.find('#video-studio-prompt').setValue('omni 4k')
+      expect(wrapper.text()).toContain('videoStudio.estimate $0.5')
+      await wrapper.find('form').trigger('submit')
+      await flushPromises()
+      expect(api.submitTask.mock.calls[0]?.[1]).toEqual({ model: 'gemini-omni-1.2-flash', prompt: 'omni 4k', resolution: '4k', aspect_ratio: '9:16', image_size: '2160x3840', duration: 15, seed: 0 })
+    } finally { wrapper.unmount() }
+  })
+
+  it('submits Omni first/last frames and reference videos as mutually exclusive inputs', async () => {
+    configureOmni()
+    const wrapper = mountStudio()
+    async function addURL(id: string, url: string) {
+      await wrapper.find(id).setValue(url)
+      await wrapper.find(id).trigger('keydown', { key: 'Enter' })
+    }
+    try {
+      await flushPromises()
+      await wrapper.findAll('[role="tab"]').find(tab => tab.text() === 'videoStudio.imageMode')!.trigger('click')
+      await wrapper.find('#video-studio-prompt').setValue('frames')
+      await addURL('#video-last-frame', 'https://example.com/end.png')
+      expect(wrapper.find('button[type="submit"]').attributes('disabled')).toBeDefined()
+      await addURL('#video-first-frame', 'https://example.com/start.png')
+      await wrapper.find('form').trigger('submit')
+      await flushPromises()
+      expect(api.submitTask.mock.calls[0]?.[1]).toMatchObject({ first_frame: 'https://example.com/start.png', last_frame: 'https://example.com/end.png' })
+      await wrapper.find('[data-testid="omni-references"]').trigger('click')
+      await addURL('#video-image-references', 'https://example.com/subject.png')
+      await addURL('#video-video-references', 'https://example.com/motion.mp4')
+      await wrapper.find('#video-studio-prompt').setValue('references')
+      await wrapper.find('form').trigger('submit')
+      await flushPromises()
+      const payload = api.submitTask.mock.calls[1]?.[1]
+      expect(payload).toMatchObject({ image_references: ['https://example.com/subject.png'], video_references: ['https://example.com/motion.mp4'] })
+      expect(payload.first_frame).toBeUndefined()
+      expect(payload.last_frame).toBeUndefined()
+      expect(sessionStorage.getItem('video_studio_active_tasks_v2:1')).not.toContain('example.com')
+    } finally { wrapper.unmount() }
+  })
+
+  it('blocks an Omni resolution whose price is not configured', async () => {
+    configureOmni()
+    api.getPricing.mockResolvedValue({ model: 'gemini-omni-1.2-flash', billing_mode: 'per_request', pricing_source: 'group', rate_multiplier: 1, tiers: { '720p': { base_price: 0.5, unit_price: 0.5, configured: true } } })
+    const wrapper = mountStudio()
+    try {
+      await flushPromises()
+      await wrapper.find('#video-studio-prompt').setValue('partial price card')
+      expect(wrapper.find('button[type="submit"]').attributes('disabled')).toBeUndefined()
+      await wrapper.findAll('button').find(button => button.text() === '4K')!.trigger('click')
+      expect(wrapper.find('button[type="submit"]').attributes('disabled')).toBeDefined()
+      expect(wrapper.text()).toContain('videoStudio.pricingUnavailable')
+      await wrapper.find('form').trigger('submit')
+      expect(api.submitTask).not.toHaveBeenCalled()
+    } finally { wrapper.unmount() }
+  })
+
+  it('preserves Omni history duration when reusing it from a different model', async () => {
+    api.listModels.mockResolvedValue({ data: [{ id: 'grok-imagine-video' }, { id: 'gemini-omni-1.2-flash' }] })
+    api.listTasks.mockResolvedValue({ tasks: [{ id: 'omni-history', status: 'failed', metadata: { model: 'gemini-omni-1.2-flash', prompt: 'saved omni', resolution: '4k', aspect_ratio: 'auto', duration: 15, seed: 12 } }], retentionDays: 7, persistentHistory: true })
+    const wrapper = mountStudio()
+    try {
+      await flushPromises()
+      await wrapper.find('button[title="saved omni"]').trigger('click')
+      await flushPromises()
+      await wrapper.findAll('button').find(button => button.text().includes('videoStudio.reuseParameters'))!.trigger('click')
+      await flushPromises()
+      expect((wrapper.find('#video-studio-duration').element as HTMLInputElement).value).toBe('15')
+      expect((wrapper.find('#video-studio-model').element as HTMLSelectElement).value).toBe('gemini-omni-1.2-flash')
+      expect((wrapper.find('#video-studio-seed').element as HTMLInputElement).value).toBe('12')
+    } finally { wrapper.unmount() }
+  })
+
+  it('submits Muse at 60 seconds and displays per-request pricing without resolution claims', async () => {
+    api.listKeys.mockResolvedValue([{ ...keys[0], group: { ...keys[0]!.group, platform: 'openai', name: 'Muse' } }])
+    api.listModels.mockResolvedValue({ data: [{ id: 'muse-video' }] })
+    api.getPricing.mockResolvedValue({
+      model: 'muse-video', billing_mode: 'per_request', pricing_source: 'group', rate_multiplier: 1,
+      tiers: { auto: { base_price: 0.75, unit_price: 0.75, configured: true } },
+    })
+    const wrapper = mountStudio()
+    try {
+      await flushPromises()
+      expect(wrapper.find('#video-studio-duration').attributes('max')).toBe('60')
+      expect(wrapper.text()).toContain('videoStudio.pricingPerRequest')
+      expect(wrapper.text()).toContain('$0.75videoStudio.perRequest')
+      expect(wrapper.text()).not.toContain('1080p')
+      await wrapper.find('#video-studio-duration').setValue('60')
+      await wrapper.find('#video-studio-prompt').setValue('muse-long-video')
+      expect(wrapper.text()).toContain('videoStudio.estimate $0.75')
+      await wrapper.find('form').trigger('submit')
+      await flushPromises()
+      expect(api.submitTask).toHaveBeenCalledWith('key-1', {
+        model: 'muse-video', prompt: 'muse-long-video', resolution: 'auto', aspect_ratio: '16:9', duration: 60,
+      }, expect.any(AbortSignal))
+    } finally { wrapper.unmount() }
+  })
+
+  it('blocks generation when the model price is missing instead of showing a free estimate', async () => {
+    configureOmni()
+    api.getPricing.mockRejectedValue(Object.assign(new Error('No configured video pricing'), { status: 503, code: 'pricing_not_configured' }))
+    const wrapper = mountStudio()
+    try {
+      await flushPromises()
+      await wrapper.find('#video-studio-prompt').setValue('a video')
+      expect(wrapper.text()).toContain('videoStudio.pricingUnavailable')
+      expect(wrapper.text()).not.toContain('videoStudio.estimate')
+      expect(wrapper.find('button[type="submit"]').attributes('disabled')).toBeDefined()
+      await wrapper.find('form').trigger('submit')
+      expect(api.submitTask).not.toHaveBeenCalled()
+    } finally { wrapper.unmount() }
+  })
+
+  it.each([
+    [Object.assign(new Error('Video request not found'), { status: 404, code: 'not_found_error' }), 'videoStudio.pricingServiceUnavailable'],
+    [Object.assign(new Error('Videos API is not supported for this platform'), { status: 404 }), 'videoStudio.pricingServiceUnavailable'],
+    [Object.assign(new Error('Video pricing is unavailable'), { status: 503, code: 'api_error' }), 'Video pricing is unavailable'],
+    [Object.assign(new Error('Invalid API key'), { status: 401 }), 'Invalid API key'],
+    [Object.assign(new Error('Model is not available for this group'), { status: 404, code: 'permission_error' }), 'Model is not available for this group'],
+    [new TypeError('Failed to fetch'), 'videoStudio.pricingLoadFailed'],
+  ])('distinguishes quote failures from missing prices: %s', async (error, expected) => {
+    configureOmni()
+    api.getPricing.mockRejectedValue(error)
+    const wrapper = mountStudio()
+    try {
+      await flushPromises()
+      expect(wrapper.text()).toContain(expected)
+      expect(wrapper.text()).not.toContain('videoStudio.pricingUnavailable')
+      expect(wrapper.find('button[type="submit"]').attributes('disabled')).toBeDefined()
+    } finally { wrapper.unmount() }
+  })
+
+  it('clears an outdated-service error after successfully reloading the quote', async () => {
+    configureOmni()
+    api.getPricing.mockRejectedValueOnce(Object.assign(new Error('Video request not found'), { status: 404 }))
+    const wrapper = mountStudio()
+    try {
+      await flushPromises()
+      expect(wrapper.text()).toContain('videoStudio.pricingServiceUnavailable')
+      await wrapper.findAll('button').find(button => button.text() === 'videoStudio.retryPricing')!.trigger('click')
+      await flushPromises()
+      expect(wrapper.text()).not.toContain('videoStudio.pricingServiceUnavailable')
+      expect(wrapper.text()).toContain('$0.5videoStudio.perRequest')
+    } finally { wrapper.unmount() }
+  })
+
+  it('does not replace the current key quote error with a late failure from another key', async () => {
+    configureOmni()
+    api.listKeys.mockResolvedValue(keys.map(key => ({ ...key, group: { ...key.group, platform: 'gemini' } })))
+    const firstQuote = deferred<unknown>()
+    api.getPricing.mockImplementation((key: string) => key === 'key-1' ? firstQuote.promise
+      : Promise.reject(Object.assign(new Error('No configured price'), { status: 503, code: 'pricing_not_configured' })))
+    const wrapper = mountStudio()
+    try {
+      await flushPromises()
+      await wrapper.find('#video-studio-key').setValue('2')
+      await flushPromises()
+      firstQuote.reject(Object.assign(new Error('Video request not found'), { status: 404 }))
+      await flushPromises()
+      expect(wrapper.text()).toContain('videoStudio.pricingUnavailable')
+      expect(wrapper.text()).not.toContain('videoStudio.pricingServiceUnavailable')
+    } finally { wrapper.unmount() }
+  })
+
+  it('hides keys without video models while restoring their historical tasks', async () => {
+    api.listModels.mockImplementation(async (key: string) => ({ data: [{ id: key === 'key-1' ? 'grok-imagine-video' : 'gemini-chat' }] }))
+    api.listTasks.mockImplementation(async (key: string) => ({ tasks: key === 'key-2' ? [task('hidden-key-history', 'completed')] : [], retentionDays: 7, persistentHistory: true }))
+    localStorage.setItem('video_studio_last_key_v1:1', '2')
+    const wrapper = mountStudio()
+    try {
+      await flushPromises()
+      const keyOptions = wrapper.findAll('#video-studio-key option')
+      expect(keyOptions.map(option => option.attributes('value'))).toEqual(['1'])
+      expect((wrapper.find('#video-studio-key').element as HTMLSelectElement).value).toBe('1')
+      expect(api.listModels).toHaveBeenCalledTimes(2)
+      expect(wrapper.find('button[title="hidden-key-history"]').exists()).toBe(true)
+      await wrapper.find('button[title="hidden-key-history"]').trigger('click')
+      await flushPromises()
+      expect(api.downloadContent).toHaveBeenCalledWith('key-2', 'hidden-key-history', expect.any(AbortSignal))
+    } finally { wrapper.unmount() }
+  })
+
+  it('does not show an API Key selector when every group lacks a video model', async () => {
+    api.listModels.mockResolvedValue({ data: [{ id: 'gemini-chat' }] })
+    const wrapper = mountStudio()
+    try {
+      await flushPromises()
+      expect(wrapper.find('#video-studio-key').exists()).toBe(false)
+      expect(wrapper.text()).toContain('videoStudio.noKeys')
+    } finally { wrapper.unmount() }
+  })
+
+  it('restores Grok group per-second prices when the pricing request is unavailable', async () => {
+    api.listKeys.mockResolvedValue([{ ...keys[0], group: { ...keys[0]!.group,
+      video_model_prices: { 'grok-imagine-video': { '480p': 0.06, '720p': 0.08, '1080p': 0.1 } },
+    } }])
+    api.getPricing.mockRejectedValue(new Error('quote unavailable'))
+    const wrapper = mountStudio()
+    try {
+      await flushPromises()
+      await wrapper.find('#video-studio-prompt').setValue('original Grok pricing')
+      expect(wrapper.text()).toContain('$0.06videoStudio.perSecond')
+      expect(wrapper.text()).toContain('$0.08videoStudio.perSecond')
+      expect(wrapper.text()).toContain('videoStudio.estimate $0.24')
+      expect(wrapper.find('button[type="submit"]').attributes('disabled')).toBeUndefined()
+      await wrapper.find('#video-studio-duration').setValue('15')
+      expect(wrapper.text()).toContain('videoStudio.estimate $0.9')
+    } finally { wrapper.unmount() }
+  })
+
+  it('discards a late price quote after changing keys', async () => {
+    const firstQuote = deferred<unknown>()
+    api.getPricing.mockImplementation((key: string, model: string) => key === 'key-1' ? firstQuote.promise : Promise.resolve({
+      model, billing_mode: 'video', pricing_source: 'group', rate_multiplier: 1,
+      tiers: { '480p': { base_price: 0.2, unit_price: 0.2, configured: true } },
+    }))
+    const wrapper = mountStudio()
+    try {
+      await flushPromises()
+      await wrapper.find('#video-studio-key').setValue('2')
+      await flushPromises()
+      firstQuote.resolve({
+        model: 'grok-imagine-video', billing_mode: 'per_request', pricing_source: 'group', rate_multiplier: 1,
+        tiers: { '480p': { base_price: 99, unit_price: 99, configured: true } },
+      })
+      await flushPromises()
+      expect(wrapper.text()).toContain('$0.2videoStudio.perSecond')
+      expect(wrapper.text()).not.toContain('$99')
+    } finally { wrapper.unmount() }
+  })
+
   it('unlocks after acceptance, starts a new task, and leaves old-key jobs running independently', async () => {
     const firstSubmission = deferred<VideoTask>()
     const polls = new Map<string, ReturnType<typeof deferred<VideoTask>>>()

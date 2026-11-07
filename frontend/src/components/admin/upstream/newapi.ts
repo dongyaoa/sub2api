@@ -24,9 +24,9 @@ export function hasFreshNewapiDailyUsage(snapshot: UpstreamBalanceSnapshot): boo
 
 const usageOnlyErrors = new Set(['newapi_usage_incomplete', 'newapi_usage_unavailable'])
 const syncErrorParts = (error: string | null | undefined) => (error || '').split(';').map(part => part.trim()).filter(Boolean)
-const isUsageOnlyError = (error: string) => usageOnlyErrors.has(error) || /^sub2api_history_sync_failed(?:\s*:|$)/.test(error)
+const isUsageOnlyError = (error: string) => usageOnlyErrors.has(error)
 
-// Usage history can be incomplete even when the current wallet balance synced successfully.
+// Today's usage can be incomplete even when the current wallet balance synced successfully.
 export function walletSyncError(wallet: UpstreamBalanceSnapshot, error = wallet.error): string {
   const amount = wallet.kind === 'wallet' ? wallet.balance : wallet.quota_remaining ?? wallet.balance
   const knownBalance = (typeof amount === 'number' && Number.isFinite(amount)) || (wallet.kind === 'key_quota' && wallet.unlimited_quota)
@@ -75,11 +75,10 @@ const syncErrorKeys: Record<string, string> = {
   endpoint_unavailable: 'endpointUnavailable',
   credential_unavailable: 'credentialUnavailable',
   request_invalid: 'requestInvalid',
-  sub2api_history_sync_failed: 'historyFailed',
 }
 
 export function upstreamSyncError(error: string | null | undefined, translate: (key: string) => string): string {
-  return (error || '').replace(/\b(?:newapi_|upstream_|sub2api_|response_|usage_|billing_|endpoint_|credential_|request_|invalid_)[a-z_0-9]+\b/g, code => {
+  return (error || '').replace(/\b(?:newapi_|upstream_|response_|usage_|billing_|endpoint_|credential_|request_|invalid_)[a-z_0-9]+\b/g, code => {
     if (errorKeys[code]) return translate(`upstreamCenter.newapi.errors.${errorKeys[code]}`)
     if (syncErrorKeys[code]) return translate(`upstreamCenter.syncErrors.${syncErrorKeys[code]}`)
     const status = code.match(/^newapi_upstream_http_(\d{3})$/)?.[1]

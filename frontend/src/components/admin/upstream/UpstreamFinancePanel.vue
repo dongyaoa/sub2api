@@ -10,27 +10,21 @@
     <p v-if="supplier?.recharge_ratio != null" class="text-xs text-gray-500 dark:text-dark-400" data-testid="supplier-recharge-ratio">{{ t('upstreamCenter.recharge.applied', { ratio: supplier.recharge_ratio }) }}</p>
     <p v-if="error" role="alert" class="rounded-xl bg-rose-50 p-3 text-sm text-rose-600 dark:bg-rose-500/10 dark:text-rose-400">{{ error }}</p>
     <template v-if="data">
-      <section v-for="period in periods" :key="period.key" :data-period="period.key" class="space-y-3" :aria-busy="loading">
-        <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ t(`upstreamCenter.finance.${period.key}`) }}</h3>
+      <section data-period="today" class="space-y-3" :aria-busy="loading">
+        <h3 class="text-sm font-semibold text-gray-900 dark:text-gray-100">{{ t('upstreamCenter.finance.today') }}</h3>
         <div class="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <div v-for="metric in metrics(period.summary)" :key="metric.key" class="rounded-xl border border-gray-100 bg-gray-50/70 p-3.5 dark:border-dark-700 dark:bg-dark-900/40">
+          <div v-for="metric in metrics(data)" :key="metric.key" class="rounded-xl border border-gray-100 bg-gray-50/70 p-3.5 dark:border-dark-700 dark:bg-dark-900/40">
             <p class="text-xs text-gray-500 dark:text-dark-400">{{ t(`upstreamCenter.finance.${metric.key}`) }}</p>
-            <p class="mt-2 text-lg font-semibold tabular-nums" :class="metric.disabled ? 'text-gray-400 dark:text-dark-400' : metric.key === 'profit' ? metric.value == null ? 'text-amber-600 dark:text-amber-400' : metric.value < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-primary-700 dark:text-primary-300' : 'text-gray-900 dark:text-gray-100'">{{ metric.disabled ? t('upstreamCenter.newapi.periodNotCalculated') : metric.value == null && metric.key === 'profit' ? t(profitPendingKey(period.summary)) : money(metric.value, period.summary.currency) }}</p>
+            <p class="mt-2 text-lg font-semibold tabular-nums" :class="metric.key === 'profit' ? metric.value == null ? 'text-amber-600 dark:text-amber-400' : metric.value < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-primary-700 dark:text-primary-300' : 'text-gray-900 dark:text-gray-100'">{{ metric.value == null && metric.key === 'profit' ? t(profitPendingKey(data)) : money(metric.value, data.currency) }}</p>
           </div>
         </div>
         <div class="flex flex-wrap justify-between gap-2 text-[11px] text-gray-500 dark:text-dark-400">
-          <span>{{ t('upstreamCenter.finance.accountingDate', { from: dateTime(period.summary.from), to: dateTime(period.summary.to) }) }}</span>
-          <span><template v-if="!period.summary.period_cost_disabled && period.summary.remote_synced_at">{{ t('upstreamCenter.wallet.syncedAt', { time: dateTime(period.summary.remote_synced_at) }) }} · </template>{{ t('upstreamCenter.finance.currency', { currency: period.summary.currency }) }}</span>
+          <span>{{ t('upstreamCenter.finance.accountingDate', { from: dateTime(data.from), to: dateTime(data.to) }) }}</span>
+          <span><template v-if="data.remote_synced_at">{{ t('upstreamCenter.wallet.syncedAt', { time: dateTime(data.remote_synced_at) }) }} · </template>{{ t('upstreamCenter.finance.currency', { currency: data.currency }) }}</span>
         </div>
-        <template v-if="period.summary.period_cost_disabled">
-          <p class="text-xs text-gray-500 dark:text-dark-400" data-testid="newapi-today-only">{{ t('upstreamCenter.newapi.todayOnlyHint') }}</p>
-          <p v-if="period.summary.history_sync_pending" class="text-xs text-amber-600 dark:text-amber-400">{{ t('upstreamCenter.finance.historySyncPendingHint', { count: period.summary.history_sync_pending }) }}</p>
-        </template>
-        <template v-else>
-          <p v-if="period.summary.remote_stale" class="text-xs text-amber-600 dark:text-amber-400">{{ t('upstreamCenter.finance.stale') }}</p>
-          <UpstreamFinanceNotice :summary="period.summary" />
-          <p v-if="actualUpstreamUsed(period.summary) == null" class="text-xs text-gray-500 dark:text-dark-400">{{ t('upstreamCenter.financeUnavailable') }}</p>
-        </template>
+        <p v-if="data.remote_stale" class="text-xs text-amber-600 dark:text-amber-400">{{ t('upstreamCenter.finance.stale') }}</p>
+        <UpstreamFinanceNotice :summary="data" />
+        <p v-if="actualUpstreamUsed(data) == null" class="text-xs text-gray-500 dark:text-dark-400">{{ t('upstreamCenter.financeUnavailable') }}</p>
       </section>
       <div class="rounded-xl bg-primary-50/60 p-3.5 text-xs leading-5 text-primary-800 dark:bg-primary-500/10 dark:text-primary-200">
         <p>{{ t('upstreamCenter.finance.note') }}</p>
@@ -44,7 +38,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { upstreamCenterAPI, type UpstreamFinancePeriods, type UpstreamFinanceSummary, type UpstreamSupplier, type UpstreamTarget } from '@/api/admin/upstreamCenter'
+import { upstreamCenterAPI, type UpstreamFinanceSummary, type UpstreamSupplier, type UpstreamTarget } from '@/api/admin/upstreamCenter'
 import Icon from '@/components/icons/Icon.vue'
 import Select from '@/components/common/Select.vue'
 import UpstreamFinanceNotice from './UpstreamFinanceNotice.vue'
@@ -53,22 +47,17 @@ import { actualProfit, actualUpstreamUsed, profitPendingKey, dateTime, money } f
 
 const props = defineProps<{ supplier: UpstreamSupplier | null; target: UpstreamTarget | null }>()
 const { t } = useI18n()
-const data = ref<UpstreamFinancePeriods | null>(null), error = ref(''), loading = ref(false)
+const data = ref<UpstreamFinanceSummary | null>(null), error = ref(''), loading = ref(false)
 const targetId = ref('')
 const targetOptions = computed(() => [
   { value: '', label: t('upstreamCenter.finance.allGroups') },
   ...(props.supplier?.targets || []).map(target => ({ value: String(target.id), label: target.name }))
 ])
-const periods = computed(() => data.value ? [
-  { key: 'today', summary: data.value.today },
-  { key: 'last30Days', summary: data.value.last_30_days },
-] : [])
 function metrics(summary: UpstreamFinanceSummary) {
-  const disabled = Boolean(summary.period_cost_disabled)
   return [
-    { key: 'remoteUsedRange', value: disabled ? null : actualUpstreamUsed(summary), disabled },
-    { key: 'revenue', value: summary.revenue, disabled: false },
-    { key: 'profit', value: disabled ? null : actualProfit(summary), disabled },
+    { key: 'remoteUsedRange', value: actualUpstreamUsed(summary) },
+    { key: 'revenue', value: summary.revenue },
+    { key: 'profit', value: actualProfit(summary) },
   ]
 }
 let controller: AbortController | undefined

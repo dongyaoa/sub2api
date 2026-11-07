@@ -31,15 +31,14 @@ var (
 )
 
 type UpstreamFinanceService struct {
-	repo           UpstreamFinanceRepository
-	encryptor      SecretEncryptor
-	billing        *BillingService
-	channels       *ChannelService
-	accounts       AccountRepository
-	client         *http.Client
-	now            func() time.Time
-	newAPICache    newAPIFinanceCache
-	sub2APIHistory sub2APIHistorySchedule
+	repo        UpstreamFinanceRepository
+	encryptor   SecretEncryptor
+	billing     *BillingService
+	channels    *ChannelService
+	accounts    AccountRepository
+	client      *http.Client
+	now         func() time.Time
+	newAPICache newAPIFinanceCache
 }
 
 func NewUpstreamFinanceService(repo UpstreamFinanceRepository, encryptor SecretEncryptor, billing *BillingService, channels *ChannelService, accounts AccountRepository) *UpstreamFinanceService {
@@ -104,39 +103,10 @@ func (s *UpstreamFinanceService) summary(ctx context.Context, supplierID, target
 	return summary, nil
 }
 
-// PeriodSummaries reads aggregates only. It does not load the request ledger
-// detail page or infer upstream charges from local account prices.
-func (s *UpstreamFinanceService) PeriodSummaries(ctx context.Context, supplierID, targetID *int64) (*UpstreamFinancePeriods, error) {
-	return withUpstreamFinanceReadSnapshot(ctx, s.repo, func(ctx context.Context) (*UpstreamFinancePeriods, error) {
-		return s.periodSummaries(ctx, supplierID, targetID)
-	})
-}
-
-func (s *UpstreamFinanceService) periodSummaries(ctx context.Context, supplierID, targetID *int64) (*UpstreamFinancePeriods, error) {
-	now := s.now()
-	dayStart := timezone.StartOfDay(now)
-	dayEnd := dayStart.AddDate(0, 0, 1)
-	q, err := normalizeUpstreamFinanceQuery(UpstreamFinanceQuery{SupplierID: supplierID, TargetID: targetID, From: dayStart, To: dayEnd}, now)
-	if err != nil {
-		return nil, err
-	}
-	monthQuery := q
-	monthQuery.From = dayStart.AddDate(0, 0, -29)
-	sources, err := s.profitSources(ctx, monthQuery.From, monthQuery.To)
-	if err != nil {
-		return nil, err
-	}
-	today, err := s.repo.Summary(ctx, q)
-	if err != nil {
-		return nil, err
-	}
-	month, err := s.repo.Summary(ctx, monthQuery)
-	if err != nil {
-		return nil, err
-	}
-	applyUpstreamDailyProfit(today, q, sources, now)
-	applyUpstreamPeriodProfit(month, monthQuery, sources, now, true)
-	return &UpstreamFinancePeriods{Today: today, Last30Days: month}, nil
+// TodaySummary reads only the current local calendar day.
+func (s *UpstreamFinanceService) TodaySummary(ctx context.Context, supplierID, targetID *int64) (*UpstreamFinanceSummary, error) {
+	start := timezone.StartOfDay(s.now())
+	return s.Summary(ctx, supplierID, targetID, start, start.AddDate(0, 0, 1))
 }
 
 func (s *UpstreamFinanceService) Details(ctx context.Context, query UpstreamFinanceQuery) (*UpstreamFinancePage, error) {
@@ -310,7 +280,7 @@ func (s *UpstreamFinanceService) fetchSub2APIBalance(ctx context.Context, target
 	query := request.Query()
 	query.Set("days", "1")
 	query.Set("timezone", timezone.Name())
-	// Fetch the smaller today window before expensive historical aggregates.
+	// Request only the current day; no historical aggregation runs during sync.
 	// Both parameters matter: compatible versions use separate date filters for
 	// daily_usage and model_stats. Neither may default to a rolling 30 days here.
 	query.Set("start_date", dayStart.Format("2006-01-02"))
@@ -367,9 +337,6 @@ func (s *UpstreamFinanceService) fetchSub2APIBalance(ctx context.Context, target
 	if parsed.Billing != nil {
 		parsed.Billing.SyncedAt = &completedAt
 		parsed.Billing.LastAttemptAt = &completedAt
-	}
-	if timezone.StartOfDay(completedAt).Equal(dayStart) {
-		parsed.Error = s.fetchSub2APIHistory(ctx, target, key, request, parsed, dayStart)
 	}
 	return parsed
 }

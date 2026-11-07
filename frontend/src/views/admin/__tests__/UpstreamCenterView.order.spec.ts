@@ -34,12 +34,12 @@ beforeEach(() => { vi.resetAllMocks(); localStorage.removeItem('upstream-supplie
 afterEach(() => { wrapper?.unmount(); wrapper=undefined; vi.useRealTimers(); vi.restoreAllMocks() })
 
 describe('upstream center manual ordering', () => {
-  it('reports partial Sub2API usage sync and translates a subsequent statistics failure', async () => {
-    mocks.syncBalance.mockResolvedValueOnce({ status: 'ok', error: 'sub2api_history_sync_failed: upstream_timeout' })
+  it('reports incomplete daily usage sync and translates a subsequent statistics failure', async () => {
+    mocks.syncBalance.mockResolvedValueOnce({ status: 'ok', error: 'newapi_usage_incomplete' })
     const view = render(); await flushPromises()
     view.findAllComponents(supplierCard)[0].vm.$emit('sync', 10); await flushPromises()
     expect(mocks.showSuccess).not.toHaveBeenCalled()
-    expect(mocks.showInfo).toHaveBeenCalledWith('upstreamCenter.balanceSynced · upstreamCenter.syncErrors.historyFailed: upstreamCenter.syncErrors.timeout')
+    expect(mocks.showInfo).toHaveBeenCalledWith('upstreamCenter.balanceSynced · upstreamCenter.newapi.errors.usageIncomplete')
     mocks.syncBalance.mockResolvedValueOnce({ status: 'error', error: 'upstream_dns_failed' })
     view.findAllComponents(supplierCard)[0].vm.$emit('sync', 10); await flushPromises()
     expect(mocks.showError).toHaveBeenCalledWith('upstreamCenter.syncErrors.dnsFailed')

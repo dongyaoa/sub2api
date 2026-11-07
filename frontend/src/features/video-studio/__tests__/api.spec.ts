@@ -4,11 +4,24 @@ import {
   downloadVideoContent,
   getVideoRequestId,
   getVideoTask,
+  getVideoModelPricing,
+  listVideoModels,
   listVideoTasks,
   submitVideoTask,
 } from '../api'
 
 describe('video studio API', () => {
+  it('creates Gemini Omni tasks on /v1/videos with all reference and output parameters', async () => {
+    const accepted = { id: 'omni-task', status: 'queued' }
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => accepted })
+    vi.stubGlobal('fetch', fetchMock)
+    const payload = { model: 'gemini-omni-1.2-flash', prompt: 'move', resolution: '4k' as const, aspect_ratio: '9:16' as const, image_size: '2160x3840', duration: 15, seed: 7, image_references: ['https://example.com/i.png'], video_references: ['https://example.com/v.mp4'] }
+    await expect(submitVideoTask('gemini-key', payload)).resolves.toEqual(accepted)
+    expect(fetchMock.mock.calls[0]?.[0]).toMatch(/\/v1\/videos$/)
+    expect(JSON.parse(fetchMock.mock.calls[0]?.[1].body)).toEqual(payload)
+    expect(fetchMock.mock.calls[0]?.[1].headers.Authorization).toBe('Bearer gemini-key')
+  })
+
   afterEach(() => {
     vi.unstubAllGlobals()
   })
@@ -122,5 +135,18 @@ describe('video studio API', () => {
     expect(getVideoRequestId({ request_id: 'request-id' })).toBe('request-id')
     expect(getVideoRequestId({ task_id: 'task-id' })).toBe('task-id')
     expect(getVideoRequestId({ id: 'id' })).toBe('id')
+  })
+
+  it('loads the video catalog and model pricing using the selected API key', async () => {
+    const quote = { model: 'muse-video', billing_mode: 'per_request', tiers: { auto: { base_price: 1, unit_price: 0.5 } } }
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce({ ok: true, json: async () => ({ data: [{ id: 'muse-video' }] }) })
+      .mockResolvedValueOnce({ ok: true, json: async () => quote })
+    vi.stubGlobal('fetch', fetchMock)
+    await listVideoModels('muse-key')
+    await expect(getVideoModelPricing('muse-key', 'muse-video')).resolves.toEqual(quote)
+    expect(fetchMock.mock.calls[0]?.[0]).toMatch(/\/v1\/models\?video_studio=1$/)
+    expect(fetchMock.mock.calls[1]?.[0]).toMatch(/\/v1\/videos\/pricing\?model=muse-video$/)
+    expect(fetchMock.mock.calls[1]?.[1].headers).toEqual({ Authorization: 'Bearer muse-key' })
   })
 })

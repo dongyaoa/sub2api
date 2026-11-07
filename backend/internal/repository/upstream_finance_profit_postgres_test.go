@@ -17,7 +17,6 @@ func TestUpstreamProfitPostgresArchivePreservesRemainingTotals(t *testing.T) {
 	now := time.Now().UTC().Truncate(time.Microsecond)
 	start := timezone.StartOfDay(now)
 	end := start.AddDate(0, 0, 1)
-	periodStart := start.AddDate(0, 0, -29)
 	_, err := db.ExecContext(ctx, `UPDATE upstream_targets SET supplier_id=1 WHERE id=2;
  UPDATE upstream_suppliers SET recharge_ratio=10 WHERE id=1`)
 	require.NoError(t, err)
@@ -29,33 +28,29 @@ func TestUpstreamProfitPostgresArchivePreservesRemainingTotals(t *testing.T) {
 	for _, id := range []int64{1, 2} {
 		target, err := repo.GetTarget(ctx, id)
 		require.NoError(t, err)
-		_, err = db.ExecContext(ctx, `INSERT INTO upstream_balance_snapshots(target_id,identity_hash,wallet_ref,kind,currency,status,synced_at,day_used,day_start,day_end,last_30_days_used,period_start,period_end)
- VALUES($1,$2,'default','wallet','USD','ok',$3,10,$4,$5,10,$6,$5)`, id, service.UpstreamBalanceIdentity(target), now, start, end, periodStart)
+		_, err = db.ExecContext(ctx, `INSERT INTO upstream_balance_snapshots(target_id,identity_hash,wallet_ref,kind,currency,status,synced_at,day_used,day_start,day_end)
+ VALUES($1,$2,'default','wallet','USD','ok',$3,10,$4,$5)`, id, service.UpstreamBalanceIdentity(target), now, start, end)
 		require.NoError(t, err)
 	}
 	finance := service.NewUpstreamFinanceService(repo, nil, nil, nil, nil)
-	before, err := finance.PeriodSummaries(ctx, nil, nil)
+	before, err := finance.TodaySummary(ctx, nil, nil)
 	require.NoError(t, err)
-	for _, summary := range []*service.UpstreamFinanceSummary{before.Today, before.Last30Days} {
-		require.Equal(t, 6.0, summary.Revenue)
-		require.Equal(t, 2.0, *summary.RemoteUsed)
-		require.Equal(t, 4.0, *summary.Profit)
-	}
+	require.Equal(t, 6.0, before.Revenue)
+	require.Equal(t, 2.0, *before.RemoteUsed)
+	require.Equal(t, 4.0, *before.Profit)
 	_, err = db.ExecContext(ctx, `UPDATE upstream_targets SET deleted_at=NOW() WHERE id=2`)
 	require.NoError(t, err)
-	after, err := finance.PeriodSummaries(ctx, nil, nil)
+	after, err := finance.TodaySummary(ctx, nil, nil)
 	require.NoError(t, err)
-	for _, summary := range []*service.UpstreamFinanceSummary{after.Today, after.Last30Days} {
-		require.Equal(t, 2.0, summary.Revenue)
-		require.Equal(t, 1.0, *summary.RemoteUsed)
-		require.Equal(t, 1.0, *summary.Profit)
-		require.False(t, summary.CostPartial)
-	}
+	require.Equal(t, 2.0, after.Revenue)
+	require.Equal(t, 1.0, *after.RemoteUsed)
+	require.Equal(t, 1.0, *after.Profit)
+	require.False(t, after.CostPartial)
 	supplierID := int64(1)
 	data, err := finance.OverviewFinance(ctx, []*service.UpstreamSupplier{{ID: 1}}, []*service.UpstreamTarget{{ID: 1, SupplierID: &supplierID}}, start, end)
 	require.NoError(t, err)
-	require.Equal(t, after.Today.Revenue, data.Summary.Revenue)
-	require.Equal(t, after.Today.Profit, data.Summary.Profit)
+	require.Equal(t, after.Revenue, data.Summary.Revenue)
+	require.Equal(t, after.Profit, data.Summary.Profit)
 	var rows int
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT COUNT(*) FROM upstream_finance_ledger`).Scan(&rows))
 	require.Equal(t, 3, rows, "archiving changes summary scope without deleting any ledger history")
@@ -148,7 +143,6 @@ func TestUpstreamProfitPostgresParticipationMatchesBusinessPeriodAndOwnership(t 
 	now := time.Now().UTC().Truncate(time.Microsecond)
 	start := timezone.StartOfDay(now)
 	end := start.AddDate(0, 0, 1)
-	periodStart := start.AddDate(0, 0, -29)
 	_, err := db.ExecContext(ctx, `UPDATE upstream_targets SET supplier_id=1 WHERE id=2;
  INSERT INTO upstream_targets(id,supplier_id,name,provider,endpoint,api_key_encrypted,api_key_fingerprint) VALUES
  (4,1,'Moved supplier','openai','https://example.com','cipher-four','fourth'),
@@ -163,43 +157,38 @@ func TestUpstreamProfitPostgresParticipationMatchesBusinessPeriodAndOwnership(t 
  VALUES(5,1,'Monitor only','m','operational',$1,9,'reported')`, now)
 	require.NoError(t, err)
 	for _, item := range []struct {
-		id           int64
-		day, monthly float64
-	}{{1, 0.25, 2}, {2, 99, 3}, {5, 9, 100}} {
+		id  int64
+		day float64
+	}{{1, 0.25}, {2, 99}, {5, 9}} {
 		target, err := repo.GetTarget(ctx, item.id)
 		require.NoError(t, err)
-		_, err = db.ExecContext(ctx, `INSERT INTO upstream_balance_snapshots(target_id,identity_hash,wallet_ref,kind,currency,status,synced_at,day_used,day_start,day_end,last_30_days_used,period_start,period_end)
- VALUES($1,$2,'default','wallet','USD','ok',$3,$4,$5,$6,$7,$8,$6)`, item.id, service.UpstreamBalanceIdentity(target), now, item.day, start, end, item.monthly, periodStart)
+		_, err = db.ExecContext(ctx, `INSERT INTO upstream_balance_snapshots(target_id,identity_hash,wallet_ref,kind,currency,status,synced_at,day_used,day_start,day_end)
+ VALUES($1,$2,'default','wallet','USD','ok',$3,$4,$5,$6)`, item.id, service.UpstreamBalanceIdentity(target), now, item.day, start, end)
 		require.NoError(t, err)
 	}
 	finance := service.NewUpstreamFinanceService(repo, nil, nil, nil, nil)
-	periods, err := finance.PeriodSummaries(ctx, nil, nil)
+	today, err := finance.TodaySummary(ctx, nil, nil)
 	require.NoError(t, err)
-	require.Zero(t, periods.Today.Revenue)
-	require.Equal(t, int64(1), periods.Today.RequestCount)
-	require.Equal(t, 0.25, *periods.Today.RemoteUsed)
-	require.Equal(t, -0.25, *periods.Today.Profit)
-	require.Equal(t, 3, periods.Today.InactiveKeyCount)
-	require.Zero(t, periods.Today.MissingKeyCount)
-	require.Equal(t, 5.0, periods.Last30Days.Revenue)
-	require.Equal(t, int64(2), periods.Last30Days.RequestCount)
-	require.Equal(t, 5.0, *periods.Last30Days.RemoteUsed)
-	require.Equal(t, 0.0, *periods.Last30Days.Profit)
-	require.Equal(t, 2, periods.Last30Days.InactiveKeyCount)
+	require.Zero(t, today.Revenue)
+	require.Equal(t, int64(1), today.RequestCount)
+	require.Equal(t, 0.25, *today.RemoteUsed)
+	require.Equal(t, -0.25, *today.Profit)
+	require.Equal(t, 3, today.InactiveKeyCount)
+	require.Zero(t, today.MissingKeyCount)
 	supplierID := int64(1)
 	overview, err := finance.OverviewFinance(ctx, []*service.UpstreamSupplier{{ID: 1}}, []*service.UpstreamTarget{{ID: 1, SupplierID: &supplierID}, {ID: 5, SupplierID: &supplierID}}, start, end)
 	require.NoError(t, err)
-	require.Equal(t, periods.Today.Profit, overview.Summary.Profit)
-	require.Equal(t, periods.Today.Profit, overview.Suppliers[1].Profit)
+	require.Equal(t, today.Profit, overview.Summary.Profit)
+	require.Equal(t, today.Profit, overview.Suppliers[1].Profit)
 	require.Equal(t, 9.0, *overview.Targets[5].RemoteUsed, "single monitored-key detail still exposes its upstream spending")
 	// The only target with today's business is removed from the current scope;
 	// all remaining keys are monitoring-only today, so the totals are zero.
 	_, err = db.ExecContext(ctx, `UPDATE upstream_targets SET deleted_at=NOW() WHERE id=1`)
 	require.NoError(t, err)
-	empty, err := finance.PeriodSummaries(ctx, nil, nil)
+	empty, err := finance.TodaySummary(ctx, nil, nil)
 	require.NoError(t, err)
-	require.Zero(t, empty.Today.Revenue)
-	require.Equal(t, 0.0, *empty.Today.RemoteUsed)
-	require.Equal(t, 0.0, *empty.Today.Profit)
-	require.False(t, empty.Today.CostPartial)
+	require.Zero(t, empty.Revenue)
+	require.Equal(t, 0.0, *empty.RemoteUsed)
+	require.Equal(t, 0.0, *empty.Profit)
+	require.False(t, empty.CostPartial)
 }

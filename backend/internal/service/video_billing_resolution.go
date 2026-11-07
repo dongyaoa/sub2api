@@ -3,9 +3,11 @@ package service
 import "strings"
 
 const (
+	VideoBillingResolution360P  = "360p"
 	VideoBillingResolution480P  = "480p"
 	VideoBillingResolution720P  = "720p"
 	VideoBillingResolution1080P = "1080p"
+	VideoBillingResolution4K    = "4k"
 )
 
 // xAI 视频生成按秒计费，duration 请求参数允许 1-15 秒；未指定时上游默认生成 8 秒。
@@ -29,6 +31,45 @@ func NormalizeVideoBillingDurationSecondsOrDefault(durationSeconds int) int {
 		return VideoBillingMaxDurationSeconds
 	}
 	return durationSeconds
+}
+
+// NormalizeVideoBillingDurationForModelOrDefault keeps provider limits separate.
+// Muse accepts a requested duration of 1-60 seconds (a generation hint).
+func NormalizeVideoBillingDurationForModelOrDefault(model string, durationSeconds int) int {
+	if IsGeminiOmniVideoModel(model) {
+		if durationSeconds <= 0 {
+			return 5
+		}
+		return max(3, min(durationSeconds, 15))
+	}
+	if IsMuseVideoModel(model) {
+		if durationSeconds <= 0 {
+			return 5
+		}
+		return min(durationSeconds, 60)
+	}
+	return NormalizeVideoBillingDurationSecondsOrDefault(durationSeconds)
+}
+
+// Muse exposes no resolution control or guarantee. Never relabel its automatic
+// output as a 480p/720p/1080p tier or charge a legacy Grok resolution price.
+func NormalizeVideoBillingResolutionForModelOrDefault(model, resolution string) string {
+	if IsGeminiOmniVideoModel(model) {
+		switch strings.ToLower(strings.TrimSpace(resolution)) {
+		case VideoBillingResolution360P:
+			return VideoBillingResolution360P
+		case VideoBillingResolution1080P:
+			return VideoBillingResolution1080P
+		case VideoBillingResolution4K:
+			return VideoBillingResolution4K
+		default:
+			return VideoBillingResolution720P
+		}
+	}
+	if IsMuseVideoModel(model) {
+		return "auto"
+	}
+	return NormalizeVideoBillingResolutionOrDefault(resolution)
 }
 
 // LookupVideoBillingResolution 归一化分辨率并报告是否为已知档位。

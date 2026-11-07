@@ -102,6 +102,9 @@ const (
 	OpenAIEndpointCapabilityEmbeddings      OpenAIEndpointCapability = "embeddings"
 	OpenAIEndpointCapabilityAlphaSearch     OpenAIEndpointCapability = "alpha_search"
 	OpenAIEndpointCapabilityLive            OpenAIEndpointCapability = "live"
+	// Muse video uses a custom OpenAI API-key upstream, never an OAuth account.
+	OpenAIEndpointCapabilityMuseVideo       OpenAIEndpointCapability = "muse_video"
+	OpenAIEndpointCapabilityGeminiOmniVideo OpenAIEndpointCapability = "gemini_omni_video"
 	// OpenAIEndpointCapabilityGrokMediaGeneration keeps image/video generation
 	// away from Grok accounts that are explicitly disabled or whose billing
 	// entitlement probe was forbidden. Video status lookups intentionally do not
@@ -1931,6 +1934,12 @@ func (a *Account) GetOpenAISessionID() string {
 func (a *Account) SupportsOpenAIEndpointCapability(capability OpenAIEndpointCapability) bool {
 	if a == nil {
 		return false
+	}
+	if capability == OpenAIEndpointCapabilityMuseVideo {
+		return SupportsMuseVideoAccount(a)
+	}
+	if capability == OpenAIEndpointCapabilityGeminiOmniVideo {
+		return SupportsGeminiOmniVideoAccount(a)
 	}
 	if capability == OpenAIEndpointCapabilitySeedance {
 		configured, _ := a.openAIEndpointCapabilitySet()

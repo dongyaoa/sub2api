@@ -46,12 +46,12 @@ describe('New API sync display', () => {
   ])('explains Sub2API failure %s', (code, key) => {
     expect(upstreamSyncError(code, value => value)).toBe(`upstreamCenter.syncErrors.${key}`)
   })
-  it('keeps a partial history failure with consumption while preserving separate wallet errors', () => {
-    const error = 'sub2api_history_sync_failed: upstream_timeout'
+  it('keeps an incomplete daily usage result with consumption while preserving separate wallet errors', () => {
+    const error = 'newapi_usage_incomplete'
     const snapshot = { status: 'ok', kind: 'wallet', balance: 42, error } as UpstreamBalanceSnapshot
     expect(walletSyncError(snapshot)).toBe('')
     expect(walletUsageError(snapshot)).toBe(error)
-    expect(upstreamSyncError(error, value => value)).toBe('upstreamCenter.syncErrors.historyFailed: upstreamCenter.syncErrors.timeout')
+    expect(upstreamSyncError(error, value => value)).toBe('upstreamCenter.newapi.errors.usageIncomplete')
     expect(walletSyncError({ ...snapshot, error: `${error}; credential_unavailable` })).toBe('credential_unavailable')
     expect(walletSyncError({ ...snapshot, status: 'error' })).toBe(error)
     expect(upstreamSyncError('upstream_http_524', value => value)).toBe('upstreamCenter.syncErrors.httpError (HTTP 524)')

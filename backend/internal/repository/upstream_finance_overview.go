@@ -67,7 +67,6 @@ SELECT l.target_id,l.wallet_ref,
  CASE WHEN l.status='ok' THEN l.quota_remaining ELSE g.quota_remaining END,
  COALESCE(d.day_used,CASE WHEN l.status='ok' THEN l.today_used ELSE g.today_used END),
  d.day_used,d.day_start,d.day_end,d.synced_at,
- p.last_30_days_used,p.period_start,p.period_end,p.synced_at,
  CASE WHEN l.status='ok' THEN l.total_used ELSE g.total_used END,
  CASE WHEN l.status='ok' OR g.id IS NULL THEN l.unlimited_quota ELSE g.unlimited_quota END,
  CASE WHEN l.status='ok' OR g.id IS NULL THEN l.currency ELSE g.currency END,
@@ -76,8 +75,7 @@ SELECT l.target_id,l.wallet_ref,
 FROM identities i
 CROSS JOIN LATERAL (SELECT * FROM upstream_balance_snapshots WHERE target_id=i.target_id AND identity_hash=i.identity_hash ORDER BY synced_at DESC,id DESC LIMIT 1) l
 LEFT JOIN LATERAL (SELECT * FROM upstream_balance_snapshots WHERE target_id=i.target_id AND identity_hash=i.identity_hash AND status='ok' ORDER BY synced_at DESC,id DESC LIMIT 1) g ON TRUE
-LEFT JOIN LATERAL (SELECT * FROM upstream_balance_snapshots WHERE target_id=i.target_id AND identity_hash=i.identity_hash AND status='ok' AND currency='USD' AND day_used IS NOT NULL ORDER BY synced_at DESC,id DESC LIMIT 1) d ON TRUE
-LEFT JOIN LATERAL (SELECT * FROM upstream_balance_snapshots WHERE target_id=i.target_id AND identity_hash=i.identity_hash AND status='ok' AND currency='USD' AND last_30_days_used IS NOT NULL ORDER BY synced_at DESC,id DESC LIMIT 1) p ON TRUE`
+LEFT JOIN LATERAL (SELECT * FROM upstream_balance_snapshots WHERE target_id=i.target_id AND identity_hash=i.identity_hash AND status='ok' AND currency='USD' AND day_used IS NOT NULL ORDER BY synced_at DESC,id DESC LIMIT 1) d ON TRUE`
 
 const upstreamOverviewBillingSQL = `WITH identities AS (
  SELECT * FROM unnest($1::bigint[],$2::text[]) AS value(target_id,identity_hash)

@@ -215,12 +215,12 @@ func TestUpstreamFinanceNewAPISub2APIPriorityAndSSRF(t *testing.T) {
 	svc, target, paths := newAPIFinanceFixture(t, fixtures, false)
 	got := svc.fetchBalance(context.Background(), target)
 	require.Equal(t, "wallet", got.Kind)
-	require.Equal(t, []string{"/v1/usage", "/v1/usage"}, *paths)
+	require.Equal(t, []string{"/v1/usage"}, *paths)
 	target.NewAPIUserID, target.NewAPIAccessTokenEncrypted = 42, "console-secret"
 	target.Endpoint = "https://127.0.0.1"
 	got = svc.fetchBalance(context.Background(), target)
 	require.Equal(t, "endpoint_unavailable", got.Error)
-	require.Len(t, *paths, 2)
+	require.Len(t, *paths, 1)
 }
 
 func TestUpstreamFinanceNewAPIWalletIdentity(t *testing.T) {

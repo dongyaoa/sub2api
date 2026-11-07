@@ -1,7 +1,7 @@
 import { computed, onBeforeUnmount, ref, type Ref } from 'vue'
 import type { ApiKey } from '@/types'
 import { clearVideoTasks, downloadVideoContent, getVideoRequestId, getVideoTask, listVideoTasks, submitVideoTask } from './api'
-import { VIDEO_ASPECT_RATIOS } from './capabilities'
+import { isGeminiOmniVideoModel, normalizeVideoAspectRatio, normalizeVideoResolution } from './capabilities'
 import { normalizeVideoTaskState, shouldRetryVideoPollError, videoTaskPollDelay } from './polling'
 import type { GenerateVideoRequest, StoredVideoHistoryItem, VideoResolution, VideoStudioOperation, VideoTask } from './types'
 
@@ -35,7 +35,9 @@ export function formatVideoHistoryTime(timestamp: number): string {
 function safeRequest(request: GenerateVideoRequest): GenerateVideoRequest {
   // Neither source images nor API Key secrets belong in task history/browser storage.
   return { model: request.model, prompt: request.prompt, resolution: request.resolution,
-    aspect_ratio: request.aspect_ratio, duration: request.duration }
+    aspect_ratio: request.aspect_ratio, duration: request.duration,
+    ...(request.seed != null ? { seed: request.seed } : {}),
+    ...(request.image_size ? { image_size: request.image_size } : {}) }
 }
 
 function serverTime(value?: number): number | undefined {
@@ -48,8 +50,10 @@ function fromTask(task: VideoTask, key: ApiKey): VideoHistoryItem {
     requestId: getVideoRequestId(task), apiKeyId: key.id, groupName: key.group?.name || '-',
     operation: metadata.operation === 'image' ? 'image' : 'text',
     request: { model: metadata.model || '', prompt: metadata.prompt || '',
-      resolution: ['480p', '720p', '1080p'].includes(metadata.resolution || '') ? metadata.resolution as VideoResolution : '480p',
-      aspect_ratio: metadata.aspect_ratio && VIDEO_ASPECT_RATIOS.includes(metadata.aspect_ratio) ? metadata.aspect_ratio : undefined,
+      resolution: normalizeVideoResolution(metadata.model || '', metadata.resolution as VideoResolution),
+      aspect_ratio: metadata.aspect_ratio ? normalizeVideoAspectRatio(metadata.aspect_ratio, metadata.model) : undefined,
+      ...(metadata.seed != null ? { seed: metadata.seed } : {}),
+      ...(metadata.image_size ? { image_size: metadata.image_size } : {}),
       duration: Math.max(1, Number(metadata.duration) || 4) },
     startedAt: serverTime(task.created_at) || Date.now(),
     completedAt: serverTime(task.completed_at),
@@ -274,10 +278,16 @@ export function useVideoTasks(keys: Ref<ApiKey[]>, messages: { error: (message: 
     } finally { restoring.value = false }
   }
 
-  async function submit(key: ApiKey, operation: VideoStudioOperation, request: GenerateVideoRequest, prepareImage?: () => Promise<string>) {
+  async function submit(key: ApiKey, operation: VideoStudioOperation, request: GenerateVideoRequest, prepareImage?: () => Promise<string | Partial<GenerateVideoRequest>>) {
     if (submitting.value || clearingHistory.value || disposed) return
     const id = `local-video-${Date.now()}-${++sequence}`
-    const snapshot = safeRequest(request)
+    const requestSnapshot: GenerateVideoRequest = {
+      ...request,
+      ...(request.image ? { image: { ...request.image } } : {}),
+      ...(request.image_references ? { image_references: [...request.image_references] } : {}),
+      ...(request.video_references ? { video_references: [...request.video_references] } : {}),
+    }
+    const snapshot = safeRequest(requestSnapshot)
     history.value.unshift({ requestId: id, apiKeyId: key.id, operation, request: snapshot,
       startedAt: Date.now(), status: 'processing', groupName: key.group?.name || '-' })
     activeHistoryId.value = id
@@ -285,9 +295,13 @@ export function useVideoTasks(keys: Ref<ApiKey[]>, messages: { error: (message: 
     const controller = new AbortController()
     controllers.set(id, controller)
     try {
-      const imageURL = prepareImage ? await prepareImage() : request.image?.url
+      const prepared = prepareImage ? await prepareImage() : undefined
       if (disposed) return
-      const payload = { ...snapshot, ...(operation === 'image' && imageURL ? { image: { url: imageURL } } : {}) }
+      const payload: GenerateVideoRequest = { ...requestSnapshot, ...(prepared && typeof prepared === 'object' ? prepared : {}) }
+      if (operation === 'image' && typeof prepared === 'string' && prepared) {
+        if (isGeminiOmniVideoModel(requestSnapshot.model)) payload.first_frame = prepared
+        else payload.image = { url: prepared }
+      }
       const task = await submitVideoTask(key.key, payload, controller.signal)
       if (disposed) return
       if (!getVideoRequestId(task)) throw new Error(messages.missingId())

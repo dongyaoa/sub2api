@@ -26,3 +26,13 @@ func TestGrokVideoGenerationLedgerMigrationKeepsDeliveryAndBillingEvidence(t *te
 	}
 	require.Contains(t, sql, "primary key")
 }
+
+func TestVideoTaskBillingModelMigrationPreservesLegacyTasks(t *testing.T) {
+	raw, err := FS.ReadFile("275_video_task_billing_model.sql")
+	require.NoError(t, err)
+	sql := strings.ToLower(string(raw))
+	require.Contains(t, sql, "alter table grok_video_generation_tasks")
+	require.Contains(t, sql, "add column if not exists billing_model text")
+	require.NotContains(t, sql, "not null")
+	require.NotContains(t, sql, "update grok_video_generation_tasks")
+}

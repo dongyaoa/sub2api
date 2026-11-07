@@ -18,7 +18,6 @@ describe('upstream monitoring display invariants', () => {
     expect(profitPendingKey(summary)).toBe('upstreamCenter.finance.pending')
     expect(actualProfit({ ...summary, remote_stale: false })).toBe(217.62)
     expect(actualProfit({ ...summary, remote_stale: false, cost_partial: true })).toBeNull()
-    expect(actualProfit({ ...summary, remote_stale: false, period_cost_disabled: true })).toBeNull()
     expect(actualProfit({ ...summary, remote_stale: false, remote_used: 0, profit: 232.47 })).toBe(232.47)
   })
   it('keeps missing samples neutral and displays the most recent records chronologically without mutating the API response', () => {

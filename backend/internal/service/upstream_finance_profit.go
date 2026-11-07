@@ -46,20 +46,12 @@ func (s *UpstreamFinanceService) profitSources(ctx context.Context, from, to tim
 }
 
 func applyUpstreamDailyProfit(summary *UpstreamFinanceSummary, q UpstreamFinanceQuery, sources *UpstreamProfitSources, now time.Time) {
-	applyUpstreamPeriodProfit(summary, q, sources, now, false)
-}
-
-func applyUpstreamPeriodProfit(summary *UpstreamFinanceSummary, q UpstreamFinanceQuery, sources *UpstreamProfitSources, now time.Time, last30Days bool) {
 	if summary == nil || sources == nil {
 		return
 	}
 	dayStart := timezone.StartOfDay(now)
 	dayEnd := dayStart.AddDate(0, 0, 1)
-	periodStart := dayStart
-	if last30Days {
-		periodStart = dayStart.AddDate(0, 0, -29)
-	}
-	if !q.From.Equal(periodStart) || !q.To.Equal(dayEnd) {
+	if !q.From.Equal(dayStart) || !q.To.Equal(dayEnd) {
 		return
 	}
 	// The repository uses this same active target/supplier scope for revenue.
@@ -75,7 +67,6 @@ func applyUpstreamPeriodProfit(summary *UpstreamFinanceSummary, q UpstreamFinanc
 	keys := make(map[string]*keyObservation)
 	missing, archived, inactive := 0, 0, 0
 	summary.HistorySyncPending = 0
-	summary.PeriodCostDisabled = false
 	pendingHistory := make(map[int64]int)
 	for _, window := range sources.PendingHistory {
 		if window.From.Before(q.To) && window.Until.After(q.From) &&
@@ -99,13 +90,9 @@ func applyUpstreamPeriodProfit(summary *UpstreamFinanceSummary, q UpstreamFinanc
 		}
 		summary.HistorySyncPending += pendingHistory[id]
 		lastBusiness := sources.LastBusinessAt[id]
-		participates := q.TargetID != nil || !lastBusiness.Before(periodStart) && lastBusiness.Before(dayEnd)
+		participates := q.TargetID != nil || !lastBusiness.Before(dayStart) && lastBusiness.Before(dayEnd)
 		if !participates {
 			inactive++
-		}
-		if last30Days && participates && isNewAPIFinanceTarget(target, sources.Balances[id]) {
-			summary.PeriodCostDisabled = true
-			continue
 		}
 		endpoint, err := upstreamUsageURL(target.Endpoint)
 		if err != nil || target.APIKeyFingerprint == "" {
@@ -160,14 +147,10 @@ func applyUpstreamPeriodProfit(summary *UpstreamFinanceSummary, q UpstreamFinanc
 			}
 			value, from, to := balance.DayUsed, balance.DayStart, balance.DayEnd
 			observedAt := balance.DaySyncedAt
-			if last30Days {
-				value, from, to = balance.Last30DaysUsed, balance.PeriodStart, balance.PeriodEnd
-				observedAt = balance.PeriodSyncedAt
-			}
 			if observedAt == nil {
 				observedAt = balance.SyncedAt
 			}
-			if value == nil || from == nil || to == nil || !from.Equal(periodStart) || !to.Equal(dayEnd) ||
+			if value == nil || from == nil || to == nil || !from.Equal(dayStart) || !to.Equal(dayEnd) ||
 				observedAt == nil || observedAt.Before(dayStart) || observedAt.After(now) ||
 				*value < 0 || math.IsNaN(*value) || math.IsInf(*value, 0) {
 				continue
@@ -189,7 +172,7 @@ func applyUpstreamPeriodProfit(summary *UpstreamFinanceSummary, q UpstreamFinanc
 		used, rawUsed = nextUsed, nextRaw
 		known++
 		converted = converted || observation.conversionConfigured
-		// Wallet polling and historical backfill may run after this window's
+		// Wallet polling may run after this window's
 		// successful usage scan. Judge its freshness by the usage observation,
 		// not by the latest unrelated attempt timestamp.
 		stale = stale || latest.Status != "ok" || now.Sub(*syncedAt) > upstreamProfitSnapshotMaxAge
@@ -206,12 +189,6 @@ func applyUpstreamPeriodProfit(summary *UpstreamFinanceSummary, q UpstreamFinanc
 	summary.RemoteSyncedAt, summary.Profit = nil, nil
 	summary.RemoteStale = stale
 	summary.CostSource = "unknown"
-	if summary.PeriodCostDisabled {
-		// Local 30-day revenue remains useful, but a mixed total cannot present
-		// only the other providers' costs as the complete 30-day upstream cost.
-		summary.CostPartial, summary.RemoteStale, summary.ConversionApplied = false, false, false
-		return
-	}
 	if known == 0 && missing > 0 {
 		return
 	}

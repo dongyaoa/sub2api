@@ -37,8 +37,10 @@ type VideoTaskMetadata struct {
 	Resolution  string `json:"resolution,omitempty"`
 	AspectRatio string `json:"aspect_ratio,omitempty"`
 	Duration    int    `json:"duration,omitempty"`
+	Seed        *int64 `json:"seed,omitempty"`
 
 	UpstreamModel      string `json:"-"`
+	BillingModel       string `json:"-"`
 	RequestPayloadHash string `json:"-"`
 	SubscriptionID     int64  `json:"-"`
 }
@@ -53,6 +55,7 @@ type VideoTaskRecord struct {
 	AccountID             int64             `json:"account_id"`
 	SubscriptionID        int64             `json:"subscription_id,omitempty"`
 	UpstreamModel         string            `json:"upstream_model,omitempty"`
+	BillingModel          string            `json:"billing_model,omitempty"`
 	RequestPayloadHash    string            `json:"request_payload_hash,omitempty"`
 	Status                string            `json:"status"`
 	HTTPStatus            int               `json:"http_status,omitempty"`
@@ -247,6 +250,7 @@ func (s *VideoTaskService) RecordSubmission(
 		AccountID:          accountID,
 		SubscriptionID:     metadata.SubscriptionID,
 		UpstreamModel:      strings.TrimSpace(metadata.UpstreamModel),
+		BillingModel:       strings.TrimSpace(metadata.BillingModel),
 		RequestPayloadHash: strings.TrimSpace(metadata.RequestPayloadHash),
 		Status:             status,
 		Error:              taskErr,

@@ -46,16 +46,14 @@ func TestUpstreamDailyProfitKeepsLastSuccessfulAmountDuringRefresh(t *testing.T)
 	require.Nil(t, next.Profit)
 }
 
-func TestUpstreamProfitUsesEachUsageWindowsFreshness(t *testing.T) {
+func TestUpstreamProfitUsesDailyObservationFreshness(t *testing.T) {
 	now := time.Date(2026, 11, 3, 18, 30, 0, 0, timezone.Location())
 	start, end := timezone.StartOfDay(now), timezone.StartOfDay(now).AddDate(0, 0, 1)
-	periodStart := start.AddDate(0, 0, -29)
 	supplier := int64(7)
 	fresh, expired := now.Add(-time.Minute), now.Add(-13*time.Hour)
 	balance := &UpstreamBalanceSnapshot{
 		Status: "ok", Currency: "USD", DayUsed: financeFloat(14.85), DayStart: &start, DayEnd: &end,
-		DaySyncedAt: &fresh, Last30DaysUsed: financeFloat(50), PeriodStart: &periodStart, PeriodEnd: &end,
-		PeriodSyncedAt: &expired, SyncedAt: &now, LastAttemptAt: &now, Error: "newapi_usage_incomplete",
+		DaySyncedAt: &fresh, SyncedAt: &now, LastAttemptAt: &now, Error: "newapi_usage_incomplete",
 	}
 	sources := &UpstreamProfitSources{
 		LastBusinessAt: map[int64]time.Time{11: now},
@@ -66,13 +64,6 @@ func TestUpstreamProfitUsesEachUsageWindowsFreshness(t *testing.T) {
 	applyUpstreamDailyProfit(daily, UpstreamFinanceQuery{From: start, To: end}, sources, now)
 	require.False(t, daily.RemoteStale, "a later wallet attempt or pending history does not invalidate fresh daily usage")
 	require.InDelta(t, 217.62, *daily.Profit, 1e-9)
-
-	month := &UpstreamFinanceSummary{Revenue: 400}
-	applyUpstreamPeriodProfit(month, UpstreamFinanceQuery{From: periodStart, To: end}, sources, now, true)
-	require.True(t, month.RemoteStale)
-	require.Nil(t, month.Profit)
-	require.Equal(t, 50.0, *month.RemoteUsed)
-	require.Equal(t, expired, *month.RemoteSyncedAt)
 
 	// A current wallet balance cannot make a thirteen-hour-old daily cost fresh.
 	balance.DaySyncedAt = &expired
@@ -89,9 +80,9 @@ func TestUpstreamProfitUsesEachUsageWindowsFreshness(t *testing.T) {
 	require.False(t, daily.RemoteStale)
 }
 
-func TestUpstreamPeriodProfitUses30DayChargeAndDeduplicatesKeys(t *testing.T) {
+func TestUpstreamDailyProfitDeduplicatesKeys(t *testing.T) {
 	now := time.Date(2026, 10, 5, 12, 0, 0, 0, timezone.Location())
-	start, end := timezone.StartOfDay(now).AddDate(0, 0, -29), timezone.StartOfDay(now).AddDate(0, 0, 1)
+	start, end := timezone.StartOfDay(now), timezone.StartOfDay(now).AddDate(0, 0, 1)
 	supplier := int64(7)
 	synced := now.Add(-time.Minute)
 	sources := &UpstreamProfitSources{
@@ -101,40 +92,35 @@ func TestUpstreamPeriodProfitUses30DayChargeAndDeduplicatesKeys(t *testing.T) {
 			12: {ID: 12, SupplierID: &supplier, Endpoint: "https://example.com/v1", APIKeyFingerprint: "key"},
 		},
 		Balances: map[int64]*UpstreamBalanceSnapshot{
-			11: {Status: "ok", Currency: "USD", Last30DaysUsed: financeFloat(1), TotalUsed: financeFloat(999), PeriodStart: &start, PeriodEnd: &end, SyncedAt: &synced},
-			12: {Status: "ok", Currency: "USD", Last30DaysUsed: financeFloat(1.5), TotalUsed: financeFloat(999), PeriodStart: &start, PeriodEnd: &end, SyncedAt: &now},
+			11: {Status: "ok", Currency: "USD", DayUsed: financeFloat(1), TotalUsed: financeFloat(999), DayStart: &start, DayEnd: &end, SyncedAt: &synced},
+			12: {Status: "ok", Currency: "USD", DayUsed: financeFloat(1.5), TotalUsed: financeFloat(999), DayStart: &start, DayEnd: &end, SyncedAt: &now},
 		},
 	}
 	q := UpstreamFinanceQuery{From: start, To: end}
 	summary := &UpstreamFinanceSummary{Revenue: 2, CostSource: "unknown"}
-	applyUpstreamPeriodProfit(summary, q, sources, now, true)
+	applyUpstreamDailyProfit(summary, q, sources, now)
 	require.Equal(t, 1.5, *summary.RemoteUsed, "the same upstream key is charged once using its latest snapshot")
 	require.Equal(t, 0.5, *summary.Profit)
 	// Archived keys do not block the remaining active scope in either period.
 	yesterday := timezone.StartOfDay(now).Add(-time.Hour)
 	sources.Targets[13] = &UpstreamFinanceTarget{ID: 13, SupplierID: &supplier, Endpoint: "https://archived.example.com", APIKeyFingerprint: "archived", ArchivedAt: &yesterday}
-	dayStart := timezone.StartOfDay(now)
-	sources.Balances[11].DayUsed, sources.Balances[11].DayStart, sources.Balances[11].DayEnd = financeFloat(1), &dayStart, &end
-	daily := &UpstreamFinanceSummary{Revenue: 2, CostSource: "unknown"}
-	applyUpstreamDailyProfit(daily, UpstreamFinanceQuery{From: dayStart, To: end}, sources, now)
-	require.Equal(t, 1.0, *daily.Profit)
 	archived := &UpstreamFinanceSummary{Revenue: 2, CostSource: "unknown"}
-	applyUpstreamPeriodProfit(archived, q, sources, now, true)
+	applyUpstreamDailyProfit(archived, q, sources, now)
 	require.Equal(t, 0.5, *archived.Profit)
 	require.Equal(t, 1, archived.ArchivedKeyCount)
 	delete(sources.Targets, 13)
 	// Missing history must not fall back to the all-time charge or to zero.
-	sources.Balances[11].Last30DaysUsed = nil
-	sources.Balances[12].Last30DaysUsed = nil
+	sources.Balances[11].DayUsed = nil
+	sources.Balances[12].DayUsed = nil
 	missing := &UpstreamFinanceSummary{Revenue: 2, CostSource: "unknown"}
-	applyUpstreamPeriodProfit(missing, q, sources, now, true)
+	applyUpstreamDailyProfit(missing, q, sources, now)
 	require.Nil(t, missing.RemoteUsed)
 	require.Nil(t, missing.Profit)
 }
 
-func TestUpstreamPeriodProfitRetainsKnownKeyCostsAndConvertsEachSupplier(t *testing.T) {
+func TestUpstreamDailyProfitRetainsKnownKeyCostsAndConvertsEachSupplier(t *testing.T) {
 	now := time.Date(2026, 10, 5, 12, 0, 0, 0, timezone.Location())
-	start, end := timezone.StartOfDay(now).AddDate(0, 0, -29), timezone.StartOfDay(now).AddDate(0, 0, 1)
+	start, end := timezone.StartOfDay(now), timezone.StartOfDay(now).AddDate(0, 0, 1)
 	one, two := int64(1), int64(2)
 	sources := &UpstreamProfitSources{
 		LastBusinessAt: map[int64]time.Time{1: now, 2: now, 3: now},
@@ -144,13 +130,13 @@ func TestUpstreamPeriodProfitRetainsKnownKeyCostsAndConvertsEachSupplier(t *test
 			3: {ID: 3, SupplierID: &two, Endpoint: "https://example.org", APIKeyFingerprint: "three", RechargeRatio: financeFloat(2)},
 		},
 		Balances: map[int64]*UpstreamBalanceSnapshot{
-			1: {Status: "ok", Currency: "USD", Last30DaysUsed: financeFloat(10), PeriodStart: &start, PeriodEnd: &end, PeriodSyncedAt: &now},
-			3: {Status: "ok", Currency: "USD", Last30DaysUsed: financeFloat(6), PeriodStart: &start, PeriodEnd: &end, PeriodSyncedAt: &now},
+			1: {Status: "ok", Currency: "USD", DayUsed: financeFloat(10), DayStart: &start, DayEnd: &end, DaySyncedAt: &now},
+			3: {Status: "ok", Currency: "USD", DayUsed: financeFloat(6), DayStart: &start, DayEnd: &end, DaySyncedAt: &now},
 		},
 	}
 	q := UpstreamFinanceQuery{From: start, To: end}
 	partial := &UpstreamFinanceSummary{Revenue: 8}
-	applyUpstreamPeriodProfit(partial, q, sources, now, true)
+	applyUpstreamDailyProfit(partial, q, sources, now)
 	require.Equal(t, 4.0, *partial.RemoteUsed)
 	require.Equal(t, 16.0, *partial.RemoteRawUsed)
 	require.True(t, partial.CostPartial)
@@ -162,51 +148,50 @@ func TestUpstreamPeriodProfitRetainsKnownKeyCostsAndConvertsEachSupplier(t *test
 	// no longer make the remaining supplier/key statistics unavailable.
 	sources.Targets[2].ArchivedAt = &now
 	remaining := &UpstreamFinanceSummary{Revenue: 7}
-	applyUpstreamPeriodProfit(remaining, q, sources, now, true)
+	applyUpstreamDailyProfit(remaining, q, sources, now)
 	require.False(t, remaining.CostPartial)
 	require.Equal(t, 4.0, *remaining.RemoteUsed)
 	require.Equal(t, 3.0, *remaining.Profit)
 	require.Equal(t, 1, remaining.ArchivedKeyCount)
 	// Two distinct keys under the same supplier are summed before displaying.
 	sources.Targets[2].ArchivedAt = nil
-	sources.Balances[2] = &UpstreamBalanceSnapshot{Status: "ok", Currency: "USD", Last30DaysUsed: financeFloat(20), PeriodStart: &start, PeriodEnd: &end, PeriodSyncedAt: &now}
+	sources.Balances[2] = &UpstreamBalanceSnapshot{Status: "ok", Currency: "USD", DayUsed: financeFloat(20), DayStart: &start, DayEnd: &end, DaySyncedAt: &now}
 	supplier := &UpstreamFinanceSummary{Revenue: 5}
 	q.SupplierID = &one
-	applyUpstreamPeriodProfit(supplier, q, sources, now, true)
+	applyUpstreamDailyProfit(supplier, q, sources, now)
 	require.Equal(t, 30.0, *supplier.RemoteRawUsed)
 	require.Equal(t, 3.0, *supplier.RemoteUsed)
 	require.Equal(t, 2.0, *supplier.Profit)
 	require.Equal(t, 2, supplier.KnownKeyCount)
 	sources.Targets[1].RechargeRatio, sources.Targets[2].RechargeRatio = financeFloat(1), financeFloat(1)
 	unitRatio := &UpstreamFinanceSummary{Revenue: 40}
-	applyUpstreamPeriodProfit(unitRatio, q, sources, now, true)
+	applyUpstreamDailyProfit(unitRatio, q, sources, now)
 	require.True(t, unitRatio.ConversionApplied, "an explicitly configured 1:1 ratio still enables conversion")
 	require.Equal(t, 30.0, *unitRatio.RemoteUsed)
 	require.Equal(t, 10.0, *unitRatio.Profit)
 }
 
-type financePeriodsTestRepo struct {
+type financeTodayTestRepo struct {
 	UpstreamFinanceRepository
 	queries []UpstreamFinanceQuery
 }
 
-func (r *financePeriodsTestRepo) Summary(_ context.Context, q UpstreamFinanceQuery) (*UpstreamFinanceSummary, error) {
+func (r *financeTodayTestRepo) Summary(_ context.Context, q UpstreamFinanceQuery) (*UpstreamFinanceSummary, error) {
 	r.queries = append(r.queries, q)
 	return &UpstreamFinanceSummary{From: q.From, To: q.To, Revenue: 2, Currency: "USD", CostSource: "unknown"}, nil
 }
 
-func TestUpstreamFinancePeriodSummariesIncludeTodayWithoutDetails(t *testing.T) {
+func TestUpstreamFinanceTodaySummaryQueriesOnlyTodayWithoutDetails(t *testing.T) {
 	now := time.Date(2026, 10, 5, 12, 0, 0, 0, timezone.Location())
-	repo := &financePeriodsTestRepo{}
+	repo := &financeTodayTestRepo{}
 	svc := NewUpstreamFinanceService(repo, nil, nil, nil, nil)
 	svc.now = func() time.Time { return now }
-	result, err := svc.PeriodSummaries(context.Background(), nil, nil)
+	result, err := svc.TodaySummary(context.Background(), nil, nil)
 	require.NoError(t, err)
-	require.Len(t, repo.queries, 2)
-	require.Equal(t, timezone.StartOfDay(now), result.Today.From)
-	require.Equal(t, timezone.StartOfDay(now).AddDate(0, 0, -29), result.Last30Days.From)
-	require.Equal(t, timezone.StartOfDay(now).AddDate(0, 0, 1), result.Last30Days.To)
-	require.Nil(t, result.Last30Days.Profit)
+	require.Len(t, repo.queries, 1)
+	require.Equal(t, timezone.StartOfDay(now), result.From)
+	require.Equal(t, timezone.StartOfDay(now).AddDate(0, 0, 1), result.To)
+	require.Nil(t, result.Profit)
 }
 
 func TestUpstreamDailyProfitUsesReportedCharge(t *testing.T) {
@@ -355,37 +340,26 @@ func TestUpstreamProfitAggregateExcludesKeysWithoutBusiness(t *testing.T) {
 	require.Nil(t, partial.Profit)
 }
 
-func TestUpstreamProfitParticipationUsesEachCalendarWindow(t *testing.T) {
+func TestUpstreamProfitParticipationOnlyUsesToday(t *testing.T) {
 	now := time.Date(2026, 10, 7, 12, 0, 0, 0, timezone.Location())
 	start, end := timezone.StartOfDay(now), timezone.StartOfDay(now).AddDate(0, 0, 1)
-	periodStart := start.AddDate(0, 0, -29)
 	supplier := int64(1)
 	sources := &UpstreamProfitSources{
 		Targets: map[int64]*UpstreamFinanceTarget{
-			1: {ID: 1, SupplierID: &supplier, Endpoint: "https://example.com", APIKeyFingerprint: "prior-day"},
-			2: {ID: 2, SupplierID: &supplier, Endpoint: "https://example.com", APIKeyFingerprint: "old"},
-			3: {ID: 3, SupplierID: &supplier, Endpoint: "https://example.com", APIKeyFingerprint: "future"},
+			1: {ID: 1, SupplierID: &supplier, Endpoint: "https://example.com", APIKeyFingerprint: "previous"},
+			2: {ID: 2, SupplierID: &supplier, Endpoint: "https://example.com", APIKeyFingerprint: "future"},
 		},
-		Balances: map[int64]*UpstreamBalanceSnapshot{
-			1: {Status: "ok", Currency: "USD", Last30DaysUsed: financeFloat(3), PeriodStart: &periodStart, PeriodEnd: &end, PeriodSyncedAt: &now},
-		},
-		LastBusinessAt: map[int64]time.Time{1: periodStart, 2: periodStart.Add(-time.Nanosecond), 3: end},
+		Balances:       map[int64]*UpstreamBalanceSnapshot{1: {Status: "ok", Currency: "USD", DayUsed: financeFloat(3), DayStart: &start, DayEnd: &end, DaySyncedAt: &now}},
+		LastBusinessAt: map[int64]time.Time{1: start.Add(-time.Nanosecond), 2: end},
 	}
 	daily := &UpstreamFinanceSummary{}
 	applyUpstreamDailyProfit(daily, UpstreamFinanceQuery{From: start, To: end}, sources, now)
-	require.Equal(t, 0.0, *daily.RemoteUsed)
 	require.Equal(t, 0.0, *daily.Profit)
-	require.Zero(t, daily.Revenue)
-	require.Equal(t, 3, daily.InactiveKeyCount)
-	require.False(t, daily.CostPartial)
-	require.Zero(t, daily.MissingKeyCount)
-
-	month := &UpstreamFinanceSummary{RequestCount: 1, Revenue: 5}
-	applyUpstreamPeriodProfit(month, UpstreamFinanceQuery{From: periodStart, To: end}, sources, now, true)
-	require.Equal(t, 3.0, *month.RemoteUsed)
-	require.Equal(t, 2.0, *month.Profit)
-	require.Equal(t, 2, month.InactiveKeyCount)
-	require.Equal(t, 1, month.KnownKeyCount)
+	require.Equal(t, 2, daily.InactiveKeyCount)
+	sources.LastBusinessAt[1] = start
+	applyUpstreamDailyProfit(daily, UpstreamFinanceQuery{From: start, To: end}, sources, now)
+	require.Equal(t, -3.0, *daily.Profit)
+	require.Equal(t, 1, daily.InactiveKeyCount)
 }
 
 func TestUpstreamProfitUsesIdleDuplicateSnapshotWithBusinessConversion(t *testing.T) {

@@ -123,9 +123,8 @@ export function collectModelSquareGroups(
     }
   }
 
-  return groups
-    .filter((group) => visibleIds.has(group.id))
-    .sort((a, b) => a.name.localeCompare(b.name))
+  // The available-groups response already follows the administrator's saved order.
+  return groups.filter((group) => visibleIds.has(group.id))
 }
 
 function parseTimeMinutes(value?: string | null): number | null {

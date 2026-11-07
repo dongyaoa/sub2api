@@ -79,6 +79,39 @@ afterEach(() => {
 })
 
 describe('video multitask submission and polling', () => {
+  it('submits Omni references and seed without persisting source media in browser history', async () => {
+    api.submitTask.mockResolvedValue({ id: 'omni-task', status: 'queued' })
+    const { manager } = setupManager()
+    const payload: GenerateVideoRequest = { model: 'gemini-omni-1.2-flash', prompt: 'omni', resolution: '4k', aspect_ratio: 'auto', duration: 15, seed: 0, image_references: ['data:image/png;base64,reference'], video_references: ['https://example.com/motion.mp4'] }
+    await manager.submit(firstKey, 'image', payload)
+    expect(api.submitTask.mock.calls[0]?.[1]).toEqual(payload)
+    expect(manager.history.value[0]?.request).toEqual({ model: payload.model, prompt: 'omni', resolution: '4k', aspect_ratio: 'auto', duration: 15, seed: 0 })
+    expect(sessionStorage.getItem(storageKey)).not.toContain('data:image')
+    expect(sessionStorage.getItem(storageKey)).not.toContain('motion.mp4')
+  })
+
+  it('restores Omni 360p and 4K history without losing auto aspect ratio', async () => {
+    api.listTasks.mockResolvedValue({ tasks: ['360p', '4k'].map(resolution => ({ id: 'omni-' + resolution, status: 'failed', metadata: { model: 'gemini-omni-1.2-flash', prompt: 'history', duration: 15, resolution, aspect_ratio: 'auto' } })), retentionDays: 7, persistentHistory: true })
+    const { manager } = setupManager()
+    await manager.restore()
+    expect(manager.history.value.map(item => item.request.resolution)).toEqual(['360p', '4k'])
+    expect(manager.history.value.every(item => item.request.aspect_ratio === 'auto' && item.request.duration === 15)).toBe(true)
+  })
+
+  it('restores Muse history with its requested duration and model-selected resolution', async () => {
+    const museKey = { ...firstKey, group: { ...firstKey.group, platform: 'openai' } } as ApiKey
+    api.listTasks.mockResolvedValue({ tasks: [{
+      id: 'muse-history', status: 'failed', created_at: now / 1000,
+      metadata: { operation: 'image', model: 'muse-video', prompt: 'Animate this image', duration: 60, aspect_ratio: '9:16' },
+    }], retentionDays: 7, persistentHistory: true })
+    const { manager } = setupManager([museKey])
+    await manager.restore()
+    expect(manager.history.value[0]).toMatchObject({
+      requestId: 'muse-history', operation: 'image',
+      request: { model: 'muse-video', duration: 60, resolution: 'auto', aspect_ratio: '9:16' },
+    })
+  })
+
   it('unlocks after submission and polls two text jobs independently with their owning keys', async () => {
     api.submitTask.mockResolvedValueOnce(task('first')).mockResolvedValueOnce(task('second'))
     api.getTask.mockImplementation(async (_secret: string, id: string) => id === 'first'
@@ -144,6 +177,35 @@ describe('video multitask submission and polling', () => {
     expect(JSON.parse(stored).map((item: { request: GenerateVideoRequest }) => item.request.prompt).sort()).toEqual([
       'Animate the original reference', 'Animate the second reference',
     ])
+  })
+
+  it('freezes nested reference inputs before asynchronous preparation without storing media in history', async () => {
+    const prepared = deferred<Partial<GenerateVideoRequest>>()
+    const initial: GenerateVideoRequest = {
+      ...request(), seed: 42, image_size: '1920x1080',
+      image: { url: 'https://example.com/initial.png' },
+      first_frame: 'https://example.com/first.png',
+      last_frame: 'https://example.com/last.png',
+      image_references: ['https://example.com/reference.png'],
+      video_references: ['https://example.com/reference.mp4'],
+    }
+    api.submitTask.mockResolvedValue(task('references'))
+    const { manager } = setupManager()
+    const submission = manager.submit(firstKey, 'image', initial, () => prepared.promise)
+    initial.image!.url = 'https://example.com/changed.png'
+    initial.image_references!.push('https://example.com/extra.png')
+    initial.video_references![0] = 'https://example.com/changed.mp4'
+    initial.seed = 99
+    prepared.resolve({})
+    await submission
+    expect(api.submitTask.mock.calls[0]?.[1]).toMatchObject({
+      seed: 42, image_size: '1920x1080',
+      image: { url: 'https://example.com/initial.png' },
+      first_frame: 'https://example.com/first.png', last_frame: 'https://example.com/last.png',
+      image_references: ['https://example.com/reference.png'],
+      video_references: ['https://example.com/reference.mp4'],
+    })
+    expect(sessionStorage.getItem(storageKey)).not.toContain('example.com')
   })
 
   it('does not reselect a background job after the user opens a new empty task', async () => {

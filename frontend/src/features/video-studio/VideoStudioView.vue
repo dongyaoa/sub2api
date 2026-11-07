@@ -8,7 +8,7 @@
           <div class="mb-2 flex min-h-8 items-center justify-between gap-3">
             <h2 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('videoStudio.settings') }}</h2>
             <span
-              v-if="selectedGroup"
+              v-if="estimatedCost != null"
               class="rounded-md bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
             >
               {{ t('videoStudio.estimate', { amount: formatUSD(estimatedCost) }) }}
@@ -49,7 +49,7 @@
                 {{ t('videoStudio.loadingKeys') }}
               </div>
 
-              <div v-else-if="apiKeys.length === 0" class="flex h-10 items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 dark:border-amber-900/60 dark:bg-amber-950/20">
+              <div v-else-if="availableKeys.length === 0" class="flex h-10 items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 dark:border-amber-900/60 dark:bg-amber-950/20">
                 <span class="truncate text-xs text-amber-800 dark:text-amber-300">{{ t('videoStudio.noKeys') }}</span>
                 <RouterLink to="/keys" class="inline-flex shrink-0 items-center gap-1 text-xs font-semibold text-primary-600 hover:text-primary-700 dark:text-primary-400">
                   <Icon name="plus" size="xs" />
@@ -66,7 +66,30 @@
                   :disabled="isWorking"
                   :placeholder="t('videoStudio.selectKey')"
                   @change="handleKeySelection"
-                />
+                >
+                  <template #selected="{ option }">
+                    <span v-if="option" class="flex min-w-0 items-center gap-1.5">
+                      <span class="max-w-[45%] truncate">{{ option.keyName }}</span>
+                      <span aria-hidden="true" class="shrink-0 text-gray-400">·</span>
+                      <span class="inline-flex shrink-0" :class="platformTextClass(String(option.platform || ''))" :title="platformLabel(String(option.platform || ''))" role="img" :aria-label="platformLabel(String(option.platform || ''))">
+                        <PlatformIcon :platform="String(option.platform || '')" size="md" aria-hidden="true" />
+                      </span>
+                      <span class="min-w-0 truncate">{{ option.groupName }}</span>
+                    </span>
+                  </template>
+                  <template #option="{ option }">
+                    <div class="min-w-0 flex-1">
+                      <div class="truncate font-medium text-gray-900 dark:text-white">{{ option.keyName }}</div>
+                      <div class="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+                        <span class="inline-flex shrink-0" :class="platformTextClass(String(option.platform || ''))" :title="platformLabel(String(option.platform || ''))" role="img" :aria-label="platformLabel(String(option.platform || ''))">
+                          <PlatformIcon :platform="String(option.platform || '')" size="sm" aria-hidden="true" />
+                        </span>
+                        <span class="min-w-0 truncate">{{ option.groupName }}</span>
+                      </div>
+                    </div>
+                    <Icon v-if="Number(option.value) === selectedKeyId" name="check" size="sm" class="shrink-0 text-primary-500" />
+                  </template>
+                </Select>
               </div>
 
               <div>
@@ -88,7 +111,23 @@
                 />
               </div>
 
-              <div v-if="operation === 'image'">
+              <div v-if="isOmniModel && operation === 'image'" class="space-y-3">
+                <div class="grid grid-cols-2 gap-2">
+                  <button v-for="mode in (['frames', 'references'] as const)" :key="mode" type="button" class="rounded-md border px-2 py-2 text-xs" :class="referenceMode === mode ? 'border-primary-500 text-primary-600 dark:text-primary-400' : 'border-gray-200 text-gray-500 dark:border-dark-600'" :disabled="isWorking" :data-testid="'omni-' + mode" @click="referenceMode = mode">{{ t('videoStudio.' + (mode === 'frames' ? 'frameMode' : 'referenceMode')) }}</button>
+                </div>
+                <template v-if="referenceMode === 'frames'">
+                  <VideoReferenceInput id="video-first-frame" v-model="firstFrames" :label="t('videoStudio.firstFrame')" media-type="image" :max="1" :disabled="isWorking" />
+                  <VideoReferenceInput id="video-last-frame" v-model="lastFrames" :label="t('videoStudio.lastFrame')" media-type="image" :max="1" :disabled="isWorking" />
+                  <p class="text-[11px] text-gray-400">{{ t('videoStudio.frameHint') }}</p>
+                </template>
+                <template v-else>
+                  <VideoReferenceInput id="video-image-references" v-model="imageReferences" :label="t('videoStudio.imageReferences')" media-type="image" :max="10" :disabled="isWorking" />
+                  <VideoReferenceInput id="video-video-references" v-model="videoReferences" :label="t('videoStudio.videoReferences')" media-type="video" :max="3" :disabled="isWorking" />
+                  <p class="text-[11px] text-gray-400">{{ t('videoStudio.referencesHint') }}</p>
+                </template>
+              </div>
+
+              <div v-if="operation === 'image' && !isOmniModel">
                 <div class="mb-1 flex items-center justify-between gap-2">
                   <span class="text-sm font-medium text-gray-700 dark:text-gray-300">{{ t('videoStudio.sourceImage') }}</span>
                   <span class="text-[11px] text-gray-400">{{ t('videoStudio.sourceImageLimit') }}</span>
@@ -169,22 +208,23 @@
                   id="video-studio-duration"
                   v-model.number="duration"
                   type="range"
-                  min="1"
-                  max="15"
+                  :min="minDuration"
+                  :max="maxDuration"
                   step="1"
                   class="h-2 w-full cursor-pointer accent-primary-600 disabled:cursor-not-allowed disabled:opacity-50"
                   :disabled="isWorking"
                 />
                 <div class="mt-1 flex justify-between text-[11px] tabular-nums text-gray-400">
-                  <span>1s</span>
-                  <span>8s</span>
-                  <span>15s</span>
+                  <span>{{ minDuration }}s</span>
+                  <span>{{ Math.ceil(maxDuration / 2) }}s</span>
+                  <span>{{ maxDuration }}s</span>
                 </div>
               </div>
 
               <div>
                 <span class="input-label">{{ t('videoStudio.resolution') }}</span>
-                <div class="grid grid-cols-3 gap-2">
+                <p v-if="isMuseModel" class="text-xs text-gray-500 dark:text-gray-400">{{ t('videoStudio.resolutionAuto') }}</p>
+                <div v-else class="grid gap-2" :class="isOmniModel ? 'grid-cols-4' : 'grid-cols-3'">
                   <button
                     v-for="tier in allResolutions"
                     :key="tier"
@@ -194,7 +234,7 @@
                     :disabled="isWorking || !resolutionOptions.includes(tier)"
                     @click="resolution = tier"
                   >
-                    {{ tier }}
+                    {{ resolutionLabel(tier) }}
                   </button>
                 </div>
               </div>
@@ -211,17 +251,31 @@
                     :disabled="isWorking"
                     @click="aspectRatio = ratio"
                   >
-                    {{ ratio }}
+                    {{ ratio === 'auto' ? t('videoStudio.aspectRatioAuto') : ratio }}
                   </button>
                 </div>
               </div>
 
-              <section v-if="selectedGroup" class="border-y border-gray-200 py-2.5 dark:border-dark-700" :aria-label="t('videoStudio.pricing')">
+              <p v-if="isMuseModel" class="text-[11px] leading-5 text-gray-500 dark:text-gray-400">{{ t('videoStudio.museParametersHint') }}</p>
+              <div v-if="isOmniModel" class="space-y-2">
+                <p class="text-[11px] leading-5 text-gray-500 dark:text-gray-400">{{ t('videoStudio.omniParametersHint') }}<span v-if="outputSize"> · {{ outputSize }}</span></p>
+                <label for="video-studio-seed" class="input-label">{{ t('videoStudio.seed') }}</label>
+                <input id="video-studio-seed" v-model="seed" type="number" step="1" class="input w-full text-xs" :disabled="isWorking" :placeholder="t('videoStudio.seedPlaceholder')" />
+                <p class="text-[11px] leading-5 text-gray-500 dark:text-gray-400">{{ t('videoStudio.seedHint') }}</p>
+                <p v-if="!validSeed" class="text-xs text-red-600">{{ t('videoStudio.seedError') }}</p>
+              </div>
+
+              <section v-if="selectedGroup" class="border-y border-gray-200 py-2.5 dark:border-dark-700" :aria-label="pricingLabel">
                 <div class="mb-2 flex items-center justify-between gap-2">
-                  <span class="text-xs font-medium text-gray-700 dark:text-gray-300">{{ t('videoStudio.pricing') }}</span>
+                  <span class="text-xs font-medium text-gray-700 dark:text-gray-300">{{ pricingLabel }}</span>
                   <span class="max-w-[150px] truncate text-[11px] text-gray-400">{{ selectedGroup.name }}</span>
                 </div>
-                <div class="grid gap-1.5" :class="visiblePriceTiers.length === 3 ? 'grid-cols-3' : 'grid-cols-2'">
+                <p v-if="loadingPricing" class="text-xs text-gray-400">{{ t('videoStudio.loadingPricing') }}</p>
+                <div v-else-if="estimatedCost == null" class="flex items-center justify-between gap-2 text-xs text-amber-600 dark:text-amber-400">
+                  <span>{{ pricingError || t('videoStudio.pricingUnavailable') }}</span>
+                  <button type="button" class="shrink-0 underline" @click="loadPricing">{{ t('videoStudio.retryPricing') }}</button>
+                </div>
+                <div v-else class="grid grid-flow-col auto-cols-[minmax(4.75rem,1fr)] gap-1.5 overflow-x-auto">
                   <div
                     v-for="price in visiblePriceTiers"
                     :key="price.resolution"
@@ -229,10 +283,10 @@
                     :class="resolution === price.resolution ? 'border-primary-400 bg-primary-50/60 dark:bg-primary-950/20' : 'border-gray-200 dark:border-dark-700'"
                   >
                     <div class="flex items-center justify-between gap-1">
-                      <span class="text-[11px] font-semibold text-gray-700 dark:text-gray-300">{{ price.resolution }}</span>
+                      <span class="text-[11px] font-semibold text-gray-700 dark:text-gray-300">{{ resolutionLabel(price.resolution) }}</span>
                       <span class="h-1.5 w-1.5 rounded-full" :class="price.configured ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-600'" />
                     </div>
-                    <div class="truncate text-sm font-semibold tabular-nums text-gray-950 dark:text-white">{{ formatUSD(price.unitPrice) }}/s</div>
+                    <div class="truncate text-sm font-semibold tabular-nums text-gray-950 dark:text-white">{{ formatUSD(price.unitPrice) }}{{ priceUnit }}</div>
                   </div>
                 </div>
               </section>
@@ -244,7 +298,7 @@
               >
                 <Icon :name="isWorking ? 'refresh' : 'play'" size="md" :class="isWorking ? 'animate-spin' : ''" />
                 <span>{{ submitting ? t('videoStudio.submitting') : t('videoStudio.generate') }}</span>
-                <span v-if="!isWorking && selectedGroup" class="text-white/75">{{ formatUSD(estimatedCost) }}</span>
+                <span v-if="!isWorking && estimatedCost != null" class="text-white/75">{{ formatUSD(estimatedCost) }}</span>
               </button>
               <p class="text-center text-[11px] leading-5 text-gray-400">{{ t('videoStudio.multitaskHint') }}</p>
             </form>
@@ -365,7 +419,7 @@
               </div>
               <div class="flex min-h-14 shrink-0 flex-wrap items-center justify-between gap-3 px-2 pt-3">
                 <div class="text-xs text-gray-400">
-                  {{ displayModel }} · {{ displayResolution }}<template v-if="displayAspectRatio"> · {{ displayAspectRatio }}</template> · {{ t('videoStudio.seconds', { count: displayDuration }) }}
+                  {{ displayModel }} · {{ resolutionLabel(displayResolution) }}<template v-if="displayAspectRatio"> · {{ displayAspectRatio }}</template> · {{ t('videoStudio.seconds', { count: displayDuration }) }}
                 </div>
                 <div class="flex flex-wrap items-center gap-2">
                   <button type="button" class="inline-flex h-8 items-center gap-1.5 rounded-md border border-gray-200 px-2.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-40 dark:border-dark-600 dark:text-gray-200 dark:hover:bg-dark-800" :disabled="isWorking || loadingModels" @click="reuseParameters">
@@ -431,7 +485,7 @@
                 </div>
                 <div class="min-w-0 flex-1">
                   <p class="truncate text-xs font-medium text-gray-800 dark:text-gray-200">{{ item.request.prompt }}</p>
-                  <p class="mt-1 truncate text-[11px] text-gray-400">{{ operationLabel(item.operation) }} · {{ item.request.resolution }}<template v-if="item.request.aspect_ratio"> · {{ item.request.aspect_ratio }}</template> · {{ item.request.duration }}s</p>
+                  <p class="mt-1 truncate text-[11px] text-gray-400">{{ operationLabel(item.operation) }} · {{ resolutionLabel(item.request.resolution) }}<template v-if="item.request.aspect_ratio"> · {{ item.request.aspect_ratio }}</template> · {{ item.request.duration }}s</p>
                   <p class="mt-1 truncate text-[10px] text-gray-400" :title="item.request.model + ' · ' + item.groupName">{{ item.request.model }} · {{ item.groupName }}</p>
                   <p v-if="item.delivering" class="mt-1 text-[10px] text-gray-400">{{ t('videoStudio.savingVideo') }}</p>
                   <p v-else-if="item.deliveryError" class="mt-1 truncate text-[10px] text-amber-600" :title="item.deliveryError">{{ t('videoStudio.saveVideoFailed') }}</p>
@@ -446,34 +500,43 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { userGroupsAPI } from '@/api/groups'
+import PlatformIcon from '@/components/common/PlatformIcon.vue'
 import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import MediaStudioHeader from '@/features/media-studio/MediaStudioHeader.vue'
+import VideoReferenceInput from './VideoReferenceInput.vue'
 import { useAppStore } from '@/stores/app'
 import type { ApiKey } from '@/types'
-import { listEligibleVideoKeys } from './access'
-import { listVideoModels } from './api'
+import { platformLabel, platformTextClass } from '@/utils/platformColors'
+import { listEligibleVideoKeys, loadVideoModelCatalogs } from './access'
+import { userGroupsAPI } from '@/api/groups'
+import { getVideoModelPricing, listVideoModels } from './api'
 import {
   buildGenerateVideoRequest,
   DEFAULT_VIDEO_ASPECT_RATIO,
   filterVideoModels,
   getVideoResolutionOptions,
+  getVideoMaxDuration,
+  getVideoMinDuration,
+  getVideoAspectRatioOptions,
+  geminiOmniVideoSize,
+  isGeminiOmniVideoModel,
+  isMuseVideoModel,
   normalizeVideoAspectRatio,
+  normalizeVideoDuration,
   normalizeVideoResolution,
   selectPreferredVideoModel,
-  VIDEO_ASPECT_RATIOS,
 } from './capabilities'
 import { consumeVideoStudioImageDraft } from './draft'
-import { estimateVideoCost, formatUSD, getVideoPriceTiers } from './pricing'
+import { estimateVideoCost, formatUSD, getVideoPriceTiers, isVideoPerRequestPricing, resolveVideoStudioPricing } from './pricing'
 import { LONG_VIDEO_TASK_THRESHOLD_MS } from './polling'
 import { formatVideoHistoryTime, useVideoTasks, videoElapsedSeconds, type VideoHistoryItem } from './useVideoTasks'
 import type {
-  StoredVideoHistoryItem, VideoAspectRatio, VideoModel, VideoResolution,
-  VideoStudioError, VideoStudioOperation,
+  StoredVideoHistoryItem, VideoAspectRatio, VideoModel, VideoModelPricing, VideoResolution,
+  VideoStudioError, VideoStudioOperation, VideoReferenceMode, VideoReferenceInputValue,
 } from './types'
 
 const MAX_SOURCE_IMAGE_BYTES = 20 * 1024 * 1024
@@ -489,6 +552,7 @@ const sourcePreviewUrl = ref('')
 const sourceInput = ref<HTMLInputElement | null>(null)
 const sourceDragActive = ref(false)
 const apiKeys = ref<ApiKey[]>([])
+const modelCatalogs = ref(new Map<number, VideoModel[]>())
 const userRates = ref<Record<number, number>>({})
 const selectedKeyId = ref<number | null>(null)
 const models = ref<VideoModel[]>([])
@@ -497,8 +561,17 @@ const prompt = ref('')
 const resolution = ref<VideoResolution>('480p')
 const aspectRatio = ref<VideoAspectRatio>(DEFAULT_VIDEO_ASPECT_RATIO)
 const duration = ref(4)
+const referenceMode = ref<VideoReferenceMode>('frames')
+const firstFrames = ref<VideoReferenceInputValue[]>([])
+const lastFrames = ref<VideoReferenceInputValue[]>([])
+const imageReferences = ref<VideoReferenceInputValue[]>([])
+const videoReferences = ref<VideoReferenceInputValue[]>([])
+const seed = ref<string | number>('')
 const loadingKeys = ref(true)
 const loadingModels = ref(false)
+const loadingPricing = ref(false)
+const pricingError = ref('')
+const modelPricing = ref<VideoModelPricing | null>(null)
 const tasks = useVideoTasks(apiKeys, {
   error: message => appStore.showError(message || t('videoStudio.historyLoadFailed')),
   missingId: () => t('videoStudio.missingTaskId'),
@@ -521,15 +594,21 @@ const videoBuffering = ref(false)
 const videoPlayPending = ref(false)
 const now = ref(Date.now())
 let disposed = false
+const catalogsController = new AbortController()
 let modelController: AbortController | null = null
+let pricingController: AbortController | null = null
 let contentController: AbortController | null = null
 let elapsedTimer: ReturnType<typeof setInterval> | null = null
 
-const selectedKey = computed(() => apiKeys.value.find((key) => key.id === selectedKeyId.value) || null)
+const availableKeys = computed(() => apiKeys.value.filter(key => (modelCatalogs.value.get(key.id)?.length || 0) > 0))
+const selectedKey = computed(() => availableKeys.value.find((key) => key.id === selectedKeyId.value) || null)
 const selectedGroup = computed(() => selectedKey.value?.group || null)
-const keyOptions = computed(() => apiKeys.value.map((key) => ({
+const keyOptions = computed(() => availableKeys.value.map((key) => ({
   value: key.id,
   label: key.name + ' · ' + (key.group?.name || '-'),
+  keyName: key.name,
+  groupName: key.group?.name || '-',
+  platform: key.group?.platform || '',
 })))
 const modelOptions = computed(() => models.value.map((item) => ({
   value: item.id,
@@ -539,34 +618,37 @@ const modelOptions = computed(() => models.value.map((item) => ({
     ? item.display_name + ' (' + item.id + ')'
     : item.id,
 })))
-const allResolutions: VideoResolution[] = ['480p', '720p', '1080p']
-const aspectRatioOptions = VIDEO_ASPECT_RATIOS
+const allResolutions = computed<VideoResolution[]>(() => isOmniModel.value ? resolutionOptions.value : ['480p', '720p', '1080p'])
+const aspectRatioOptions = computed(() => getVideoAspectRatioOptions(model.value))
+const isMuseModel = computed(() => isMuseVideoModel(model.value))
+const isOmniModel = computed(() => isGeminiOmniVideoModel(model.value))
+const minDuration = computed(() => getVideoMinDuration(model.value))
+const maxDuration = computed(() => getVideoMaxDuration(model.value))
+const outputSize = computed(() => isOmniModel.value ? geminiOmniVideoSize(resolution.value, aspectRatio.value) : undefined)
+const validSeed = computed(() => seed.value === '' || Number.isSafeInteger(Number(seed.value)))
 const resolutionOptions = computed(() => getVideoResolutionOptions(model.value))
-const priceTiers = computed(() => {
-  if (!selectedGroup.value) return []
-  return getVideoPriceTiers(selectedGroup.value, model.value, userRates.value[selectedGroup.value.id])
-})
+const effectivePricing = computed(() => resolveVideoStudioPricing(selectedGroup.value, model.value, modelPricing.value,
+  selectedGroup.value ? userRates.value[selectedGroup.value.id] : undefined))
+const priceTiers = computed(() => getVideoPriceTiers(effectivePricing.value))
 const visiblePriceTiers = computed(() => priceTiers.value.filter((item) => resolutionOptions.value.includes(item.resolution)))
-const estimatedCost = computed(() => {
-  if (!selectedGroup.value) return 0
-  return estimateVideoCost(
-    selectedGroup.value,
-    model.value,
-    resolution.value,
-    duration.value,
-    userRates.value[selectedGroup.value.id],
-  )
-})
+const estimatedCost = computed(() => estimateVideoCost(effectivePricing.value, resolution.value, duration.value))
+const pricingLabel = computed(() => t(isVideoPerRequestPricing(effectivePricing.value) ? 'videoStudio.pricingPerRequest' : effectivePricing.value?.billing_mode === 'video' ? 'videoStudio.pricingPerSecond' : 'videoStudio.pricing'))
+const priceUnit = computed(() => t(isVideoPerRequestPricing(effectivePricing.value) ? 'videoStudio.perRequest' : 'videoStudio.perSecond'))
 // Only lock the draft during submission; accepted jobs run independently.
 const isWorking = computed(() => submitting.value || clearingHistory.value)
 const hasSourceImage = computed(() => Boolean(sourceImageFile.value || sourceImageUrl.value.trim()))
 const canGenerate = computed(() => (
   !isWorking.value
   && !loadingModels.value
+  && !loadingPricing.value
+  && estimatedCost.value != null
   && Boolean(selectedKey.value)
   && Boolean(model.value.trim())
   && Boolean(prompt.value.trim())
-  && (operation.value === 'text' || hasSourceImage.value)
+  && (!isOmniModel.value || validSeed.value)
+  && (operation.value === 'text' || (isOmniModel.value
+    ? referenceMode.value === 'frames' ? firstFrames.value.length === 1 : imageReferences.value.length + videoReferences.value.length > 0
+    : hasSourceImage.value))
 ))
 const elapsedSeconds = computed(() => activeHistoryItem.value ? videoElapsedSeconds(activeHistoryItem.value, now.value) : null)
 const isLongRunning = computed(() => viewState.value === 'processing' && (elapsedSeconds.value || 0) * 1000 >= LONG_VIDEO_TASK_THRESHOLD_MS)
@@ -603,7 +685,62 @@ function switchOperation(nextOperation: VideoStudioOperation) {
 
 function handleModelSelection() {
   resolution.value = normalizeVideoResolution(model.value, resolution.value)
+  duration.value = normalizeVideoDuration(model.value, duration.value)
+  aspectRatio.value = normalizeVideoAspectRatio(aspectRatio.value, model.value)
 }
+
+function resolutionLabel(value: VideoResolution): string {
+  return value === 'auto' ? t('videoStudio.resolutionAuto') : value === '4k' ? '4K' : value
+}
+
+async function loadPricing() {
+  pricingController?.abort()
+  modelPricing.value = null
+  pricingError.value = ''
+  const key = selectedKey.value
+  const selectedModel = model.value
+  if (!key || !selectedModel) {
+    loadingPricing.value = false
+    return
+  }
+  const controller = new AbortController()
+  pricingController = controller
+  loadingPricing.value = true
+  try {
+    const quote = await getVideoModelPricing(key.key, selectedModel, controller.signal)
+    if (disposed || pricingController !== controller || selectedKey.value?.id !== key.id || model.value !== selectedModel) return
+    modelPricing.value = quote
+  } catch (error) {
+    if (disposed || pricingController !== controller || selectedKey.value?.id !== key.id || model.value !== selectedModel
+      || (error as Error)?.name === 'AbortError') return
+    const failure = error as VideoStudioError
+    if (failure?.code === 'pricing_not_configured') {
+      pricingError.value = t('videoStudio.pricingUnavailable')
+    } else if (failure?.code === 'not_found_error'
+      || (failure?.status === 404 && failure?.code !== 'permission_error')
+      || /Videos API is not supported|Video request not found/i.test(failure?.message || '')) {
+      pricingError.value = t('videoStudio.pricingServiceUnavailable')
+    } else {
+      pricingError.value = failure?.status && failure.message?.trim()
+        ? failure.message.trim().replace(/\s+/g, ' ').slice(0, 240)
+        : t('videoStudio.pricingLoadFailed')
+    }
+  } finally {
+    if (pricingController === controller) {
+      loadingPricing.value = false
+      pricingController = null
+    }
+  }
+}
+
+watch(model, (next, previous) => {
+  if (isGeminiOmniVideoModel(next) && !isGeminiOmniVideoModel(previous || '')) {
+    duration.value = 5
+    if (sourceImageFile.value || sourceImageUrl.value) firstFrames.value = [{ file: sourceImageFile.value || undefined, url: sourceImageUrl.value }]
+  }
+  handleModelSelection()
+})
+watch([selectedKeyId, model], () => { void loadPricing() })
 
 function lastKeyStorageKey() {
   return 'video_studio_last_key_v1:' + (apiKeys.value[0]?.user_id || 'local')
@@ -701,12 +838,13 @@ async function loadModels(preferredModel = '') {
   modelController = controller
   loadingModels.value = true
   try {
-    const response = await listVideoModels(key.key, controller.signal)
+    const cached = modelCatalogs.value.get(key.id)
+    const response = cached ? { data: cached } : await listVideoModels(key.key, controller.signal)
     if (disposed || modelController !== controller || selectedKeyId.value !== key.id) return
     const filtered = filterVideoModels(response.data || [])
     models.value = filtered
     model.value = selectPreferredVideoModel(filtered, operation.value, preferredModel || model.value)
-    resolution.value = normalizeVideoResolution(model.value, resolution.value)
+    handleModelSelection()
   } catch (error) {
     if (!disposed && modelController === controller && (error as Error).name !== 'AbortError') {
       model.value = ''
@@ -747,7 +885,19 @@ function newTask() {
   activeHistoryId.value = ''
   prompt.value = ''
   clearSourceImage()
+  clearOmniReferences()
   clearVideoContent()
+}
+
+function clearOmniReferences() {
+  firstFrames.value = []
+  lastFrames.value = []
+  imageReferences.value = []
+  videoReferences.value = []
+}
+
+function prepareReferences(references: VideoReferenceInputValue[]): Promise<string[]> {
+  return Promise.all(references.map(reference => reference.file ? fileToDataURL(reference.file) : Promise.resolve(reference.url)))
 }
 
 async function generateVideo() {
@@ -759,8 +909,23 @@ async function generateVideo() {
   const request = buildGenerateVideoRequest({
     operation: mode, model: model.value, prompt: prompt.value,
     resolution: resolution.value, aspectRatio: aspectRatio.value, duration: duration.value,
+    ...(isOmniModel.value && seed.value !== '' ? { seed: Number(seed.value) } : {}),
   })
   now.value = Date.now()
+  if (isOmniModel.value && mode === 'image') {
+    const references = referenceMode.value
+    const first = [...firstFrames.value], last = [...lastFrames.value]
+    const images = [...imageReferences.value], videos = [...videoReferences.value]
+    await tasks.submit(key, mode, request, async () => {
+      if (references === 'references') {
+        const [imageURLs, videoURLs] = await Promise.all([prepareReferences(images), prepareReferences(videos)])
+        return { ...(imageURLs.length ? { image_references: imageURLs } : {}), ...(videoURLs.length ? { video_references: videoURLs } : {}) }
+      }
+      const [firstURLs, lastURLs] = await Promise.all([prepareReferences(first), prepareReferences(last)])
+      return { first_frame: firstURLs[0], ...(lastURLs.length ? { last_frame: lastURLs[0] } : {}) }
+    })
+    return
+  }
   await tasks.submit(key, mode, request, mode === 'image'
     ? () => sourceFile ? fileToDataURL(sourceFile) : Promise.resolve(sourceURL)
     : undefined)
@@ -869,7 +1034,7 @@ function selectHistoryItem(item: VideoHistoryItem) {
 async function reuseParameters() {
   const item = activeHistoryItem.value
   if (!item || isWorking.value || loadingModels.value) return
-  const key = apiKeys.value.find(entry => entry.id === item.apiKeyId)
+  const key = availableKeys.value.find(entry => entry.id === item.apiKeyId)
   if (!key) {
     appStore.showError(t('videoStudio.historyKeyMissing'))
     return
@@ -878,11 +1043,15 @@ async function reuseParameters() {
   selectedKeyId.value = key.id
   operation.value = item.operation
   prompt.value = item.request.prompt
-  duration.value = item.request.duration
-  resolution.value = item.request.resolution
-  aspectRatio.value = normalizeVideoAspectRatio(item.request.aspect_ratio)
+  clearOmniReferences()
   try { localStorage.setItem(lastKeyStorageKey(), String(key.id)) } catch { /* Optional preference. */ }
   await loadModels(item.request.model)
+  // Apply saved settings after model watchers establish defaults for the new model.
+  await nextTick()
+  duration.value = normalizeVideoDuration(model.value, item.request.duration)
+  resolution.value = normalizeVideoResolution(model.value, item.request.resolution)
+  aspectRatio.value = normalizeVideoAspectRatio(item.request.aspect_ratio, model.value)
+  seed.value = item.request.seed ?? ''
   if (item.operation === 'image') appStore.showSuccess(t('videoStudio.reuploadSource'))
 }
 
@@ -924,18 +1093,21 @@ onMounted(async () => {
   elapsedTimer = setInterval(() => { now.value = Date.now() }, 1000)
   try {
     const [keys, rates] = await Promise.all([
-      listEligibleVideoKeys(),
-      userGroupsAPI.getUserGroupRates().catch(() => ({})),
+      listEligibleVideoKeys(), userGroupsAPI.getUserGroupRates().catch(() => ({})),
     ])
     if (disposed) return
     apiKeys.value = keys
     userRates.value = rates
+    const [catalogs] = await Promise.all([loadVideoModelCatalogs(keys, catalogsController.signal), tasks.restore()])
+    if (disposed) return
+    modelCatalogs.value = catalogs
+    if (catalogs.size < keys.length) appStore.showError(t('videoStudio.modelsFailed'))
     let lastKeyId = 0
     try { lastKeyId = Number(localStorage.getItem(lastKeyStorageKey())) } catch { /* Optional preference. */ }
-    selectedKeyId.value = keys.find(key => key.id === lastKeyId)?.id || keys[0]?.id || null
+    selectedKeyId.value = availableKeys.value.find(key => key.id === lastKeyId)?.id || availableKeys.value[0]?.id || null
     const draft = consumeVideoStudioImageDraft()
     if (draft) setSourceImageURL(draft.imageUrl)
-    await Promise.all([loadModels(), tasks.restore()])
+    await loadModels()
   } catch (error) {
     appStore.showError(errorText(error, t('videoStudio.keysFailed')))
   } finally {
@@ -945,7 +1117,9 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   disposed = true
+  catalogsController.abort()
   modelController?.abort()
+  pricingController?.abort()
   contentController?.abort()
   if (elapsedTimer) clearInterval(elapsedTimer)
   releaseSourcePreview()

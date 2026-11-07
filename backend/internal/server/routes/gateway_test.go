@@ -327,8 +327,8 @@ func TestGatewayRoutesCompositeChatCompletionsWithGrokModelUsesOpenAIGateway(t *
 	}
 }
 
-func TestGatewayRoutesNonGrokVideosAreRejectedAtPlatformGate(t *testing.T) {
-	router := newGatewayRoutesTestRouter(service.PlatformOpenAI)
+func TestGatewayRoutesUnsupportedPlatformVideosAreRejectedAtPlatformGate(t *testing.T) {
+	router := newGatewayRoutesTestRouter(service.PlatformAnthropic)
 
 	for _, tc := range []struct {
 		method string
@@ -370,6 +370,33 @@ func TestGatewayRoutesNonGrokVideosAreRejectedAtPlatformGate(t *testing.T) {
 	}
 }
 
+func TestGatewayRoutesOpenAIVideoLifecycleAllowed(t *testing.T) {
+	router := newGatewayRoutesTestRouter(service.PlatformOpenAI)
+	for _, tc := range []struct{ method, path, body string }{
+		{http.MethodPost, "/v1/videos", `{"model":"muse-video","prompt":"waves","duration":60,"size":"16:9"}`},
+		{http.MethodPost, "/v1/videos/generations", `{"model":"muse-video","prompt":"waves"}`},
+		{http.MethodPost, "/videos", `{"model":"muse-video","prompt":"waves"}`},
+		{http.MethodPost, "/videos/generations", `{"model":"muse-video","prompt":"waves"}`},
+		{http.MethodGet, "/v1/videos/task_muse", ""},
+		{http.MethodGet, "/videos/task_muse", ""},
+		{http.MethodGet, "/v1/videos/task_muse/content", ""},
+		{http.MethodGet, "/videos/task_muse/content", ""},
+		{http.MethodGet, "/v1/videos/pricing?model=muse-video", ""},
+		{http.MethodGet, "/videos/pricing?model=muse-video", ""},
+	} {
+		t.Run(tc.method+tc.path, func(t *testing.T) {
+			req := httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
+			req.Header.Set("Content-Type", "application/json")
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+			// Test handlers lack dependencies; reaching authentication/dependency
+			// checks proves that the platform gate admitted the supported route.
+			require.NotEqual(t, http.StatusNotFound, w.Code)
+			require.NotContains(t, w.Body.String(), "Videos API is not supported")
+		})
+	}
+}
+
 func TestGatewayRoutesCompositeVideoGenerationAllowed(t *testing.T) {
 	router := newGatewayRoutesTestRouter(service.PlatformComposite)
 
@@ -380,6 +407,31 @@ func TestGatewayRoutesCompositeVideoGenerationAllowed(t *testing.T) {
 	router.ServeHTTP(w, req)
 	require.NotEqual(t, http.StatusNotFound, w.Code)
 	require.NotContains(t, w.Body.String(), "not supported")
+}
+
+func TestGatewayRoutesGeminiOmniVideoLifecycleAllowed(t *testing.T) {
+	for _, platform := range []string{service.PlatformGemini, service.PlatformComposite} {
+		router := newGatewayRoutesTestRouter(platform)
+		for _, tc := range []struct{ method, path, body string }{
+			{http.MethodPost, "/v1/videos", `{"model":"gemini-omni-1.2-flash","prompt":"waves","seconds":"15","size":"3840x2160"}`},
+			{http.MethodPost, "/videos", `{"model":"gemini-omni-1.2-flash","prompt":"waves"}`},
+			{http.MethodGet, "/v1/models?video_studio=1", ""},
+			{http.MethodGet, "/v1/videos/omni_task", ""},
+			{http.MethodGet, "/v1/videos/omni_task/content", ""},
+			{http.MethodGet, "/v1/videos/pricing?model=gemini-omni-1.2-flash", ""},
+			{http.MethodGet, "/videos/pricing?model=gemini-omni-1.2-flash", ""},
+			{http.MethodGet, "/v1/videos/tasks", ""},
+		} {
+			t.Run(platform+tc.method+tc.path, func(t *testing.T) {
+				req := httptest.NewRequest(tc.method, tc.path, strings.NewReader(tc.body))
+				req.Header.Set("Content-Type", "application/json")
+				w := httptest.NewRecorder()
+				router.ServeHTTP(w, req)
+				require.NotEqual(t, http.StatusNotFound, w.Code, w.Body.String())
+				require.NotContains(t, w.Body.String(), "Videos API is not supported")
+			})
+		}
+	}
 }
 
 func TestGatewayRoutesCompositeOpenAIOnlyEndpointsRequireOpenAITarget(t *testing.T) {

@@ -231,6 +231,25 @@ func (s *ModelPlazaService) ListGroups(ctx context.Context) ([]PlazaGroup, error
 // token 模型取计费阶梯表（单价与档位均由真实计费函数得出），
 // 图片/按次模型（或阶梯表不可用时）沿用模型定价。
 func (s *ModelPlazaService) fillDisplayPricing(ctx context.Context, m *PlazaModel, g *Group) {
+	if IsGeminiOmniVideoModel(m.Name) {
+		// Omni per-request cards are video generations. Resolve the same
+		// billing model and group-first card used by workbench quotes and
+		// completed-video billing, rather than the image-specific policy.
+		if s.resolver != nil {
+			gateway := &OpenAIGatewayService{resolver: s.resolver}
+			key := &APIKey{GroupID: &g.ID, Group: g}
+			billingModel, _, err := gateway.ResolveVideoStudioModels(ctx, key, m.Name)
+			if err != nil {
+				m.Pricing = nil
+				return
+			}
+			resolved := s.resolver.Resolve(ctx, PricingInput{Model: billingModel, GroupID: &g.ID, Group: g})
+			m.Pricing = resolved.channelPricing
+		} else if groupPricing := matchGroupModelPricing(g, m.Name); groupPricing != nil {
+			m.Pricing = groupPricing
+		}
+		return
+	}
 	if s.resolver != nil {
 		gid := g.ID
 		if resolved := s.resolver.ResolveImagePricing(ctx, PricingInput{Model: m.Name, GroupID: &gid, Group: g}); resolved != nil && (resolved.Mode == BillingModeImage || resolved.Mode == BillingModePerRequest) {

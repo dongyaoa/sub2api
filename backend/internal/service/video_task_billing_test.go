@@ -14,6 +14,7 @@ func TestVideoTaskBillingWaitsForDurableDelivery(t *testing.T) {
 	owner := VideoTaskOwner{UserID: 7, APIKeyID: 9}
 	metadata := VideoTaskMetadata{
 		Model:              "grok-imagine-video",
+		BillingModel:       "grok-priced-alias",
 		Resolution:         "720p",
 		Duration:           8,
 		SubscriptionID:     44,
@@ -29,6 +30,7 @@ func TestVideoTaskBillingWaitsForDurableDelivery(t *testing.T) {
 	require.Equal(t, VideoTaskBillingPending, record.BillingStatus)
 	require.Equal(t, int64(44), record.SubscriptionID)
 	require.Equal(t, "payload-hash", record.RequestPayloadHash)
+	require.Equal(t, "grok-priced-alias", record.BillingModel)
 
 	require.NoError(t, svc.RecordLookupError(
 		context.Background(), owner, "task-billing",

@@ -46,7 +46,7 @@ func (s *videoTaskStore) saveDurable(ctx context.Context, task *service.VideoTas
 			last_upstream_error, last_checked_at, video_url, content_type, byte_size,
 			browser_playable, playback_format_version, delivery_error, delivered_at,
 			billing_status, billing_error, billed_at, completed_at, expires_at,
-			created_at, updated_at
+			created_at, updated_at, billing_model, seed
 		) VALUES (
 			$1, $2, $3, $4, $5, $6,
 			$7, $8, $9, $10, $11, $12,
@@ -54,7 +54,7 @@ func (s *videoTaskStore) saveDurable(ctx context.Context, task *service.VideoTas
 			$18, $19, $20, $21, $22,
 			$23, $24, $25, $26,
 			$27, $28, $29, $30, $31,
-			$32, NOW()
+			$32, NOW(), $33, $34
 		)
 		ON CONFLICT (request_id) DO UPDATE SET
 			user_id = EXCLUDED.user_id,
@@ -64,11 +64,13 @@ func (s *videoTaskStore) saveDurable(ctx context.Context, task *service.VideoTas
 			subscription_id = EXCLUDED.subscription_id,
 			operation = EXCLUDED.operation,
 			model = EXCLUDED.model,
+			billing_model = COALESCE(NULLIF(grok_video_generation_tasks.billing_model, ''), EXCLUDED.billing_model),
 			upstream_model = EXCLUDED.upstream_model,
 			prompt = EXCLUDED.prompt,
 			resolution = EXCLUDED.resolution,
 			aspect_ratio = EXCLUDED.aspect_ratio,
 			duration_seconds = EXCLUDED.duration_seconds,
+			seed = COALESCE(grok_video_generation_tasks.seed, EXCLUDED.seed),
 			request_payload_hash = EXCLUDED.request_payload_hash,
 			status = EXCLUDED.status,
 			http_status = EXCLUDED.http_status,
@@ -96,7 +98,7 @@ func (s *videoTaskStore) saveDurable(ctx context.Context, task *service.VideoTas
 		nullableString(task.LastUpstreamError), nullableUnixPtr(task.LastCheckedAt), nullableString(task.VideoURL), nullableString(task.ContentType), task.ByteSize,
 		task.BrowserPlayable, task.PlaybackFormatVersion, nullableString(task.DeliveryError), nullableUnixPtr(task.DeliveredAt),
 		billingStatus, nullableString(task.BillingError), nullableUnixPtr(task.BilledAt), nullableUnixPtr(task.CompletedAt), nullableUnix(task.ExpiresAt),
-		time.Unix(task.CreatedAt, 0).UTC(),
+		time.Unix(task.CreatedAt, 0).UTC(), nullableString(task.BillingModel), task.Metadata.Seed,
 	)
 	return err
 }
@@ -159,13 +161,14 @@ const durableVideoTaskSelect = `
 		playback_format_version, COALESCE(delivery_error, ''),
 		CASE WHEN delivered_at IS NULL THEN NULL ELSE EXTRACT(EPOCH FROM delivered_at)::bigint END,
 		billing_status, COALESCE(billing_error, ''),
-		CASE WHEN billed_at IS NULL THEN NULL ELSE EXTRACT(EPOCH FROM billed_at)::bigint END
+		CASE WHEN billed_at IS NULL THEN NULL ELSE EXTRACT(EPOCH FROM billed_at)::bigint END,
+		COALESCE(billing_model, ''), seed
 	FROM grok_video_generation_tasks`
 
 func scanDurableVideoTask(scanner videoTaskScanner) (*service.VideoTaskRecord, error) {
 	var record service.VideoTaskRecord
 	var taskError []byte
-	var lastCheckedAt, completedAt, deliveredAt, billedAt sql.NullInt64
+	var lastCheckedAt, completedAt, deliveredAt, billedAt, seed sql.NullInt64
 	err := scanner.Scan(
 		&record.ID, &record.UserID, &record.APIKeyID, &record.GroupID, &record.AccountID,
 		&record.SubscriptionID, &record.UpstreamModel, &record.RequestPayloadHash,
@@ -175,7 +178,7 @@ func scanDurableVideoTask(scanner videoTaskScanner) (*service.VideoTaskRecord, e
 		&record.Metadata.Resolution, &record.Metadata.AspectRatio, &record.Metadata.Duration,
 		&record.VideoURL, &record.ContentType, &record.ByteSize, &record.BrowserPlayable,
 		&record.PlaybackFormatVersion, &record.DeliveryError, &deliveredAt,
-		&record.BillingStatus, &record.BillingError, &billedAt,
+		&record.BillingStatus, &record.BillingError, &billedAt, &record.BillingModel, &seed,
 	)
 	if err != nil {
 		return nil, err
@@ -187,6 +190,9 @@ func scanDurableVideoTask(scanner videoTaskScanner) (*service.VideoTaskRecord, e
 	record.CompletedAt = nullUnixPtr(completedAt)
 	record.DeliveredAt = nullUnixPtr(deliveredAt)
 	record.BilledAt = nullUnixPtr(billedAt)
+	if seed.Valid {
+		record.Metadata.Seed = &seed.Int64
+	}
 	return &record, nil
 }
 

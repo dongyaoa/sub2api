@@ -11,9 +11,14 @@ import type {
   UserSupportedModelPricing,
 } from '@/api/channels'
 
-const { get, showError } = vi.hoisted(() => ({ get: vi.fn(), showError: vi.fn() }))
+const { get, showError, authState } = vi.hoisted(() => ({
+  get: vi.fn(),
+  showError: vi.fn(),
+  authState: { isAdmin: false, isSimpleMode: false },
+}))
 
 vi.mock('@/api/client', () => ({ apiClient: { get } }))
+vi.mock('@/stores/auth', () => ({ useAuthStore: () => authState }))
 vi.mock('@/stores/app', () => ({
   useAppStore: () => ({
     cachedPublicSettings: { available_channels_enabled: false },
@@ -116,6 +121,8 @@ let catalog: ReturnType<typeof catalogFixture>
 beforeEach(() => {
   get.mockReset()
   showError.mockReset()
+  authState.isAdmin = false
+  authState.isSimpleMode = false
   catalog = catalogFixture()
   get.mockImplementation(async (url: string) => {
     switch (url) {
@@ -133,7 +140,14 @@ beforeEach(() => {
 
 async function mountView(stubCards = true) {
   const wrapper = mount(ModelSquareView, {
-    global: { stubs: { Icon: true, PlatformIcon: true, ModelPriceCard: stubCards, Teleport: true } },
+    global: {
+      stubs: {
+        Icon: true,
+        PlatformIcon: true,
+        ModelPriceCard: stubCards,
+        Teleport: true,
+      },
+    },
   })
   await flushPromises()
   return wrapper
@@ -163,6 +177,39 @@ async function refresh(wrapper: VueWrapper) {
 }
 
 describe('ModelSquareView independent catalog', () => {
+  it.each([false, true])('uses management order without manual sorting controls (admin: %s)', async (isAdmin) => {
+    authState.isAdmin = isAdmin
+    catalog.groups = [catalog.groups[2], catalog.groups[1], catalog.groups[3], catalog.groups[0]]
+    const wrapper = await mountView()
+
+    expect(groupIds(wrapper)).toEqual(['3', '2', '4', '1'])
+    expect(wrapper.find('[data-sort-groups]').exists()).toBe(false)
+    expect(wrapper.find('[role="dialog"]').exists()).toBe(false)
+    await wrapper.get('[data-platform="openai"]').trigger('click')
+    expect(groupIds(wrapper)).toEqual(['2', '4', '1'])
+    await refresh(wrapper)
+    expect(groupIds(wrapper)).toEqual(['2', '4', '1'])
+    expect(get.mock.calls.some(([url]) => url.startsWith('/admin/'))).toBe(false)
+  })
+
+  it('adopts updated management order on refresh while preserving selected group, platform and adjusted prices', async () => {
+    const wrapper = await mountView()
+    await wrapper.get('[data-platform="openai"]').trigger('click')
+    await wrapper.get('[data-group-id="2"]').trigger('click')
+    await wrapper.get('input[role="switch"]').setValue(true)
+    catalog.groups = [catalog.groups[3], catalog.groups[2], catalog.groups[0], catalog.groups[1]]
+    await refresh(wrapper)
+
+    expect(groupIds(wrapper)).toEqual(['4', '1', '2'])
+    expect(wrapper.get('[data-group-id="2"]').attributes('aria-pressed')).toBe('true')
+    expect(wrapper.get('[data-platform="openai"]').attributes('aria-pressed')).toBe('true')
+    expect(cardFor(wrapper, 'shared-model').props('showMultiplier')).toBe(true)
+    expect(cardFor(wrapper, 'shared-model').props('variant').pricing).toEqual(pricing(0.000005))
+
+    await wrapper.get('[data-platform=""]').trigger('click')
+    expect(groupIds(wrapper)).toEqual(['4', '3', '1', '2'])
+  })
+
   it('loads prices with Available Channels disabled and selects the first group on all platforms', async () => {
     const wrapper = await mountView()
 
@@ -318,7 +365,7 @@ describe('ModelSquareView independent catalog', () => {
 
   it('defaults to the first group with models but preserves a manually selected empty group', async () => {
     const emptyGroup = group(5, '0 Empty', 'openai')
-    catalog.groups.push(emptyGroup)
+    catalog.groups.unshift(emptyGroup)
     catalog.channels.push(channel('Empty channel', [{
       platform: 'openai', groups: [emptyGroup], supported_models: [],
     }]))

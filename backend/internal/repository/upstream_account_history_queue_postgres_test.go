@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/Wei-Shaw/sub2api/migrations"
 	"github.com/stretchr/testify/require"
@@ -38,10 +39,11 @@ func TestUpstreamHistoryQueuePostgresBoundedResumeAndWindowStatus(t *testing.T) 
 	db, ctx, _ := upstreamAccountHistoryTestDB(t)
 	applyUpstreamHistoryQueueMigration(t, db, ctx)
 	now := time.Now().UTC()
-	today := now.Truncate(24 * time.Hour)
+	today := timezone.StartOfDay(now)
 	_, err := db.ExecContext(ctx, `INSERT INTO usage_logs(id,created_at,account_id,user_id,api_key_id,model,actual_cost,total_cost,billing_type,input_tokens)
- SELECT 10000+n,$1::timestamptz-make_interval(secs=>n),101,11,21,'history',2,1,0,10 FROM generate_series(1,2505) n`, today.Add(-time.Hour))
+ SELECT 10000+n,$1::timestamptz,101,11,21,'history',2,1,0,10 FROM generate_series(1,2505) n`, today)
 	require.NoError(t, err)
+	insertUpstreamAccountHistoryUsage(t, db, ctx, 9001, 101, today.Add(-time.Second), 999)
 	_, err = db.ExecContext(ctx, `INSERT INTO upstream_account_bindings(target_id,account_id,supplier_id,target_name,supplier_name) VALUES(1,101,1,'Supplier key','First')`)
 	require.NoError(t, err)
 	var rows int64
@@ -84,10 +86,7 @@ func TestUpstreamHistoryQueuePostgresBoundedResumeAndWindowStatus(t *testing.T) 
 	t.Log(strings.Join(explain, "\n"))
 	pending, err = repo.PendingAccountHistory(ctx, today, today.AddDate(0, 0, 1))
 	require.NoError(t, err)
-	require.Empty(t, pending, "once the newest page is below today, older work cannot hold today's profit pending")
-	pending, err = repo.PendingAccountHistory(ctx, today.AddDate(0, 0, -29), today.AddDate(0, 0, 1))
-	require.NoError(t, err)
-	require.Len(t, pending, 1)
+	require.Len(t, pending, 1, "the same-day cursor may still have more rows sharing its timestamp")
 	// A fresh repository simulates restart: the durable cursor resumes at row 1001.
 	repo = &upstreamFinanceRepository{db: db}
 	worked, err = repo.BackfillAccountHistoryBatch(ctx)
@@ -103,7 +102,7 @@ func TestUpstreamHistoryQueuePostgresBoundedResumeAndWindowStatus(t *testing.T) 
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT COUNT(*),SUM(revenue) FROM upstream_finance_ledger`).Scan(&rows, &revenue))
 	require.Equal(t, int64(2505), rows)
 	require.Equal(t, 5020.0, revenue)
-	pending, err = repo.PendingAccountHistory(ctx, today.AddDate(0, 0, -29), today.AddDate(0, 0, 1))
+	pending, err = repo.PendingAccountHistory(ctx, today, today.AddDate(0, 0, 1))
 	require.NoError(t, err)
 	require.Empty(t, pending)
 	// Migration replay and retry must not rescan or duplicate completed jobs.
@@ -149,7 +148,7 @@ func TestUpstreamHistoryQueuePostgresArchiveBoundariesWhilePending(t *testing.T)
 	require.Zero(t, rows, "retained and late writes during the archived gap remain excluded")
 }
 
-func TestUpstreamHistoryQueuePostgresOldBindingKeepsRecentScanBound(t *testing.T) {
+func TestUpstreamHistoryQueuePostgresOldBindingImportsOnlyToday(t *testing.T) {
 	db, ctx, _ := upstreamAccountHistoryTestDB(t)
 	applyUpstreamAccountHistoryMigration(t, db, ctx)
 	_, err := db.ExecContext(ctx, `ALTER TABLE upstream_account_bindings DISABLE TRIGGER upstream_account_finance_history_import;
@@ -158,7 +157,8 @@ func TestUpstreamHistoryQueuePostgresOldBindingKeepsRecentScanBound(t *testing.T
  VALUES(1,101,1,'Supplier key','First',clock_timestamp()-INTERVAL '1 year');
  INSERT INTO usage_logs(id,created_at,account_id,user_id,api_key_id,model,actual_cost,total_cost,billing_type)
  VALUES(6001,clock_timestamp()-INTERVAL '40 days',101,11,21,'expired',999,1,0),
- (6002,clock_timestamp()-INTERVAL '1 day',101,11,21,'recent',2,1,0);
+ (6002,clock_timestamp()-INTERVAL '1 day',101,11,21,'yesterday',999,1,0),
+ (6003,clock_timestamp(),101,11,21,'today',2,1,0);
  ALTER TABLE upstream_account_bindings ENABLE TRIGGER upstream_account_finance_history_import;
  ALTER TABLE usage_logs ENABLE TRIGGER upstream_usage_finance_snapshot;`)
 	require.NoError(t, err)
@@ -171,7 +171,7 @@ func TestUpstreamHistoryQueuePostgresOldBindingKeepsRecentScanBound(t *testing.T
 	var revenue float64
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT COUNT(*),SUM(revenue) FROM upstream_finance_ledger`).Scan(&rows, &revenue))
 	require.Equal(t, int64(1), rows)
-	require.Equal(t, 2.0, revenue, "upgrading a long-lived binding imports retained recent history only")
+	require.Equal(t, 2.0, revenue, "old queued windows must not scan or import yesterday's rows")
 	var preservesLiveInterval bool
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT history_from=valid_from FROM upstream_account_bindings WHERE account_id=101`).Scan(&preservesLiveInterval))
 	require.True(t, preservesLiveInterval, "the bounded backfill does not truncate the original live accounting interval")
@@ -223,6 +223,45 @@ func TestUpstreamHistoryQueuePostgresFinancialReadSnapshot(t *testing.T) {
 	summary, err = repo.Summary(ctx, query)
 	require.NoError(t, err)
 	require.Equal(t, 5.0, summary.Revenue)
+}
+
+func TestUpstreamHistoryQueuePostgresCompletesPriorDayCutoffOrCursorWithoutScanning(t *testing.T) {
+	for _, mode := range []string{"old cutoff", "cursor below today"} {
+		t.Run(mode, func(t *testing.T) {
+			db, ctx, otherDB := upstreamAccountHistoryTestDB(t)
+			applyUpstreamHistoryQueueMigration(t, db, ctx)
+			today := timezone.StartOfDay(time.Now())
+			_, err := db.ExecContext(ctx, `INSERT INTO upstream_account_bindings(target_id,account_id,supplier_id,target_name,supplier_name) VALUES(1,101,1,'Supplier key','First')`)
+			require.NoError(t, err)
+			upper := time.Now()
+			var cursor any
+			if mode == "old cutoff" {
+				upper = today.Add(-time.Second)
+			} else {
+				cursor = today.Add(-time.Second)
+			}
+			_, err = db.ExecContext(ctx, `UPDATE upstream_account_history_jobs SET upper_bound=$1,cursor_at=$2,cursor_id=9001`, upper, cursor)
+			require.NoError(t, err)
+			other := otherDB()
+			tx, err := other.BeginTx(ctx, nil)
+			require.NoError(t, err)
+			t.Cleanup(func() { _ = tx.Rollback() })
+			_, err = tx.ExecContext(ctx, `LOCK TABLE usage_logs IN ACCESS EXCLUSIVE MODE`)
+			require.NoError(t, err)
+			worked, err := (&upstreamFinanceRepository{db: db}).BackfillAccountHistoryBatch(ctx)
+			require.NoError(t, err, "prior-day tasks must finish without waiting for the usage table")
+			require.True(t, worked)
+			var complete bool
+			var lower time.Time
+			require.NoError(t, db.QueryRowContext(ctx, `SELECT completed_at IS NOT NULL,lower_bound FROM upstream_account_history_jobs`).Scan(&complete, &lower))
+			require.True(t, complete)
+			require.True(t, lower.Equal(today))
+			require.NoError(t, tx.Rollback())
+			pending, err := (&upstreamFinanceRepository{db: db}).PendingAccountHistory(ctx, today, today.AddDate(0, 0, 1))
+			require.NoError(t, err)
+			require.Empty(t, pending)
+		})
+	}
 }
 
 func TestUpstreamHistoryQueuePostgresSaveDoesNotWaitForUsage(t *testing.T) {

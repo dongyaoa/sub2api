@@ -6,12 +6,14 @@ import (
 	"errors"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/Wei-Shaw/sub2api/internal/service"
 )
 
 // Each committed cursor and its ledger inserts are one transaction. Row locks
 // release on a process crash, so another instance resumes the same batch safely.
 func (r *upstreamFinanceRepository) BackfillAccountHistoryBatch(ctx context.Context) (worked bool, err error) {
+	today := timezone.StartOfDay(time.Now())
 	tx, err := r.db.BeginTx(ctx, nil)
 	if err != nil {
 		return false, err
@@ -46,6 +48,21 @@ func (r *upstreamFinanceRepository) BackfillAccountHistoryBatch(ctx context.Cont
  attempts=LEAST(attempts+1,60),next_attempt_at=clock_timestamp()+make_interval(secs=>LEAST(60,5*(attempts+1))),
  last_error='batch_retry',updated_at=clock_timestamp() WHERE binding_id=$1 AND completed_at IS NULL AND updated_at=$2`, bindingID, version)
 	}()
+	// Older releases queued a rolling history window. Keep their durable cursor
+	// and original accounting ownership, but never scan before today's boundary.
+	// A descending cursor below today proves today's rows were already visited.
+	var complete bool
+	err = tx.QueryRowContext(ctx, `UPDATE upstream_account_history_jobs j SET
+ lower_bound=GREATEST(j.lower_bound,$2::timestamptz),
+ completed_at=CASE WHEN LEAST(j.upper_bound,b.valid_until)<=$2 OR j.cursor_at<$2 THEN clock_timestamp() ELSE j.completed_at END
+ FROM upstream_account_bindings b WHERE j.binding_id=$1 AND b.id=j.binding_id
+ RETURNING j.completed_at IS NOT NULL`, bindingID, today).Scan(&complete)
+	if err != nil {
+		return false, err
+	}
+	if complete {
+		return true, tx.Commit()
+	}
 	if upper == nil {
 		// Only this short initialization holds the write barrier, never a history
 		// scan. Saving a target does not acquire or wait for this lock.
@@ -108,7 +125,13 @@ func (r *upstreamFinanceRepository) BackfillAccountHistoryBatch(ctx context.Cont
 // Count unfinished imports only when they can affect the requested calendar
 // window and current ownership. Archived targets never hold totals pending.
 func (r *upstreamFinanceRepository) PendingAccountHistory(ctx context.Context, from, to time.Time) ([]service.UpstreamAccountHistoryWindow, error) {
-	rows, err := r.financeReader(ctx).QueryContext(ctx, `SELECT b.target_id,j.lower_bound,
+	if today := timezone.StartOfDay(time.Now()); from.Before(today) {
+		from = today
+	}
+	if !to.After(from) {
+		return []service.UpstreamAccountHistoryWindow{}, nil
+	}
+	rows, err := r.financeReader(ctx).QueryContext(ctx, `SELECT b.target_id,GREATEST(j.lower_bound,$1::timestamptz),
  LEAST(COALESCE(j.upper_bound,clock_timestamp()),b.valid_until),j.cursor_at
  FROM upstream_account_history_jobs j JOIN upstream_account_bindings b ON b.id=j.binding_id
  JOIN upstream_targets t ON t.id=b.target_id JOIN upstream_suppliers s ON s.id=t.supplier_id

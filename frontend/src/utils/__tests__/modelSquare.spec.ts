@@ -145,4 +145,16 @@ describe('Model Square platform groups', () => {
     expect(collectModelSquareGroups(channels, availableGroups, '').map((group) => group.id))
       .toEqual([1, 2, 3])
   })
+
+  it('preserves the server order instead of alphabetizing groups, including after platform filtering', () => {
+    const serverOrderedGroups = [compositeGroup, unrelatedGroup, anthropicGroup, openaiGroup] as Group[]
+
+    expect(collectModelSquareGroups(channels, serverOrderedGroups).map((group) => group.id))
+      .toEqual([3, 2, 1])
+    expect(collectModelSquareGroups(channels, serverOrderedGroups, 'openai').map((group) => group.id))
+      .toEqual([3, 1])
+    expect(collectModelSquareGroups(channels, serverOrderedGroups, 'anthropic').map((group) => group.id))
+      .toEqual([3, 2])
+    expect(serverOrderedGroups.map((group) => group.id)).toEqual([3, 4, 2, 1])
+  })
 })

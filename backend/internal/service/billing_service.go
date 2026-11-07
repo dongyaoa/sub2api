@@ -1830,47 +1830,32 @@ func (s *BillingService) calculatePerRequestCost(resolved *ResolvedPricing, inpu
 	}
 
 	unitPrice := resolved.DefaultPerRequestPrice
-	if resolved.Mode == BillingModeVideo {
-		// Preserve the separate video billing policy.
-		unitPrice = input.Resolver.GetRequestTierPrice(resolved, input.SizeTier)
-		if unitPrice == 0 {
-			totalContext := input.Tokens.InputTokens + input.Tokens.CacheCreationTokens + input.Tokens.CacheReadTokens
-			unitPrice = input.Resolver.GetRequestTierPriceByContext(resolved, totalContext)
-		}
-		if unitPrice == 0 {
-			unitPrice = resolved.DefaultPerRequestPrice
-		}
-	} else {
-		if resolved.Mode == BillingModeImage &&
-			(resolved.channelPricing == nil || resolved.channelPricing.PerRequestPrice == nil) && unitPrice == 0 {
-			unitPrice = s.getDefaultImagePrice(input.Model, input.SizeTier)
-		}
-		matchedTier := false
-		if input.SizeTier != "" {
-			for _, tier := range resolved.RequestTiers {
-				if strings.EqualFold(strings.TrimSpace(tier.TierLabel), strings.TrimSpace(input.SizeTier)) && tier.PerRequestPrice != nil {
-					unitPrice = *tier.PerRequestPrice
-					matchedTier = true // An explicitly configured zero is free, not absent.
-					break
-				}
-			}
-		}
-		if !matchedTier {
-			// Resolution tiers are not token-context intervals. A missing 2K/4K
-			// tier must not accidentally borrow the first configured 1K tier.
-			contextTiers := resolved.RequestTiers
-			if resolved.Mode != BillingModeVideo {
-				contextTiers = nil
-				for _, tier := range resolved.RequestTiers {
-					if strings.TrimSpace(tier.TierLabel) == "" {
-						contextTiers = append(contextTiers, tier)
-					}
-				}
-			}
-			totalContext := input.Tokens.InputTokens + input.Tokens.CacheCreationTokens + input.Tokens.CacheReadTokens
-			if tier := FindMatchingInterval(contextTiers, totalContext); tier != nil && tier.PerRequestPrice != nil {
+	if resolved.Mode == BillingModeImage &&
+		(resolved.channelPricing == nil || resolved.channelPricing.PerRequestPrice == nil) && unitPrice == 0 {
+		unitPrice = s.getDefaultImagePrice(input.Model, input.SizeTier)
+	}
+	matchedTier := false
+	if input.SizeTier != "" {
+		for _, tier := range resolved.RequestTiers {
+			if strings.EqualFold(strings.TrimSpace(tier.TierLabel), strings.TrimSpace(input.SizeTier)) && tier.PerRequestPrice != nil {
 				unitPrice = *tier.PerRequestPrice
+				matchedTier = true // An explicitly configured zero is free, not absent.
+				break
 			}
+		}
+	}
+	if !matchedTier {
+		// Resolution tiers are not token-context intervals. A missing 2K/4K
+		// tier must not accidentally borrow the first configured 1K tier.
+		var contextTiers []PricingInterval
+		for _, tier := range resolved.RequestTiers {
+			if strings.TrimSpace(tier.TierLabel) == "" {
+				contextTiers = append(contextTiers, tier)
+			}
+		}
+		totalContext := input.Tokens.InputTokens + input.Tokens.CacheCreationTokens + input.Tokens.CacheReadTokens
+		if tier := FindMatchingInterval(contextTiers, totalContext); tier != nil && tier.PerRequestPrice != nil {
+			unitPrice = *tier.PerRequestPrice
 		}
 	}
 
@@ -2374,7 +2359,7 @@ func (c *VideoPriceConfig) priceFor(model string, resolution string) *float64 {
 	}
 	// Legacy creation-workbench layout: the 480p/720p columns represent the
 	// grok-imagine-video and grok-imagine-video-1.5 model families.
-	switch strings.ToLower(strings.TrimSpace(model)) {
+	switch CanonicalGrokImagineVideoPriceFamily(model) {
 	case "grok-imagine-video":
 		return c.Price480P
 	case "grok-imagine-video-1.5-preview", "grok-imagine-video-1.5":
@@ -2497,6 +2482,9 @@ func getGrokImagineImageTierPrice(imageSize string, price1K float64, price2K flo
 
 func getDefaultGrokImagineVideoPrice(model string, resolution string) (float64, bool) {
 	model = strings.ToLower(strings.TrimSpace(model))
+	if family := CanonicalGrokImagineVideoPriceFamily(model); family != "" {
+		model = family
+	}
 	switch {
 	case strings.HasPrefix(model, "grok-imagine-video-1.5"):
 		switch NormalizeVideoBillingResolutionOrDefault(resolution) {

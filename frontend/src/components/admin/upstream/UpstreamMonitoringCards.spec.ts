@@ -22,11 +22,11 @@ function target(): UpstreamTarget {
 }
 
 describe('upstream card headline measurements', () => {
-  it.each([UpstreamGroupRow, UpstreamTargetCard])('keeps a history sync failure visible separately from successful wallet data', (component) => {
+  it.each([UpstreamGroupRow, UpstreamTargetCard])('keeps a daily usage sync failure visible separately from successful wallet data', (component) => {
     const item = target()
-    item.balance = { ...item.balance, status: 'ok', error: 'sub2api_history_sync_failed: upstream_timeout' } as UpstreamTarget['balance']
+    item.balance = { ...item.balance, status: 'ok', error: 'newapi_usage_incomplete' } as UpstreamTarget['balance']
     const wrapper = mount(component, { props: { target: item, busy: false, running: false }, global: { stubs } })
-    expect(wrapper.text()).toContain('upstreamCenter.syncErrors.historyFailed: upstreamCenter.syncErrors.timeout')
+    expect(wrapper.text()).toContain('upstreamCenter.newapi.errors.usageIncomplete')
     expect(wrapper.text()).not.toContain('upstreamCenter.balanceFailed')
     wrapper.unmount()
   })

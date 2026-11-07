@@ -170,7 +170,7 @@ func (s *UpstreamFinanceService) fetchNewAPIBalance(ctx context.Context, target 
 		unit = *status.QuotaPerUnit
 	}
 	defer func() {
-		for _, value := range []*float64{snapshot.Balance, snapshot.QuotaRemaining, snapshot.TotalUsed, snapshot.DayUsed, snapshot.Last30DaysUsed} {
+		for _, value := range []*float64{snapshot.Balance, snapshot.QuotaRemaining, snapshot.TotalUsed, snapshot.DayUsed} {
 			if unit > 0 && value != nil {
 				converted := *value / unit
 				if !newAPIQuota(&converted, true) {
@@ -179,7 +179,7 @@ func (s *UpstreamFinanceService) fetchNewAPIBalance(ctx context.Context, target 
 			}
 		}
 		if unit > 0 {
-			for _, value := range []*float64{snapshot.Balance, snapshot.QuotaRemaining, snapshot.TotalUsed, snapshot.DayUsed, snapshot.Last30DaysUsed} {
+			for _, value := range []*float64{snapshot.Balance, snapshot.QuotaRemaining, snapshot.TotalUsed, snapshot.DayUsed} {
 				if value != nil {
 					*value /= unit
 				}

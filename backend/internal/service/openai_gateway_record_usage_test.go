@@ -2680,9 +2680,8 @@ func TestOpenAIGatewayServiceRecordUsage_HydratesGroupVideoPriceWhenAuthSnapshot
 	require.Equal(t, string(BillingModeVideo), *usageRepo.lastLog.BillingMode)
 }
 
-// 视频请求命中渠道 token 计费时走 token 路径；此时行是 billing_mode='token'、image_count=1、
-// image_size=NULL，必须携带 video_count>0 才能通过 usage_logs 的 image_size check 约束
-// （迁移 172），否则整个计费事务会因约束违反而丢失。
+// Grok 视频遇到文本 token 价卡仍按视频秒数计费，并保留视频元数据。
+// token 用量不能覆盖生成费，独立视频倍率也不能被普通分组倍率替代。
 func TestOpenAIGatewayServiceRecordUsage_GrokVideoWithTokenChannelPricingKeepsVideoMetadata(t *testing.T) {
 	groupID := int64(132)
 	usageRepo := &openAIRecordUsageLogRepoStub{inserted: true}
@@ -2705,9 +2704,11 @@ func TestOpenAIGatewayServiceRecordUsage_GrokVideoWithTokenChannelPricingKeepsVi
 			ID:      10132,
 			GroupID: i64p(groupID),
 			Group: &Group{
-				ID:             groupID,
-				Platform:       PlatformGrok,
-				RateMultiplier: 1,
+				ID:                   groupID,
+				Platform:             PlatformGrok,
+				RateMultiplier:       0.6,
+				VideoRateIndependent: true,
+				VideoRateMultiplier:  0.5,
 			},
 		},
 		User:    &User{ID: 20132},
@@ -2717,7 +2718,10 @@ func TestOpenAIGatewayServiceRecordUsage_GrokVideoWithTokenChannelPricingKeepsVi
 	require.NoError(t, err)
 	require.NotNil(t, usageRepo.lastLog)
 	require.NotNil(t, usageRepo.lastLog.BillingMode)
-	require.Equal(t, string(BillingModeToken), *usageRepo.lastLog.BillingMode)
+	require.Equal(t, string(BillingModeVideo), *usageRepo.lastLog.BillingMode)
+	require.InDelta(t, 0.07*5, usageRepo.lastLog.TotalCost, 1e-12)
+	require.InDelta(t, 0.07*5*0.5, usageRepo.lastLog.ActualCost, 1e-12)
+	require.InDelta(t, 0.5, usageRepo.lastLog.RateMultiplier, 1e-12)
 	require.Nil(t, usageRepo.lastLog.ImageSize)
 	require.Equal(t, 0, usageRepo.lastLog.ImageCount)
 	require.Equal(t, 1, usageRepo.lastLog.VideoCount)

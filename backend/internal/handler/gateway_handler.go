@@ -1164,6 +1164,10 @@ func (h *GatewayHandler) Models(c *gin.Context) {
 		h.imageStudioModels(c, apiKey, platform)
 		return
 	}
+	if c.Query("video_studio") == "1" {
+		h.videoStudioModels(c, apiKey)
+		return
+	}
 
 	if platform == service.PlatformOpenAI && apiKey != nil && apiKey.Group != nil &&
 		apiKey.Group.Platform == service.PlatformOpenAI && apiKey.Group.CodexModelsManifestConfig.Enabled {

@@ -77,7 +77,9 @@ type GrokMediaRequestInfo struct {
 	Resolution      string
 	AspectRatio     string
 	DurationSeconds int
+	Seed            *int64
 	InputImageURLs  []string
+	InputVideoURLs  []string
 	MaskImageURL    string
 	Uploads         []OpenAIImagesUpload
 	MaskUpload      *OpenAIImagesUpload
@@ -133,6 +135,11 @@ func ExtractGrokMediaModel(contentType string, body []byte) string {
 }
 
 func ParseGrokMediaRequest(contentType string, body []byte) GrokMediaRequestInfo {
+	if IsMuseVideoModel(gjson.GetBytes(body, "model").String()) {
+		if info, err := ParseMuseVideoRequest(body); err == nil {
+			return info
+		}
+	}
 	info := GrokMediaRequestInfo{N: 1}
 	if gjson.ValidBytes(body) {
 		parseGrokMediaJSONRequest(body, &info)
@@ -144,9 +151,9 @@ func ParseGrokMediaRequest(contentType string, body []byte) GrokMediaRequestInfo
 	info.Size = strings.TrimSpace(info.Size)
 	info.SizeTier = NormalizeImageBillingTierOrDefault(info.Size)
 	info.ImageResolution = grokImagineImageResolution(info.ImageResolution)
-	info.Resolution = NormalizeVideoBillingResolutionOrDefault(info.Resolution)
+	info.Resolution = NormalizeVideoBillingResolutionForModelOrDefault(info.Model, info.Resolution)
 	info.AspectRatio = strings.TrimSpace(info.AspectRatio)
-	info.DurationSeconds = NormalizeVideoBillingDurationSecondsOrDefault(info.DurationSeconds)
+	info.DurationSeconds = NormalizeVideoBillingDurationForModelOrDefault(info.Model, info.DurationSeconds)
 	if info.N <= 0 {
 		info.N = 1
 	}
@@ -377,12 +384,17 @@ func (s *OpenAIGatewayService) SelectMediaVideoRequestAccount(
 		return nil, decision, ErrNoAvailableAccounts
 	}
 	ctx = s.withOpenAIGroupPrivacyRequirement(WithOpenAIProfitControlSuppressed(ctx), groupID)
+	requiredCapability := OpenAIEndpointCapability("")
+	if platform == PlatformGemini {
+		requiredCapability = OpenAIEndpointCapabilityGeminiOmniVideo
+	}
 	scheduler := &defaultOpenAIAccountScheduler{service: s}
 	selection, _, err := scheduler.selectBySessionHash(ctx, OpenAIAccountScheduleRequest{
 		GroupID: groupID, Platform: platform, SessionHash: sessionHash,
 		StickyAccountID: accountID, PreserveStickyBinding: true, DisableStickyEscape: true,
 		RequestedModel: requestedModel, RequiredTransport: OpenAIUpstreamTransportHTTPSSE,
-		RequirePrivacySet: s.openAIGroupRequiresPrivacySet(ctx, groupID),
+		RequiredCapability: requiredCapability,
+		RequirePrivacySet:  s.openAIGroupRequiresPrivacySet(ctx, groupID),
 	})
 	if err != nil {
 		return nil, decision, err
@@ -482,11 +494,12 @@ func (s *OpenAIGatewayService) StoreGrokVideoPendingBilling(
 	pending.BillingModel = strings.TrimSpace(pending.BillingModel)
 	pending.UpstreamModel = strings.TrimSpace(pending.UpstreamModel)
 	pending.OriginalModel = strings.TrimSpace(pending.OriginalModel)
+	videoModel := videoUsageModel(&OpenAIForwardResult{Model: pending.Model, UpstreamModel: pending.UpstreamModel}, pending.BillingModel)
 	if pending.VideoResolution != "" {
-		pending.VideoResolution = NormalizeVideoBillingResolutionOrDefault(pending.VideoResolution)
+		pending.VideoResolution = NormalizeVideoBillingResolutionForModelOrDefault(videoModel, pending.VideoResolution)
 	}
 	if pending.VideoDurationSeconds > 0 {
-		pending.VideoDurationSeconds = NormalizeVideoBillingDurationSecondsOrDefault(pending.VideoDurationSeconds)
+		pending.VideoDurationSeconds = NormalizeVideoBillingDurationForModelOrDefault(videoModel, pending.VideoDurationSeconds)
 	}
 	// Always stamp create-accept time when missing so deferred duration_ms is E2E.
 	if strings.TrimSpace(pending.CreatedAt) == "" {
@@ -646,12 +659,13 @@ func ExtractGrokVideoBillingFromStatusBody(statusBody []byte, pending *GrokVideo
 	if billingModel == "" {
 		billingModel = model
 	}
+	videoModel := videoUsageModel(&OpenAIForwardResult{Model: model, UpstreamModel: upstreamModel}, billingModel)
 	// Resolution is request-only per docs; empty → handler applies official default 480p.
 	if resolution != "" {
-		resolution = NormalizeVideoBillingResolutionOrDefault(resolution)
+		resolution = NormalizeVideoBillingResolutionForModelOrDefault(videoModel, resolution)
 	}
 	if durationSeconds > 0 {
-		durationSeconds = NormalizeVideoBillingDurationSecondsOrDefault(durationSeconds)
+		durationSeconds = NormalizeVideoBillingDurationForModelOrDefault(videoModel, durationSeconds)
 	}
 	responseID := extractGrokMediaVideoRequestID(statusBody)
 	if responseID == "" {
@@ -698,6 +712,12 @@ func (s *OpenAIGatewayService) ForwardGrokMedia(
 	}()
 	if account == nil {
 		return nil, fmt.Errorf("grok account is required")
+	}
+	if account.Platform == PlatformOpenAI {
+		return s.ForwardMuseVideo(ctx, c, account, endpoint, requestID, body)
+	}
+	if account.Platform == PlatformGemini {
+		return s.ForwardGeminiOmniVideo(ctx, c, account, endpoint, requestID, body)
 	}
 	if account.Platform != PlatformGrok {
 		return nil, fmt.Errorf("account platform %s is not supported for grok media", account.Platform)

@@ -1,6 +1,8 @@
 export type VideoStudioOperation = 'text' | 'image'
-export type VideoResolution = '480p' | '720p' | '1080p'
-export type VideoAspectRatio = '1:1' | '16:9' | '9:16' | '4:3' | '3:4' | '3:2' | '2:3'
+export type VideoResolution = 'auto' | '360p' | '480p' | '720p' | '1080p' | '4k'
+export type VideoAspectRatio = 'auto' | '1:1' | '16:9' | '9:16' | '4:3' | '3:4' | '3:2' | '2:3'
+export type VideoReferenceMode = 'frames' | 'references'
+export interface VideoReferenceInputValue { url: string; file?: File }
 export type VideoViewState = 'idle' | 'processing' | 'completed' | 'failed'
 
 export interface VideoModel {
@@ -14,12 +16,27 @@ export interface VideoModelsResponse {
   data: VideoModel[]
 }
 
+export interface VideoModelPricing {
+  model: string
+  billing_model?: string
+  billing_mode: 'per_request' | 'image' | 'video' | 'token'
+  pricing_source: string
+  rate_multiplier: number
+  tiers: Partial<Record<VideoResolution, { base_price: number; unit_price: number; configured: boolean }>> | null
+}
+
 export interface GenerateVideoRequest {
   model: string
   prompt: string
   resolution: VideoResolution
   aspect_ratio?: VideoAspectRatio
   duration: number
+  image_size?: string
+  seed?: number
+  first_frame?: string
+  last_frame?: string
+  image_references?: string[]
+  video_references?: string[]
   image?: {
     url: string
   }
@@ -54,6 +71,8 @@ export interface VideoTask {
     resolution?: VideoResolution
     aspect_ratio?: VideoAspectRatio
     duration?: number
+    image_size?: string
+    seed?: number
   }
 }
 

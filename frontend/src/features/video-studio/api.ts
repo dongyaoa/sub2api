@@ -1,6 +1,8 @@
 import { buildGatewayUrl } from '@/api/url'
+import { isGeminiOmniVideoModel } from './capabilities'
 import type {
   GenerateVideoRequest,
+  VideoModelPricing,
   VideoModelsResponse,
   VideoStudioError,
   VideoTask,
@@ -36,7 +38,17 @@ export function getVideoRequestId(task: VideoTask): string {
 }
 
 export async function listVideoModels(apiKey: string, signal?: AbortSignal): Promise<VideoModelsResponse> {
-  const response = await fetch(buildGatewayUrl('/v1/models'), {
+  const response = await fetch(buildGatewayUrl('/v1/models?video_studio=1'), {
+    headers: authHeaders(apiKey),
+    signal,
+  })
+  if (!response.ok) throw await parseVideoStudioError(response)
+  return response.json()
+}
+
+export async function getVideoModelPricing(apiKey: string, model: string, signal?: AbortSignal): Promise<VideoModelPricing> {
+  const params = new URLSearchParams({ model })
+  const response = await fetch(buildGatewayUrl(`/v1/videos/pricing?${params.toString()}`), {
     headers: authHeaders(apiKey),
     signal,
   })
@@ -49,7 +61,7 @@ export async function submitVideoTask(
   payload: GenerateVideoRequest,
   signal?: AbortSignal,
 ): Promise<VideoTask> {
-  const response = await fetch(buildGatewayUrl('/v1/videos/generations'), {
+  const response = await fetch(buildGatewayUrl(isGeminiOmniVideoModel(payload.model) ? '/v1/videos' : '/v1/videos/generations'), {
     method: 'POST',
     headers: authHeaders(apiKey, {
       Accept: 'application/json',

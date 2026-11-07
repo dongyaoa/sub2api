@@ -14,12 +14,12 @@ import (
 )
 
 const (
-	newAPIUsagePageSize        = 100 // common/page_info.go caps larger requests to 100.
-	newAPIUsageMaxPages        = 512
-	newAPIUsageHistoryMaxPages = 8192
-	newAPIUsageCacheLimit      = 128
-	newAPIUsageCacheTTL        = 30 * time.Second
-	newAPIUsageRetryDelay      = 30 * time.Second
+	newAPIUsagePageSize   = 100 // common/page_info.go caps larger requests to 100.
+	newAPIUsageMaxPages   = 512
+	newAPIUsageMaxTokens  = 8192
+	newAPIUsageCacheLimit = 128
+	newAPIUsageCacheTTL   = 30 * time.Second
+	newAPIUsageRetryDelay = 30 * time.Second
 )
 
 // Official contracts (QuantumNous/new-api v0.10.8 and v1.0.0-rc.40):
@@ -48,7 +48,6 @@ func setNewAPIUsageWindow(snapshot *UpstreamBalanceSnapshot, start time.Time, am
 }
 
 func (s *UpstreamFinanceService) fetchNewAPIRecentUsage(ctx context.Context, base, key string, snapshot *UpstreamBalanceSnapshot, dayStart time.Time) string {
-	snapshot.Last30DaysUsed, snapshot.PeriodStart, snapshot.PeriodEnd, snapshot.PeriodSyncedAt = nil, nil, nil, nil
 	raw, code := s.newAPIGet(ctx, base, "/api/log/token", key, 0, nil)
 	data, ok := newAPIData(raw)
 	var logs []newAPIUsageLog
@@ -117,7 +116,6 @@ type newAPIUsageBaseline struct {
 type newAPIUsageScan struct {
 	from, until time.Time
 	tailFrom    time.Time
-	history     bool
 	total       int64
 	nextPage    int
 	firstHash   [32]byte
@@ -131,14 +129,13 @@ type newAPIUsageScan struct {
 }
 
 type newAPILogRequestBudget struct {
-	until                time.Time
-	requests, historical int
+	until    time.Time
+	requests int
 }
 
 // Official common/init.go defaults to 180 API reads / 180 seconds per IP.
-// Leave headroom for balances and other clients, and keep 40 of our own reads
-// available to today's window so history backfill cannot starve live profit.
-func (s *UpstreamFinanceService) allowNewAPILogRead(base string, history bool) bool {
+// Leave headroom for balances and other clients.
+func (s *UpstreamFinanceService) allowNewAPILogRead(base string) bool {
 	identity := newAPIOriginIdentity(base)
 	if identity == "" {
 		return false
@@ -164,13 +161,10 @@ func (s *UpstreamFinanceService) allowNewAPILogRead(base string, history bool) b
 	if !now.Before(entry.until) {
 		entry = newAPILogRequestBudget{until: now.Add(3 * time.Minute)}
 	}
-	if entry.requests >= 120 || (history && entry.historical >= 80) {
+	if entry.requests >= 120 {
 		return false
 	}
 	entry.requests++
-	if history {
-		entry.historical++
-	}
 	cache.logSites[identity] = entry
 	return true
 }
@@ -180,16 +174,13 @@ type newAPIUsageLogTotals struct {
 	tail map[int64]float64
 }
 
-func (s *UpstreamFinanceService) newAPIAccountLogTotals(ctx context.Context, base, key string, userID int64, from, until time.Time, history bool) (map[int64]float64, time.Time, string) {
+func (s *UpstreamFinanceService) newAPIAccountLogTotals(ctx context.Context, base, key string, userID int64, from, until time.Time) (map[int64]float64, time.Time, string) {
 	// At exactly local midnight the second-granularity cutoff equals from.
 	// Never retain this empty window as a pending scan that cannot advance.
 	if !until.After(from) {
 		return nil, time.Time{}, "newapi_usage_incomplete"
 	}
-	identityInput := fmt.Sprintf("%s\x00%s\x00%d\x00%d\x00%t", base, key, userID, from.Unix(), history)
-	if history {
-		identityInput += ":" + strconv.FormatInt(until.Unix(), 10)
-	}
+	identityInput := fmt.Sprintf("%s\x00%s\x00%d\x00%d", base, key, userID, from.Unix())
 	digest := sha256.Sum256([]byte(identityInput))
 	identity := hex.EncodeToString(digest[:])
 	cache := &s.newAPICache
@@ -241,9 +232,9 @@ func (s *UpstreamFinanceService) newAPIAccountLogTotals(ctx context.Context, bas
 	cache.usage[identity] = entry
 	cache.mu.Unlock()
 	if entry.scan == nil {
-		scan := &newAPIUsageScan{from: from, until: until, history: history, nextPage: 1}
+		scan := &newAPIUsageScan{from: from, until: until, nextPage: 1}
 		prior := entry.baseline
-		if !history && prior != nil && prior.until.Before(until) && now.Sub(prior.fullScanAt) < 15*time.Minute {
+		if prior != nil && prior.until.Before(until) && now.Sub(prior.fullScanAt) < 15*time.Minute {
 			// Replace the overlap; never add already counted records twice.
 			scan.from, scan.baseline = prior.until.Add(-30*time.Second), prior
 			if scan.from.Before(from) {
@@ -265,7 +256,7 @@ func (s *UpstreamFinanceService) newAPIAccountLogTotals(ctx context.Context, bas
 				code = "newapi_usage_incomplete"
 			}
 		}
-		if len(combined) > newAPIUsageHistoryMaxPages {
+		if len(combined) > newAPIUsageMaxTokens {
 			code = "newapi_usage_incomplete"
 		}
 		if code == "" {
@@ -286,14 +277,11 @@ func (s *UpstreamFinanceService) newAPIAccountLogTotals(ctx context.Context, bas
 	}
 	entry.syncedAt, entry.errorCode = scan.until, code
 	ttl := newAPIUsageCacheTTL
-	if history {
-		ttl = 30 * time.Minute
-	}
 	if code != "" {
 		ttl = newAPIUsageRetryDelay
 	}
 	entry.expiresAt = s.now().Add(ttl)
-	if code == "" && !history && scan.until.Add(ttl).Before(entry.expiresAt) {
+	if code == "" && scan.until.Add(ttl).Before(entry.expiresAt) {
 		// Completing a long resumed scan must not impose another cache wait
 		// before its old cutoff can be caught up to current consumption.
 		entry.expiresAt = scan.until.Add(ttl)
@@ -325,8 +313,8 @@ func (s *UpstreamFinanceService) resumeNewAPIAccountLogs(ctx context.Context, ba
 		}
 		middle := time.Unix(scan.from.Unix()+seconds/2, 0).In(scan.from.Location())
 		scan.parts = []*newAPIUsageScan{
-			{from: scan.from, until: middle, tailFrom: scan.tailFrom, history: scan.history, nextPage: 1},
-			{from: middle, until: scan.until, tailFrom: scan.tailFrom, history: scan.history, nextPage: 1},
+			{from: scan.from, until: middle, tailFrom: scan.tailFrom, nextPage: 1},
+			{from: middle, until: scan.until, tailFrom: scan.tailFrom, nextPage: 1},
 		}
 		scan.used, scan.tail = make(map[int64]float64), make(map[int64]float64)
 	}
@@ -350,11 +338,11 @@ func (s *UpstreamFinanceService) resumeNewAPIAccountLogs(ctx context.Context, ba
 		}
 		scan.parts[scan.partIndex] = nil
 		scan.partIndex++
-		if len(scan.used) > newAPIUsageHistoryMaxPages {
+		if len(scan.used) > newAPIUsageMaxTokens {
 			return nil, "newapi_usage_incomplete"
 		}
 	}
-	if len(scan.used) > newAPIUsageHistoryMaxPages {
+	if len(scan.used) > newAPIUsageMaxTokens {
 		return nil, "newapi_usage_incomplete"
 	}
 	return &newAPIUsageLogTotals{used: scan.used, tail: scan.tail}, ""
@@ -366,7 +354,7 @@ func (s *UpstreamFinanceService) resumeNewAPIAccountLogWindow(ctx context.Contex
 		return nil, "newapi_usage_incomplete", false
 	}
 	load := func(requestCtx context.Context, page int) (*newAPIUsagePage, string) {
-		if !s.allowNewAPILogRead(base, scan.history) {
+		if !s.allowNewAPILogRead(base) {
 			return nil, "newapi_usage_incomplete"
 		}
 		query := url.Values{"type": {"2"}, "start_timestamp": {strconv.FormatInt(from.Unix(), 10)}, "end_timestamp": {strconv.FormatInt(until.Unix()-1, 10)}, "p": {strconv.Itoa(page)}, "page_size": {strconv.Itoa(newAPIUsagePageSize)}}
@@ -384,9 +372,6 @@ func (s *UpstreamFinanceService) resumeNewAPIAccountLogWindow(ctx context.Contex
 	}
 	total := *first.Total
 	maxPages := newAPIUsageMaxPages
-	if scan.history {
-		maxPages = newAPIUsageHistoryMaxPages
-	}
 	if total > int64(newAPIUsagePageSize*maxPages) {
 		return nil, "newapi_usage_incomplete", true
 	}
@@ -428,7 +413,7 @@ func (s *UpstreamFinanceService) resumeNewAPIAccountLogWindow(ctx context.Contex
 				return false
 			}
 		}
-		return len(used) <= newAPIUsageHistoryMaxPages
+		return len(used) <= newAPIUsageMaxTokens
 	}
 	if scan.nextPage == 1 {
 		if beyondReportedCount(first) {
@@ -503,13 +488,12 @@ func (s *UpstreamFinanceService) resumeNewAPIAccountLogWindow(ctx context.Contex
 func ptrNewAPIQuota(value float64) *float64 { return &value }
 
 func (s *UpstreamFinanceService) fetchNewAPIAccountUsage(ctx context.Context, base, key string, target *UpstreamFinanceTarget, tokenID int64, snapshot *UpstreamBalanceSnapshot, dayStart time.Time) string {
-	snapshot.Last30DaysUsed, snapshot.PeriodStart, snapshot.PeriodEnd, snapshot.PeriodSyncedAt = nil, nil, nil, nil
 	// Freeze the time boundary before any page is requested. Calls posted after
 	// it cannot shift offsets while a busy account is being paginated.
 	until := s.now().UTC().Truncate(time.Second)
 	dayCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
 	defer cancel()
-	today, syncedAt, code := s.newAPIAccountLogTotals(dayCtx, base, key, target.NewAPIUserID, dayStart, until, false)
+	today, syncedAt, code := s.newAPIAccountLogTotals(dayCtx, base, key, target.NewAPIUserID, dayStart, until)
 	if code != "" {
 		return code
 	}
@@ -519,7 +503,7 @@ func (s *UpstreamFinanceService) fetchNewAPIAccountUsage(ctx context.Context, ba
 		// the remaining daily budget on one delta rather than reading history
 		// or delaying the catch-up until a later polling round.
 		catchupCtx := context.WithValue(dayCtx, newAPIUsageForceKey{}, true)
-		updated, updatedAt, updateCode := s.newAPIAccountLogTotals(catchupCtx, base, key, target.NewAPIUserID, dayStart, latestUntil, false)
+		updated, updatedAt, updateCode := s.newAPIAccountLogTotals(catchupCtx, base, key, target.NewAPIUserID, dayStart, latestUntil)
 		if updateCode == "" {
 			today, syncedAt = updated, updatedAt
 		} else {

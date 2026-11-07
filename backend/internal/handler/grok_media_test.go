@@ -118,6 +118,24 @@ func TestGrokMediaRequiredCapability(t *testing.T) {
 	}
 }
 
+func TestVideoLookupPlatformUsesSubmissionModel(t *testing.T) {
+	composite := &service.Group{Platform: service.PlatformComposite}
+	muse := &service.VideoTaskRecord{Metadata: service.VideoTaskMetadata{Model: "muse-video"}}
+	grok := &service.VideoTaskRecord{Metadata: service.VideoTaskMetadata{Model: "grok-imagine-video"}}
+	require.Equal(t, service.PlatformOpenAI, videoLookupPlatform(composite, muse))
+	require.Equal(t, service.PlatformGrok, videoLookupPlatform(composite, grok))
+	require.Equal(t, service.PlatformGrok, videoLookupPlatform(composite, nil))
+	require.Equal(t, service.PlatformOpenAI, videoLookupPlatform(&service.Group{Platform: service.PlatformOpenAI}, nil))
+	require.Equal(t, service.PlatformGrok, videoLookupPlatform(nil, nil))
+	// A key's group may change after submission; the owned record wins.
+	require.Equal(t, service.PlatformGrok, videoLookupPlatform(&service.Group{Platform: service.PlatformOpenAI}, grok))
+	omni := &service.VideoTaskRecord{Metadata: service.VideoTaskMetadata{Model: "gemini-omni-1.2-flash"}}
+	require.Equal(t, service.PlatformGemini, videoLookupPlatform(composite, omni))
+	require.Equal(t, service.PlatformGemini, videoLookupPlatform(&service.Group{Platform: service.PlatformGemini}, nil))
+	require.Equal(t, service.PlatformGemini, videoLookupPlatform(&service.Group{Platform: service.PlatformOpenAI}, omni))
+	require.Equal(t, service.PlatformGemini, videoLookupPlatform(composite, &service.VideoTaskRecord{UpstreamModel: "omni-featured"}))
+}
+
 func TestGrokMediaScheduleModelUsesNormalizedMappedUpstream(t *testing.T) {
 	account := &service.Account{
 		Platform: service.PlatformGrok,

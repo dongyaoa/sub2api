@@ -72,20 +72,26 @@
                   @change="handleKeySelection"
                 >
                   <template #selected="{ option }">
-                    <span v-if="option" class="flex min-w-0 items-center gap-2">
-                      <span class="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase" :class="platformBadgeClass(option.platform)">{{ option.platform }}</span>
-                      <span class="truncate">{{ option.label }}</span>
+                    <span v-if="option" class="flex min-w-0 items-center gap-1.5">
+                      <span class="max-w-[45%] truncate">{{ option.keyName }}</span>
+                      <span aria-hidden="true" class="shrink-0 text-gray-400">·</span>
+                      <span class="inline-flex shrink-0" :class="platformTextClass(String(option.platform || ''))" :title="platformLabel(String(option.platform || ''))" role="img" :aria-label="platformLabel(String(option.platform || ''))">
+                        <PlatformIcon :platform="String(option.platform || '')" size="md" aria-hidden="true" />
+                      </span>
+                      <span class="min-w-0 truncate">{{ option.groupName }}</span>
                     </span>
                   </template>
                   <template #option="{ option }">
                     <div class="min-w-0 flex-1">
                       <div class="truncate font-medium text-gray-900 dark:text-white">{{ option.keyName }}</div>
-                      <div class="mt-0.5 flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400">
-                        <span class="truncate">{{ option.groupName }}</span>
-                        <span class="shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold uppercase" :class="platformBadgeClass(option.platform)">{{ option.platform }}</span>
+                      <div class="mt-1 flex min-w-0 items-center gap-1.5 text-xs text-gray-500 dark:text-gray-400">
+                        <span class="inline-flex shrink-0" :class="platformTextClass(String(option.platform || ''))" :title="platformLabel(String(option.platform || ''))" role="img" :aria-label="platformLabel(String(option.platform || ''))">
+                          <PlatformIcon :platform="String(option.platform || '')" size="sm" aria-hidden="true" />
+                        </span>
+                        <span class="min-w-0 truncate">{{ option.groupName }}</span>
                       </div>
                     </div>
-                    <Icon v-if="Number(option.value) === selectedKeyId" name="check" size="sm" class="text-primary-500" />
+                    <Icon v-if="Number(option.value) === selectedKeyId" name="check" size="sm" class="shrink-0 text-primary-500" />
                   </template>
                 </Select>
               </div>
@@ -605,6 +611,7 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
 import BaseDialog from '@/components/common/BaseDialog.vue'
+import PlatformIcon from '@/components/common/PlatformIcon.vue'
 import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
 import AppLayout from '@/components/layout/AppLayout.vue'
@@ -612,6 +619,7 @@ import MediaStudioHeader from '@/features/media-studio/MediaStudioHeader.vue'
 import { saveVideoStudioImageDraft } from '@/features/video-studio/draft'
 import { useAppStore } from '@/stores/app'
 import type { ApiKey } from '@/types'
+import { platformLabel, platformTextClass } from '@/utils/platformColors'
 import { listEligibleImageKeys } from './access'
 import {
   extractTaskImageData,

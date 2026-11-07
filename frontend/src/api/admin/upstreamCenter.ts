@@ -48,10 +48,6 @@ export interface UpstreamBalanceSnapshot {
   day_start?: string | null
   day_end?: string | null
   day_synced_at?: string | null
-  last_30_days_used?: number | null
-  period_start?: string | null
-  period_end?: string | null
-  period_synced_at?: string | null
   total_used: number | null
   currency: string
   status: 'ok' | 'error' | 'unsupported' | 'pending'
@@ -97,7 +93,6 @@ export interface UpstreamFinanceSummary {
   remote_used: number | null
   remote_synced_at: string | null
   remote_stale?: boolean
-  period_cost_disabled?: boolean
   remote_raw_used?: number | null
   conversion_applied?: boolean
   cost_partial?: boolean
@@ -110,10 +105,6 @@ export interface UpstreamFinanceSummary {
   unpriced_monitor_count: number
 }
 
-export interface UpstreamFinancePeriods {
-  today: UpstreamFinanceSummary
-  last_30_days: UpstreamFinanceSummary
-}
 
 export interface UpstreamTargetInput {
   supplier_id: number | null
@@ -298,7 +289,7 @@ export const upstreamCenterAPI = {
   async finance(params: UpstreamPageQuery & { supplier_id?: number; target_id?: number }, signal?: AbortSignal): Promise<UpstreamFinancePage> {
     return (await apiClient.get<UpstreamFinancePage>(`${base}/finance`, { params, signal })).data
   },
-  async financeSummary(params: { supplier_id?: number; target_id?: number }, signal?: AbortSignal): Promise<UpstreamFinancePeriods> {
-    return (await apiClient.get<UpstreamFinancePeriods>(`${base}/finance/summary`, { params, signal })).data
+  async financeSummary(params: { supplier_id?: number; target_id?: number }, signal?: AbortSignal): Promise<UpstreamFinanceSummary> {
+    return (await apiClient.get<UpstreamFinanceSummary>(`${base}/finance/summary`, { params, signal })).data
   },
 }

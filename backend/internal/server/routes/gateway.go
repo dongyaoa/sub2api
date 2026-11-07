@@ -90,10 +90,9 @@ func RegisterGatewayRoutes(
 		}
 	}
 	videoGenerationHandler := func(c *gin.Context) {
-		// Video status/content lookups below already allow Composite groups; keep
-		// task creation aligned so composite keys that route to Grok accounts can
-		// submit video generation jobs.
-		if platform := getGroupPlatform(c); platform == service.PlatformGrok || platform == service.PlatformComposite {
+		// Video providers share the owned asynchronous video task interface.
+		// The handler selects the provider from the model and account capability.
+		if platform := getGroupPlatform(c); platform == service.PlatformGrok || platform == service.PlatformComposite || platform == service.PlatformOpenAI || platform == service.PlatformGemini {
 			h.OpenAIGateway.GrokVideoGeneration(c)
 			return
 		}
@@ -108,8 +107,8 @@ func RegisterGatewayRoutes(
 	videoStatusHandler := func(c *gin.Context) {
 		// Video status requests do not carry a model, so composite groups cannot
 		// be resolved by compositeTargetPlatformMiddleware. Route them through
-		// the Grok handler and let scheduler/account selection enforce capacity.
-		if getGroupPlatform(c) == service.PlatformGrok || getGroupPlatform(c) == service.PlatformComposite {
+		// the shared handler, which recovers the provider from the owned task.
+		if platform := getGroupPlatform(c); platform == service.PlatformGrok || platform == service.PlatformComposite || platform == service.PlatformOpenAI || platform == service.PlatformGemini {
 			h.OpenAIGateway.GrokVideoStatus(c)
 			return
 		}
@@ -124,8 +123,8 @@ func RegisterGatewayRoutes(
 	videoContentHandler := func(c *gin.Context) {
 		// Video content requests do not carry a model, so composite groups cannot
 		// be resolved by compositeTargetPlatformMiddleware. Route them through
-		// the Grok handler just like video status lookups.
-		if getGroupPlatform(c) == service.PlatformGrok || getGroupPlatform(c) == service.PlatformComposite {
+		// the shared handler just like video status lookups.
+		if platform := getGroupPlatform(c); platform == service.PlatformGrok || platform == service.PlatformComposite || platform == service.PlatformOpenAI || platform == service.PlatformGemini {
 			h.OpenAIGateway.GrokVideoContent(c)
 			return
 		}
@@ -275,6 +274,7 @@ func RegisterGatewayRoutes(
 		gateway.POST("/videos/generations", videoGenerationHandler)
 		gateway.POST("/videos/edits", videoEditHandler)
 		gateway.POST("/videos/extensions", videoExtensionHandler)
+		gateway.GET("/videos/pricing", h.Gateway.VideoStudioPricing)
 		gateway.GET("/videos/tasks", h.OpenAIGateway.GrokVideoTasks)
 		gateway.DELETE("/videos/tasks", h.OpenAIGateway.ClearGrokVideoTasks)
 		gateway.GET("/videos/generations/:request_id/content", videoContentHandler)
@@ -437,6 +437,7 @@ func RegisterGatewayRoutes(
 	rootRoute(http.MethodPost, "/videos/generations", bodyLimit, videoGenerationHandler)
 	rootRoute(http.MethodPost, "/videos/edits", bodyLimit, videoEditHandler)
 	rootRoute(http.MethodPost, "/videos/extensions", bodyLimit, videoExtensionHandler)
+	rootRoute(http.MethodGet, "/videos/pricing", bodyLimit, h.Gateway.VideoStudioPricing)
 	rootRoute(http.MethodGet, "/videos/tasks", bodyLimit, h.OpenAIGateway.GrokVideoTasks)
 	rootRoute(http.MethodDelete, "/videos/tasks", bodyLimit, h.OpenAIGateway.ClearGrokVideoTasks)
 	rootRoute(http.MethodGet, "/videos/generations/:request_id/content", bodyLimit, videoContentHandler)

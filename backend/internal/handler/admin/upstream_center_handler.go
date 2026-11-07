@@ -209,7 +209,7 @@ func (h *UpstreamCenterHandler) FinanceSummary(c *gin.Context) {
 	if !ok {
 		return
 	}
-	result, err := h.finance.PeriodSummaries(c.Request.Context(), supplierID, targetID)
+	result, err := h.finance.TodaySummary(c.Request.Context(), supplierID, targetID)
 	if response.ErrorFrom(c, err) {
 		return
 	}

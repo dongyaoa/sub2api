@@ -39,42 +39,6 @@ func TestUpstreamFinanceParseBalances(t *testing.T) {
 	}
 }
 
-func TestUpstreamFinanceParseReportedDailyUsage(t *testing.T) {
-	for _, tt := range []struct {
-		name, body string
-		want       *float64
-	}{
-		{"multiple upstream dates", `{"code":0,"daily_usage":[{"date":"2026-10-03","actual_cost":"0.4","cost":100},{"date":"2026-10-04","actual_cost":0.6}]}`, financeFloat(1)},
-		{"enveloped zero", `{"success":true,"data":{"daily_usage":[{"actual_cost":0}]}}`, financeFloat(0)},
-		{"empty successful day", `{"daily_usage":[]}`, financeFloat(0)},
-		{"missing actual charge", `{"daily_usage":[{"cost":2}]}`, nil},
-		{"negative actual charge", `{"daily_usage":[{"actual_cost":-1}]}`, nil},
-		{"partial malformed rows", `{"daily_usage":[{"actual_cost":1},{}]}`, nil},
-		{"failed response", `{"code":500,"daily_usage":[{"actual_cost":0}]}`, nil},
-		{"trailing response", `{"daily_usage":[]} {}`, nil},
-	} {
-		t.Run(tt.name, func(t *testing.T) {
-			require.Equal(t, tt.want, parseUpstreamDailyUsed([]byte(tt.body)))
-		})
-	}
-}
-
-func TestUpstreamFinanceParsePeriodUsesReportedModelStatsFallback(t *testing.T) {
-	for _, tc := range []struct {
-		body string
-		want *float64
-	}{
-		{`{"model_stats":[{"model":"a","actual_cost":2,"cost":999},{"model":"b","actual_cost":"3.5"}]}`, financeFloat(5.5)},
-		{`{"data":{"daily_usage":null,"model_stats":[{"actual_cost":0}]}}`, financeFloat(0)},
-		{`{"daily_usage":[{"actual_cost":1}],"model_stats":[{"actual_cost":2}]}`, financeFloat(1)},
-		{`{"daily_usage":[{"cost":1}],"model_stats":[{"actual_cost":2}]}`, nil},
-		{`{"model_stats":[{"cost":1}],"usage":{"total":{"actual_cost":1000}}}`, nil},
-		{`{"code":500,"model_stats":[{"actual_cost":2}]}`, nil},
-	} {
-		require.Equal(t, tc.want, parseUpstreamPeriodUsed([]byte(tc.body)), tc.body)
-	}
-}
-
 func TestUpstreamFinanceRejectsFalseZeroAndErrors(t *testing.T) {
 	for _, body := range []string{`{}`, `{"message":"unauthorized"}`, `{"error":{"message":"secret"}}`, `{"balance":"NaN"}`, `{"balance":1e50}`, `{"balance":1} {}`, `{"code":401,"data":{"balance":10}}`, `{"code":401,"balance":10}`, `{"mode":"unrestricted","remaining":5}`, `{"isValid":false,"balance":10}`, `{"success":false,"data":{"balance":10}}`, `{"isValid":false,"data":{"balance":10}}`, `{"error":{"message":"unauthorized"},"data":{"balance":10}}`, `{"data":{"success":false,"balance":10}}`} {
 		_, err := parseUpstreamUsage([]byte(body))
@@ -130,12 +94,12 @@ func TestUpstreamFinanceHTTPPublicIPWithPort(t *testing.T) {
 	require.Equal(t, "ok", got.Status)
 	require.Equal(t, 33.66, *got.Balance)
 	require.Equal(t, 1.0, *got.DayUsed)
-	require.Equal(t, 2.0, *got.Last30DaysUsed)
+
 	for _, endpoint := range []string{"http://127.0.0.1:7070", "http://169.254.169.254", "http://[::1]:7070"} {
 		blocked := svc.fetchSub2APIBalance(context.Background(), &UpstreamFinanceTarget{ID: 1, Endpoint: endpoint, APIKeyEncrypted: "test-secret"})
 		require.Equal(t, "endpoint_unavailable", blocked.Error)
 	}
-	require.Equal(t, 2, calls, "only the public endpoint's today and history requests are sent")
+	require.Equal(t, 1, calls, "only the public endpoint's current-day request is sent")
 }
 
 type financeTestCipher struct{}
@@ -174,44 +138,25 @@ func TestUpstreamFinanceNetworkRedactionAndRedirect(t *testing.T) {
 	require.Equal(t, "upstream_request_failed", got.Error)
 }
 
-func TestUpstreamFinanceFetchSeparatesTodayFrom30DayHistory(t *testing.T) {
+func TestUpstreamFinanceFetchOnlyRequestsCurrentDay(t *testing.T) {
 	now := time.Date(2026, 10, 5, 12, 0, 0, 0, timezone.Location())
 	svc := NewUpstreamFinanceService(nil, financeTestCipher{}, nil, nil, nil)
 	svc.now = func() time.Time { return now }
+	calls := 0
 	svc.client.Transport = financeRoundTrip(func(req *http.Request) (*http.Response, error) {
-		days := req.URL.Query().Get("days")
-		require.Contains(t, []string{"1", "30"}, days)
+		calls++
+		require.Equal(t, "1", req.URL.Query().Get("days"))
 		require.Equal(t, timezone.Name(), req.URL.Query().Get("timezone"))
-		if days == "1" {
-			require.Equal(t, "2026-10-05", req.URL.Query().Get("start_date"))
-		} else {
-			require.Equal(t, "2026-09-06", req.URL.Query().Get("start_date"))
-		}
+		require.Equal(t, "2026-10-05", req.URL.Query().Get("start_date"))
 		require.Equal(t, "2026-10-05", req.URL.Query().Get("end_date"))
-		body := `{"balance":99,"usage":{"today":{"actual_cost":1},"total":{"actual_cost":999}},"daily_usage":[{"date":"2026-10-04","actual_cost":2},{"date":"2026-10-05","actual_cost":1}]}`
-		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(body)), Request: req}, nil
+		return newAPICacheResponse(req, 200, `{"balance":99,"usage":{"today":{"actual_cost":1},"total":{"actual_cost":999}},"daily_usage":[{"actual_cost":50}]}`), nil
 	})
 	snapshot := svc.fetchSub2APIBalance(context.Background(), &UpstreamFinanceTarget{ID: 1, Endpoint: "https://8.8.8.8", APIKeyEncrypted: "test-only"})
 	require.Equal(t, "ok", snapshot.Status)
 	require.Equal(t, 1.0, *snapshot.DayUsed)
-	require.Equal(t, 3.0, *snapshot.Last30DaysUsed)
 	require.True(t, snapshot.DayStart.Equal(timezone.StartOfDay(now)))
-	require.True(t, snapshot.PeriodStart.Equal(timezone.StartOfDay(now).AddDate(0, 0, -29)))
-	require.True(t, snapshot.PeriodEnd.Equal(timezone.StartOfDay(now).AddDate(0, 0, 1)))
-	svc.client.Transport = financeRoundTrip(func(req *http.Request) (*http.Response, error) {
-		if req.URL.Query().Get("days") == "1" {
-			require.Equal(t, "2026-10-05", req.URL.Query().Get("start_date"))
-		} else {
-			require.Equal(t, "2026-09-06", req.URL.Query().Get("start_date"))
-		}
-		require.Equal(t, "2026-10-05", req.URL.Query().Get("end_date"))
-		body := `{"balance":99,"usage":{"today":{"actual_cost":1},"total":{"actual_cost":999}},"model_stats":[{"model":"a","actual_cost":4},{"model":"b","actual_cost":5}]}`
-		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(body)), Request: req}, nil
-	})
-	legacy := svc.fetchSub2APIBalance(context.Background(), &UpstreamFinanceTarget{ID: 2, Endpoint: "https://8.8.8.8", APIKeyEncrypted: "test-only"})
-	require.Equal(t, "ok", legacy.Status)
-	require.Equal(t, 9.0, *legacy.Last30DaysUsed, "explicit-window model totals support upstreams without daily_usage")
-	require.Equal(t, 1.0, *legacy.DayUsed)
+	require.True(t, snapshot.DayEnd.Equal(timezone.StartOfDay(now).AddDate(0, 0, 1)))
+	require.Equal(t, 1, calls)
 }
 
 type financeTestRepo struct {
