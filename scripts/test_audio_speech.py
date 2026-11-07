@@ -169,16 +169,16 @@ def build_payload(args: argparse.Namespace) -> dict:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="调用本站 /v1/audio/speech 并保存有效 WAV；预设音色选择不等于录音克隆。")
-    parser.add_argument("--base-url", default=os.environ.get("SUB2API_BASE_URL", "https://api.zicc.cc/v1"))
-    parser.add_argument("--model", default="gemini-3.8-flash-tts")
-    parser.add_argument("--voice", default="Kore")
+    parser = argparse.ArgumentParser(description="调用本站 /v1/audio/speech，选择预设音色并保存有效 WAV 音频。")
+    parser.add_argument("--base-url", default=os.environ.get("SUB2API_BASE_URL", "https://api.zicc.cc/v1"), help="本站 API 基础地址，默认 https://api.zicc.cc/v1")
+    parser.add_argument("--model", default="gemini-3.8-flash-tts", help="模型广场中当前 Key 可调用的语音模型")
+    parser.add_argument("--voice", default="Kore", help="预设音色名称，例如 Kore、Zephyr；默认 Kore")
     parser.add_argument("--text", default="你好，这是一段语音接口测试。现在可以通过我的站点生成语音了。")
     parser.add_argument("--instructions", default="", help="自然语言语气或风格指令")
-    parser.add_argument("--output", default="speech.wav")
+    parser.add_argument("--output", default="speech.wav", help="输出 WAV 文件路径，默认 speech.wav")
     parser.add_argument("--format", choices=("wav", "pcm"), default="wav", help="请求的音频格式；PCM 会包装成 24 kHz 单声道 16-bit WAV")
-    parser.add_argument("--extra-json", help="UTF-8 JSON 文件，透传上游已支持的额外字段，例如 speakers")
-    parser.add_argument("--timeout", type=float, default=180, help="请求超时秒数，默认 180")
+    parser.add_argument("--extra-json", help="UTF-8 JSON 文件，其字段合并到 HTTP 请求顶层；只填写该模型已确认支持的字段")
+    parser.add_argument("--timeout", type=float, default=120, help="客户端请求超时秒数，默认 120；不会发送为 JSON 参数")
     args = parser.parse_args(argv)
     try:
         url = speech_url(args.base_url)

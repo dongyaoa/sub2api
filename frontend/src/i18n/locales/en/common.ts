@@ -168,6 +168,7 @@ export default {
     apiKeys: 'API Keys',
     batchImage: 'Batch Images',
     imageStudio: 'Creative Studio',
+    integrationDocs: 'Integration Docs',
     usage: 'Usage',
     redeem: 'Redeem',
     checkin: 'Daily Check-in',

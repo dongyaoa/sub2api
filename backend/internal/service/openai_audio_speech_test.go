@@ -27,7 +27,6 @@ func TestParseAudioSpeechRequestPreservesProviderParameters(t *testing.T) {
 	require.Equal(t, "custom_voice_123", gjson.GetBytes(normalized, "voice.id").String())
 	require.Equal(t, "Alice", gjson.GetBytes(normalized, "speakers.0.speaker").String())
 	require.Equal(t, "9007199254740993", gjson.GetBytes(normalized, "provider_option.large_id").Raw)
-	require.False(t, gjson.GetBytes(normalized, "voice_clone").Exists())
 }
 
 func TestParseAudioSpeechRequestAliasesAndExplicitInstructions(t *testing.T) {

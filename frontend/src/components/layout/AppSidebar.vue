@@ -647,6 +647,7 @@ const ChevronDoubleRightIcon = {
 }
 
 const PelicanIcon = { render: () => h(Icon, { name: 'lightbulb', size: 'md' }) }
+const IntegrationDocsIcon = { render: () => h(Icon, { name: 'book', size: 'md' }) }
 const SignalIcon = {
   render: () =>
     h(
@@ -755,6 +756,7 @@ function buildSelfNavItems(withDashboard: boolean): NavItem[] {
     { path: '/batch-image', label: t('nav.batchImage'), icon: BatchImageIcon, hideInSimpleMode: true, featureFlag: flagBatchImageAccess },
     { path: '/usage', label: t('nav.usage'), icon: ChartIcon, hideInSimpleMode: true },
     { path: '/model-square', label: locale.value === 'zh' ? '模型广场' : 'Model Square', icon: PriceTagIcon, hideInSimpleMode: true },
+    { path: '/integration-docs', label: t('nav.integrationDocs'), icon: IntegrationDocsIcon },
     { path: '/available-channels', label: t('nav.availableChannels'), icon: ChannelIcon, hideInSimpleMode: true, featureFlag: flagAvailableChannels },
     { path: '/monitor', label: t('nav.channelStatus'), icon: SignalIcon, featureFlag: flagChannelMonitor },
     { path: '/pelican-monitor', label: t('pelicanMonitor.title'), icon: PelicanIcon, featureFlag: () => pelicanMonitorStore.enabled },

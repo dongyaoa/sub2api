@@ -1,0 +1,9 @@
+{
+  "model": "gemini-omni-1.2-flash",
+  "prompt": "镜头缓缓掠过雨后的森林，树叶上的水珠反射晨光",
+  "duration": 15,
+  "resolution": "1080P",
+  "aspect_ratio": "16:9",
+  "image_size": "1920x1080",
+  "seed": 0
+}

@@ -168,6 +168,7 @@ export default {
     apiKeys: 'API 密钥',
     batchImage: '批量生图',
     imageStudio: '创作工作台',
+    integrationDocs: '接入文档',
     usage: '使用记录',
     redeem: '兑换',
     checkin: '每日签到',

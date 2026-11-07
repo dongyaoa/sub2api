@@ -1,0 +1,99 @@
+.integration-docs button:focus-visible,
+.integration-docs a:focus-visible,
+.integration-docs [tabindex="0"]:focus-visible {
+  @apply outline-none ring-2 ring-primary-500 ring-offset-2 dark:ring-offset-dark-900;
+}
+
+.docs-category-tabs {
+  @apply mb-5 grid grid-cols-2 gap-1 rounded-xl border border-gray-200 bg-white p-1.5 dark:border-dark-700 dark:bg-dark-900 sm:grid-cols-4;
+}
+
+.docs-category-tab {
+  @apply flex min-w-0 items-center justify-center gap-2 rounded-lg px-2 py-2.5 text-sm font-medium text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-dark-800 dark:hover:text-gray-100;
+}
+
+.docs-category-tab-active {
+  @apply bg-primary-50 text-primary-700 hover:bg-primary-50 hover:text-primary-700 dark:bg-primary-500/10 dark:text-primary-300 dark:hover:bg-primary-500/10 dark:hover:text-primary-300;
+}
+
+.docs-category-count {
+  @apply rounded bg-gray-100 px-1.5 text-[10px] leading-5 text-gray-400 dark:bg-dark-800 dark:text-gray-500;
+}
+
+.docs-category-tab-active .docs-category-count {
+  @apply bg-white text-primary-600 dark:bg-primary-500/15 dark:text-primary-400;
+}
+
+.docs-nav-scroll {
+  @apply max-h-[60vh] overflow-y-auto overscroll-contain xl:max-h-[calc(100vh-12rem)];
+  scrollbar-width: thin;
+}
+
+.docs-reading-column {
+  @apply mx-auto w-full max-w-[900px] px-5 py-7 sm:px-8 sm:py-8;
+}
+
+.docs-icon-button {
+  @apply flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-gray-400 transition-colors hover:bg-gray-100 hover:text-primary-600 dark:hover:bg-dark-800 dark:hover:text-primary-400;
+}
+
+.docs-section-link {
+  @apply block rounded-md px-3 py-1.5 text-[13px] leading-5 text-gray-500 transition-colors hover:bg-gray-50 hover:text-gray-900 dark:text-gray-400 dark:hover:bg-dark-800 dark:hover:text-white;
+}
+
+.docs-section-link-active {
+  @apply bg-primary-50 font-medium text-primary-700 hover:bg-primary-50 hover:text-primary-700 dark:bg-primary-500/10 dark:text-primary-300 dark:hover:bg-primary-500/10 dark:hover:text-primary-300;
+}
+
+.docs-page-link {
+  @apply flex min-w-0 flex-col rounded-lg border border-gray-200 p-3 text-gray-700 transition-colors hover:border-primary-300 hover:bg-primary-50/50 dark:border-dark-700 dark:text-gray-200 dark:hover:border-primary-700 dark:hover:bg-primary-500/5;
+}
+
+.docs-prose {
+  @apply min-w-0 break-words text-sm leading-7 text-gray-600 dark:text-gray-300;
+  overflow-wrap: anywhere;
+}
+
+.docs-prose h2,
+.docs-prose h3 {
+  @apply mb-4 mt-9 border-b border-gray-100 pb-2 text-[17px] font-semibold leading-7 text-gray-900 dark:border-dark-800 dark:text-gray-100;
+}
+
+.docs-prose h4,
+.docs-prose h5 {
+  @apply mb-3 mt-7 text-sm font-semibold text-gray-900 dark:text-gray-100;
+}
+
+.docs-prose p,
+.docs-prose ul,
+.docs-prose ol {
+  @apply mb-4;
+}
+
+.docs-prose ul { @apply list-disc pl-5; }
+.docs-prose ol { @apply list-decimal pl-5; }
+.docs-prose li { @apply my-1.5 pl-1; }
+.docs-prose li::marker { @apply text-gray-400; }
+.docs-prose ol > li::marker { @apply font-semibold text-primary-600 dark:text-primary-400; }
+.docs-prose strong { @apply font-semibold text-gray-800 dark:text-gray-100; }
+.docs-prose a { @apply text-primary-600 underline decoration-primary-300 underline-offset-4 hover:text-primary-700 dark:text-primary-400 dark:decoration-primary-800; }
+.docs-prose blockquote { @apply my-5 rounded-r-lg border-l-2 border-primary-400 bg-primary-50/60 px-4 py-3 dark:border-primary-600 dark:bg-primary-500/5; }
+.docs-prose blockquote p:last-child { @apply mb-0; }
+.docs-prose hr { @apply my-7 border-gray-100 dark:border-dark-700; }
+.docs-prose :not(pre) > code { @apply rounded bg-gray-100 px-1.5 py-0.5 font-mono text-[12px] text-gray-800 dark:bg-dark-800 dark:text-gray-200; }
+
+.docs-table-scroll {
+  @apply my-5 max-w-full overflow-x-auto rounded-lg border border-gray-200 dark:border-dark-700;
+}
+
+.docs-prose table { @apply w-full border-collapse text-left text-[13px] leading-6; }
+.docs-prose th { @apply bg-gray-50 font-semibold text-gray-700 dark:bg-dark-800 dark:text-gray-200; }
+.docs-prose th,
+.docs-prose td { @apply border-b border-gray-200 px-4 py-2.5 align-top dark:border-dark-700; min-width: 110px; }
+.docs-prose tr:last-child td { @apply border-b-0; }
+.docs-prose th:first-child,
+.docs-prose td:first-child { min-width: 130px; }
+
+.docs-code-block { @apply my-5 overflow-hidden rounded-lg border border-gray-200 bg-gray-50 dark:border-dark-700 dark:bg-dark-950; }
+.docs-prose pre { @apply m-0 max-w-full overflow-x-auto p-4 text-[13px] leading-6 text-gray-800 dark:text-gray-200; tab-size: 2; overflow-wrap: normal; }
+.docs-prose pre code { @apply bg-transparent p-0 font-mono; }

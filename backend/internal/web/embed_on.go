@@ -400,7 +400,6 @@ func shouldBypassEmbeddedFrontend(path string) bool {
 		trimmed == "/chat/completions" ||
 		trimmed == "/embeddings" ||
 		trimmed == "/audio/speech" ||
-		trimmed == "/audio/voices" ||
 		trimmed == "/messages/count_tokens" ||
 		trimmed == "/alpha/search" ||
 		trimmed == "/web_search" ||

@@ -226,7 +226,6 @@ func RegisterGatewayRoutes(
 		}))
 		gateway.POST("/alpha/search", textBodyLimit, h.OpenAIGateway.AlphaSearch)
 		gateway.POST("/audio/speech", textBodyLimit, h.OpenAIGateway.AudioSpeech)
-		gateway.POST("/audio/voices", h.OpenAIGateway.AudioVoiceReplication)
 		gateway.GET("/responses", func(c *gin.Context) {
 			h.OpenAIGateway.ResponsesWebSocket(c)
 		})
@@ -414,7 +413,6 @@ func RegisterGatewayRoutes(
 		h.Gateway.ChatCompletions(c)
 	})
 	rootRoute(http.MethodPost, "/audio/speech", textBodyLimit, h.OpenAIGateway.AudioSpeech)
-	rootRoute(http.MethodPost, "/audio/voices", bodyLimit, h.OpenAIGateway.AudioVoiceReplication)
 	rootRoute(http.MethodPost, "/embeddings", textBodyLimit, func(c *gin.Context) {
 		if !isOpenAIOnlyEndpointGatewayPlatform(c) {
 			service.MarkOpsClientBusinessLimited(c, service.OpsClientBusinessLimitedReasonLocalFeatureGate)

@@ -6,7 +6,6 @@ import (
 	"errors"
 	"net/http"
 	"strconv"
-	"strings"
 	"time"
 
 	pkghttputil "github.com/Wei-Shaw/sub2api/internal/pkg/httputil"
@@ -64,20 +63,6 @@ func (h *OpenAIGatewayHandler) AudioSpeech(c *gin.Context) {
 	if !h.ensureResponsesDependencies(c, reqLog) {
 		return
 	}
-	voiceToken, err := managedAudioVoiceToken(body)
-	if err != nil {
-		h.errorResponse(c, http.StatusBadRequest, "invalid_voice", err.Error())
-		return
-	}
-	var voiceBinding *service.AudioVoiceBinding
-	if voiceToken != "" {
-		voiceBinding, err = h.gatewayService.OpenAudioVoice(apiKey, voiceToken)
-		if err != nil {
-			h.audioVoiceBindingError(c, err)
-			return
-		}
-		c.Request = c.Request.WithContext(service.WithAudioVoiceBinding(c.Request.Context(), voiceBinding, clientRequestedModel(c, reqModel), reqModel))
-	}
 	setOpsRequestContext(c, reqModel, false)
 	setOpsEndpointContext(c, "", int16(service.RequestTypeSync))
 	// Audit the spoken text using the existing chat text extractor, while the
@@ -121,21 +106,11 @@ func (h *OpenAIGatewayHandler) AudioSpeech(c *gin.Context) {
 		if failoverClientGone(c) {
 			return
 		}
-		var selection *service.AccountSelectionResult
-		var selectErr error
-		if voiceBinding != nil {
-			selection, selectErr = h.gatewayService.SelectAudioVoiceAccount(c.Request.Context(), apiKey, voiceBinding, forwardModel)
-			if selectErr != nil {
-				h.audioVoiceBindingError(c, selectErr)
-				return
-			}
-		} else {
-			selection, _, selectErr = h.gatewayService.SelectAccountWithSchedulerForCapability(
-				c.Request.Context(), apiKey.GroupID, "", "", forwardModel, failed,
-				service.OpenAIUpstreamTransportHTTPSSE, service.OpenAIEndpointCapabilityAudioSpeech,
-				false, false, false, platform,
-			)
-		}
+		selection, _, selectErr := h.gatewayService.SelectAccountWithSchedulerForCapability(
+			c.Request.Context(), apiKey.GroupID, "", "", forwardModel, failed,
+			service.OpenAIUpstreamTransportHTTPSSE, service.OpenAIEndpointCapabilityAudioSpeech,
+			false, false, false, platform,
+		)
 		if selectErr != nil || selection == nil || selection.Account == nil {
 			if last != nil {
 				h.handleFailoverExhausted(c, last, false)
@@ -157,14 +132,6 @@ func (h *OpenAIGatewayHandler) AudioSpeech(c *gin.Context) {
 		result, forwardErr := func() (*service.OpenAIForwardResult, error) {
 			if accountRelease != nil {
 				defer accountRelease()
-			}
-			if voiceBinding != nil {
-				latest, checkErr := h.gatewayService.RecheckAudioVoiceAccount(c.Request.Context(), apiKey, voiceBinding, forwardModel)
-				if checkErr != nil {
-					h.audioVoiceBindingError(c, checkErr)
-					return nil, checkErr
-				}
-				account = latest
 			}
 			price, priceErr := h.gatewayService.PrepareAudioSpeechBilling(c.Request.Context(), apiKey, account, reqModel, channelMapping)
 			if priceErr != nil {
@@ -217,10 +184,6 @@ func (h *OpenAIGatewayHandler) AudioSpeech(c *gin.Context) {
 		h.gatewayService.ReportOpenAIAccountScheduleResult(account, forwardModel, false, nil, forwardErr)
 		var retry *service.UpstreamFailoverError
 		if !c.Writer.Written() && errors.As(forwardErr, &retry) && retry.ShouldRetryNextAccount() && !failoverClientGone(c) {
-			if voiceBinding != nil {
-				h.handleFailoverExhausted(c, retry, false)
-				return
-			}
 			failed[account.ID] = struct{}{}
 			last = retry
 			h.gatewayService.RecordOpenAIAccountSwitch()
@@ -249,13 +212,9 @@ func (h *OpenAIGatewayHandler) recordAudioSpeechUsage(c *gin.Context, apiKey *se
 	if upstream == "" {
 		upstream = EndpointAudioSpeech
 	}
-	h.recordAudioUsage(c, apiKey, account, subscription, mapping, requestedModel, body, result, EndpointAudioSpeech, upstream)
-}
-
-func (h *OpenAIGatewayHandler) recordAudioUsage(c *gin.Context, apiKey *service.APIKey, account *service.Account, subscription *service.UserSubscription, mapping service.ChannelMappingResult, requestedModel string, body []byte, result *service.OpenAIForwardResult, inboundEndpoint, upstreamEndpoint string) {
 	input := &service.OpenAIRecordUsageInput{
 		Result: result, APIKey: apiKey, User: apiKey.User, Account: account, Subscription: subscription,
-		InboundEndpoint: inboundEndpoint, UpstreamEndpoint: upstreamEndpoint,
+		InboundEndpoint: EndpointAudioSpeech, UpstreamEndpoint: upstream,
 		UserAgent: c.GetHeader("User-Agent"), IPAddress: ip.GetClientIP(c),
 		RequestPayloadHash: service.HashUsageRequestPayload(body), APIKeyService: h.apiKeyService,
 		QuotaPlatform: service.QuotaPlatform(c.Request.Context(), apiKey), SessionID: service.ExtractClientSessionID(c),
@@ -266,71 +225,4 @@ func (h *OpenAIGatewayHandler) recordAudioUsage(c *gin.Context, apiKey *service.
 			logger.L().Error("audio_speech.record_usage_failed", zap.Int64("account_id", account.ID), zap.Int64("api_key_id", apiKey.ID), zap.Error(err))
 		}
 	})
-}
-
-// Managed voices are deliberately single-speaker. A raw provider voice key
-// would skip gateway ownership/account checks, so it is not a public voice ID.
-func managedAudioVoiceToken(body []byte) (string, error) {
-	voiceRoot := gjson.GetBytes(body, "voice")
-	if voiceRoot.Exists() && voiceRoot.Type != gjson.String && !voiceRoot.IsObject() {
-		return "", errors.New("voice must be a string or a voice object")
-	}
-	voice := voiceRoot
-	if voice.IsObject() {
-		voice = voice.Get("id")
-	}
-	token := ""
-	if voice.Type == gjson.String {
-		name := strings.TrimSpace(voice.String())
-		switch {
-		case strings.HasPrefix(name, service.AudioVoiceTokenPrefix):
-			token = name
-		case strings.HasPrefix(name, "voicekey_"), strings.HasPrefix(name, "voice_"):
-			return "", errors.New("use the voice ID created by this site's /v1/audio/voices endpoint")
-		}
-	}
-	var containsPrivateVoice func(gjson.Result) bool
-	containsPrivateVoice = func(value gjson.Result) bool {
-		if value.Type == gjson.String {
-			name := strings.TrimSpace(value.String())
-			return strings.HasPrefix(name, service.AudioVoiceTokenPrefix) || strings.HasPrefix(name, "voicekey_") || strings.HasPrefix(name, "voice_")
-		}
-		if !value.IsObject() && !value.IsArray() {
-			return false
-		}
-		found := false
-		value.ForEach(func(_, child gjson.Result) bool {
-			found = containsPrivateVoice(child)
-			return !found
-		})
-		return found
-	}
-	if voiceRoot.IsObject() {
-		invalid := false
-		voiceRoot.ForEach(func(key, value gjson.Result) bool {
-			if key.String() == "id" && token != "" && value.Type == gjson.String && strings.TrimSpace(value.String()) == token {
-				return true
-			}
-			invalid = containsPrivateVoice(value)
-			return !invalid
-		})
-		if invalid {
-			return "", errors.New("use only the voice ID created by this site's /v1/audio/voices endpoint")
-		}
-	}
-	speakers := gjson.GetBytes(body, "speakers")
-	if containsPrivateVoice(speakers) || (token != "" && speakers.Exists()) {
-		return "", errors.New("cloned voices support single-speaker synthesis; omit speakers and use voice")
-	}
-	return token, nil
-}
-
-func (h *OpenAIGatewayHandler) audioVoiceBindingError(c *gin.Context, err error) {
-	if errors.Is(err, service.ErrAudioVoiceServiceUnavailable) {
-		h.errorResponse(c, http.StatusServiceUnavailable, "voice_service_unavailable", "Voice replication is not configured on this server")
-	} else if errors.Is(err, service.ErrAudioVoiceUnavailable) {
-		h.errorResponse(c, http.StatusServiceUnavailable, "voice_account_unavailable", "The account for this voice is unavailable or no longer supports this model")
-	} else {
-		h.errorResponse(c, http.StatusBadRequest, "invalid_voice", "Voice is invalid, expired, or unavailable for this API key and model; create a new voice with this key")
-	}
 }

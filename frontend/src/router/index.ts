@@ -328,6 +328,17 @@ const routes: RouteRecordRaw[] = [
     }
   },
   {
+    path: '/integration-docs',
+    name: 'IntegrationDocs',
+    component: () => import('@/features/integration-docs/IntegrationDocsView.vue'),
+    meta: {
+      requiresAuth: true,
+      requiresAdmin: false,
+      title: 'Integration Docs',
+      titleKey: 'integrationDocs.title'
+    }
+  },
+  {
     path: '/available-channels',
     name: 'UserAvailableChannels',
     component: () => import('@/views/user/AvailableChannelsView.vue'),
@@ -849,10 +860,13 @@ const routes: RouteRecordRaw[] = [
 const router = createRouter({
   history: createWebHistory(import.meta.env.BASE_URL),
   routes,
-  scrollBehavior(_to, _from, savedPosition) {
+  scrollBehavior(to, from, savedPosition) {
     // Scroll to saved position when using browser back/forward
     if (savedPosition) {
       return savedPosition
+    }
+    if (to.name === 'IntegrationDocs' && from.name === 'IntegrationDocs') {
+      return { el: '#docs-section-title', top: 96 }
     }
     // Scroll to top for new routes
     return { top: 0 }

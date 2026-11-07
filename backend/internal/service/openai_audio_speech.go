@@ -77,9 +77,6 @@ func (s *OpenAIGatewayService) ForwardAudioSpeech(
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
-	if binding, ok := AudioVoiceBindingFromContext(ctx); ok {
-		return s.forwardAudioVoiceSpeech(ctx, c, account, body, defaultMappedModel, binding)
-	}
 	finishRecentRequest := beginAccountRecentRequest(ctx, c, s.cache, account, recentRequestModel(body))
 	defer func() { finishRecentRequest(recentResult != nil, recentErr) }()
 	started := time.Now()

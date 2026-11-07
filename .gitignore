@@ -125,7 +125,6 @@ scripts
 !/scripts/
 /scripts/*
 !/scripts/test_audio_speech.py
-!/scripts/test_google_voice_replication.py
 !/scripts/audio-playground.html
 !/scripts/serve_audio_playground.py
 !/scripts/tests/
@@ -145,7 +144,10 @@ vite.config.js
 docs/*
 !docs/audio-speech.md
 !docs/muse-video-integration.md
+!docs/muse-video-api.md
 !docs/gemini-omni-video-integration.md
+!docs/VIDEO_API_USER_GUIDE.md
+!docs/video-api-examples/
 !docs/admin-api-keys.md
 !docs/PAYMENT.md
 !docs/PAYMENT_CN.md

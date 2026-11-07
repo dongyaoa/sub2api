@@ -21,7 +21,6 @@ MAX_REQUEST_BYTES = 28 * 1024 * 1024
 MAX_RESPONSE_BYTES = 128 * 1024 * 1024
 ALLOWED_PATHS = {
     "/proxy/v1/audio/speech": "/audio/speech",
-    "/proxy/v1/audio/voices": "/audio/voices",
 }
 
 
@@ -41,7 +40,7 @@ class AudioPlaygroundHandler(BaseHTTPRequestHandler):
     server_version = "AudioPlayground"
 
     def log_message(self, format, *args):
-        # Do not write requests, credentials, recordings, or response bodies to logs.
+        # Do not write requests, credentials, or response bodies to logs.
         pass
 
     def _same_origin(self, *, post: bool = False) -> bool:
@@ -108,7 +107,7 @@ class AudioPlaygroundHandler(BaseHTTPRequestHandler):
             return
         suffix = ALLOWED_PATHS.get(self.path)
         if suffix is None:
-            self._error(404, "本地代理仅支持语音合成和声音创建接口。")
+            self._error(404, "本地代理仅支持 /v1/audio/speech 语音合成接口。")
             return
         if self.headers.get("Transfer-Encoding"):
             self._error(400, "不接受分块上传，请使用测试页发送 JSON。")
@@ -175,7 +174,7 @@ def main(argv=None):
     if not 0 <= args.port <= 65535 or args.timeout <= 0:
         parser.error("port 应为 0—65535，timeout 应大于 0。")
     server = AudioPlaygroundServer(("127.0.0.1", args.port), args.base_url, args.timeout)
-    print(f"测试页：http://127.0.0.1:{server.server_port}\n固定目标：{server.base_url}\nKey 和录音不会写入本地日志。按 Ctrl+C 停止。", flush=True)
+    print(f"测试页：http://127.0.0.1:{server.server_port}\n固定目标：{server.base_url}\nKey 和请求内容不会写入本地日志。按 Ctrl+C 停止。", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

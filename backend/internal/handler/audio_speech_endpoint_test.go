@@ -16,10 +16,4 @@ func TestAudioSpeechEndpointLogging(t *testing.T) {
 	}
 	// Speech dispatch must not change the existing Gemini text path.
 	require.Equal(t, EndpointGeminiModels, DeriveUpstreamEndpoint(EndpointChatCompletions, "/v1/chat/completions", service.PlatformGemini))
-	for _, path := range []string{"/v1/audio/voices", "/audio/voices"} {
-		require.Equal(t, EndpointAudioVoices, NormalizeInboundEndpoint(path))
-		for _, platform := range []string{service.PlatformGemini, service.PlatformOpenAI} {
-			require.Equal(t, EndpointGeminiVoices, DeriveUpstreamEndpoint(NormalizeInboundEndpoint(path), path, platform))
-		}
-	}
 }

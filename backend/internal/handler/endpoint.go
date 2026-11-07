@@ -20,8 +20,6 @@ const (
 	EndpointChatCompletions      = "/v1/chat/completions"
 	EndpointEmbeddings           = "/v1/embeddings"
 	EndpointAudioSpeech          = "/v1/audio/speech"
-	EndpointAudioVoices          = "/v1/audio/voices"
-	EndpointGeminiVoices         = "/v1beta/voices"
 	EndpointAlphaSearch          = "/v1/alpha/search"
 	EndpointResponses            = "/v1/responses"
 	EndpointResponsesCompact     = "/v1/responses/compact"
@@ -88,8 +86,6 @@ const (
 func NormalizeInboundEndpoint(path string) string {
 	path = strings.TrimSpace(path)
 	switch {
-	case path == EndpointAudioVoices || path == "/audio/voices":
-		return EndpointAudioVoices
 	case path == EndpointAudioSpeech || path == "/audio/speech":
 		return EndpointAudioSpeech
 	case strings.Contains(path, "/contents/generations/tasks"):
@@ -211,9 +207,6 @@ func isBareOrSubpathOf(path, root string) bool {
 //     inbound endpoint is used to distinguish.
 func DeriveUpstreamEndpoint(inbound, rawRequestPath, platform string) string {
 	inbound = strings.TrimSpace(inbound)
-	if inbound == EndpointAudioVoices && (platform == service.PlatformOpenAI || platform == service.PlatformGemini) {
-		return EndpointGeminiVoices
-	}
 	if inbound == EndpointAudioSpeech && (platform == service.PlatformOpenAI || platform == service.PlatformGemini) {
 		return EndpointAudioSpeech
 	}

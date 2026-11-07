@@ -1,5 +1,7 @@
 # Muse 视频接入创作工作台
 
+面向用户的完整调用说明见 [Muse Video API 用户调用文档](muse-video-api.md)，包含全部参数、响应字段、价格、curl/Python/Node.js 示例和功能边界。本文保留为部署及适配说明。
+
 核对来源：[`www222fff/muse2api`](https://github.com/www222fff/muse2api)，提交 `3a20b5e7aa4056c99c0eb8c732d73ce3804d5dbf`（2026-11-07 核对）。同时检查 README、`api/schemas.py`、`api/routes/videos.py`、`drivers/browser/driver.py`、`services/tasks.py` 和 `core/media.py`，以实际接口实现为准。
 
 ## 上游能力与限制

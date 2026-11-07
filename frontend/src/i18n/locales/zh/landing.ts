@@ -1,4 +1,8 @@
 export default {
+  integrationDocs: {
+    title: '接入文档',
+    description: '对话模型、图片生成、视频生成与语音合成的接入指南'
+  },
   batchImageGuide: {
     title: '图片批量生成',
     description: '一次提交多条提示词，任务完成后可统一下载图片结果'

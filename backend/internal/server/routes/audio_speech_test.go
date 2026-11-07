@@ -64,44 +64,26 @@ func TestAudioSpeechRoutesRejectUnsupportedPlatformAndOversizeBody(t *testing.T)
 	}
 }
 
-func TestAudioVoiceRoutesUseGatewayAuthenticationAndAllowlist(t *testing.T) {
-	for _, path := range []string{"/v1/audio/voices", "/audio/voices"} {
-		for _, platform := range []string{service.PlatformGemini, service.PlatformOpenAI} {
-			router := newGatewayRoutesTestRouter(platform)
+func TestAudioSpeechRoutesKeepTTSWithoutVoiceCreation(t *testing.T) {
+	for _, platform := range []string{service.PlatformGemini, service.PlatformOpenAI} {
+		router := newGatewayRoutesTestRouter(platform)
+		registered := map[string]bool{}
+		for _, route := range router.Routes() {
+			registered[route.Method+" "+route.Path] = true
+		}
+		for _, path := range []string{"/v1/audio/speech", "/audio/speech"} {
+			require.True(t, registered[http.MethodPost+" "+path])
+		}
+		for _, path := range []string{"/v1/audio/voices", "/audio/voices"} {
+			require.False(t, registered[http.MethodPost+" "+path])
+			response := httptest.NewRecorder()
 			request := httptest.NewRequest(http.MethodPost, path, strings.NewReader(`{"model":"gemini-3.8-flash-tts"}`))
 			request.Header.Set("Content-Type", "application/json")
-			response := httptest.NewRecorder()
-			router.ServeHTTP(response, request)
-			require.Equal(t, http.StatusBadRequest, response.Code)
-			require.Contains(t, response.Body.String(), "source_audio")
-		}
-		router := newGatewayRoutesTestRouterWithGroup(allowlistGroup(service.PlatformGemini, true, "gemini-3.8-flash-tts"))
-		for _, body := range []string{`{"model":"blocked-model"}`, `{"model":"gemini-3.8-flash-tts","model":"blocked-model"}`} {
-			request := httptest.NewRequest(http.MethodPost, path, strings.NewReader(body))
-			request.Header.Set("Content-Type", "application/json")
-			response := httptest.NewRecorder()
 			router.ServeHTTP(response, request)
 			require.Equal(t, http.StatusNotFound, response.Code)
-			require.Contains(t, response.Body.String(), "blocked-model")
 		}
-	}
-}
-
-func TestAudioVoiceRoutesUseMediaBodyLimit(t *testing.T) {
-	for _, path := range []string{"/v1/audio/voices", "/audio/voices"} {
-		router := newGatewayRoutesTestRouterWithConfig(&config.Config{Gateway: config.GatewayConfig{MaxBodySize: 128, TextMaxBodySize: 16}}, service.PlatformGemini)
-		for _, test := range []struct {
-			body   string
-			status int
-		}{
-			{`{"model":"gemini-3.8-flash-tts"}`, http.StatusBadRequest},
-			{`{"model":"gemini-3.8-flash-tts","source_audio":"` + strings.Repeat("a", 200) + `"}`, http.StatusRequestEntityTooLarge},
-		} {
-			response := httptest.NewRecorder()
-			request := httptest.NewRequest(http.MethodPost, path, strings.NewReader(test.body))
-			request.Header.Set("Content-Type", "application/json")
-			router.ServeHTTP(response, request)
-			require.Equal(t, test.status, response.Code)
-		}
+		// Existing Grok voice management is separate from this removed feature.
+		require.True(t, registered[http.MethodPost+" /v1/custom-voices"])
+		require.True(t, registered[http.MethodPost+" /custom-voices"])
 	}
 }
