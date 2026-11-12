@@ -50,7 +50,8 @@ type easyPayCustomMethod struct {
 }
 
 // NewEasyPay creates a new EasyPay provider.
-// config keys: pid, pkey, apiBase, notifyUrl, returnUrl, cid, cidAlipay, cidWxpay
+// config keys: pid, pkey, apiBase, notifyUrl, returnUrl, cid, cidAlipay, cidWxpay,
+// refundSuccessCode (0 or 1; defaults to 1).
 func NewEasyPay(instanceID string, config map[string]string) (*EasyPay, error) {
 	for _, k := range []string{"pid", "pkey", "apiBase", "notifyUrl", "returnUrl"} {
 		if strings.TrimSpace(config[k]) == "" {
@@ -60,6 +61,9 @@ func NewEasyPay(instanceID string, config map[string]string) (*EasyPay, error) {
 	cfg := make(map[string]string, len(config))
 	for k, v := range config {
 		cfg[k] = v
+	}
+	if code := strings.TrimSpace(cfg["refundSuccessCode"]); code != "" && code != "0" && code != "1" {
+		return nil, fmt.Errorf("easypay refundSuccessCode must be 0 or 1")
 	}
 	cfg["apiBase"] = normalizeEasyPayAPIBase(cfg["apiBase"])
 	return &EasyPay{
@@ -507,6 +511,12 @@ func (e *EasyPay) VerifyNotification(_ context.Context, rawBody string, _ map[st
 }
 
 func (e *EasyPay) Refund(ctx context.Context, req payment.RefundRequest) (*payment.RefundResponse, error) {
+	// Compatible gateways disagree on refund codes. Keep the existing default
+	// unless this instance explicitly selects a zero-success refund protocol.
+	successCode := easypayCodeSuccess
+	if strings.TrimSpace(e.config["refundSuccessCode"]) == "0" {
+		successCode = 0
+	}
 	attempts := e.refundAttempts(req)
 	if len(attempts) == 0 {
 		return nil, fmt.Errorf("easypay refund missing order identifier")
@@ -517,7 +527,7 @@ func (e *EasyPay) Refund(ctx context.Context, req payment.RefundRequest) (*payme
 		if err != nil {
 			return nil, fmt.Errorf("easypay refund request: %w", err)
 		}
-		if err := parseEasyPayRefundResponse(status, body); err != nil {
+		if err := parseEasyPayRefundResponse(status, body, successCode); err != nil {
 			if firstErr == nil {
 				firstErr = err
 			}
@@ -581,7 +591,7 @@ type easyPayRefundRejectedError struct{ message string }
 
 func (e *easyPayRefundRejectedError) Error() string { return e.message }
 
-func parseEasyPayRefundResponse(status int, body []byte) error {
+func parseEasyPayRefundResponse(status int, body []byte, successCode int) error {
 	summary := summarizeEasyPayResponse(body)
 	if status < http.StatusOK || status >= http.StatusMultipleChoices {
 		return fmt.Errorf("easypay refund HTTP %d: %s", status, summary)
@@ -609,7 +619,7 @@ func parseEasyPayRefundResponse(status int, body []byte) error {
 	if !known {
 		return fmt.Errorf("easypay refund invalid response code (HTTP %d): %s", status, summary)
 	}
-	if code != easypayCodeSuccess {
+	if code != successCode {
 		msg := strings.TrimSpace(resp.Msg)
 		if msg == "" {
 			msg = summary

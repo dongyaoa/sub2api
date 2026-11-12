@@ -85,11 +85,12 @@ func (h *AsyncImageHandler) Submit(c *gin.Context) {
 
 	body, err := pkghttputil.ReadRequestBodyWithPrealloc(c.Request)
 	if err != nil {
-		if maxErr, ok := extractMaxBytesError(err); ok {
-			imageTaskJSONError(c, http.StatusRequestEntityTooLarge, "invalid_request_error", buildBodyTooLargeMessage(maxErr.Limit))
+		bodyLog := requestLogger(c, "handler.image_task.create")
+		if handleRequestBodyReadError(c, bodyLog, err) {
 			return
 		}
-		imageTaskJSONError(c, http.StatusBadRequest, "invalid_request_error", "Failed to read request body")
+		status, message := requestBodyReadFailure(bodyLog, c.Request, err)
+		imageTaskJSONError(c, status, "invalid_request_error", message)
 		return
 	}
 	if len(body) == 0 {
@@ -118,10 +119,35 @@ func (h *AsyncImageHandler) Submit(c *gin.Context) {
 		imageTaskJSONError(c, http.StatusBadRequest, "invalid_request_error", "n must be between 1 and 4 for asynchronous image tasks")
 		return
 	}
-	unitBody, err := setAsyncImageRequestQuantity(c.GetHeader("Content-Type"), body, 1)
-	if err != nil {
-		imageTaskJSONError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
-		return
+	unitBody := body
+	if metadata.Quantity > 1 {
+		unitBody, err = setAsyncImageRequestQuantity(c.GetHeader("Content-Type"), body, 1)
+		if err != nil {
+			imageTaskJSONError(c, http.StatusBadRequest, "invalid_request_error", err.Error())
+			return
+		}
+	}
+	// Reserve each background request before accepting the task. The ingress
+	// reservation is released as soon as this handler returns.
+	taskContexts := make([]*gin.Context, metadata.Quantity)
+	recorders := make([]*httptest.ResponseRecorder, metadata.Quantity)
+	cancels := make([]context.CancelFunc, metadata.Quantity)
+	cancelAll := func() {
+		for _, cancel := range cancels {
+			if cancel != nil {
+				cancel()
+			}
+		}
+	}
+	for index := range taskContexts {
+		taskContexts[index], recorders[index], cancels[index], err = newAsyncImageContext(c, unitBody, h.tasks.ExecutionTimeout())
+		if err != nil {
+			cancelAll()
+			if !middleware2.RejectRequestBodyMemoryOverload(c, err) {
+				imageTaskError(c, service.ErrImageTaskUnavailable)
+			}
+			return
+		}
 	}
 	task, err := h.tasks.CreateWithMetadata(
 		c.Request.Context(),
@@ -129,10 +155,10 @@ func (h *AsyncImageHandler) Submit(c *gin.Context) {
 		metadata,
 	)
 	if err != nil {
+		cancelAll()
 		imageTaskError(c, err)
 		return
 	}
-	baseContext := c.Copy()
 
 	pollURL := imageTaskPollURL(c.Request.URL.Path, task.ID)
 	c.Header("Cache-Control", "no-store")
@@ -148,7 +174,7 @@ func (h *AsyncImageHandler) Submit(c *gin.Context) {
 		"poll_url":   pollURL,
 	})
 
-	go h.run(task.ID, platform, baseContext, unitBody, metadata.Quantity, h.tasks.ExecutionTimeout())
+	go h.run(task.ID, platform, taskContexts, recorders, cancels)
 }
 
 func (h *AsyncImageHandler) checkSecurityAuditBeforeSubmit(c *gin.Context, apiKey *service.APIKey, platform string, body []byte) bool {
@@ -472,27 +498,24 @@ type asyncImageCallResult struct {
 
 func (h *AsyncImageHandler) run(
 	taskID, platform string,
-	baseContext *gin.Context,
-	body []byte,
-	quantity int,
-	executionTimeout time.Duration,
+	taskContexts []*gin.Context,
+	recorders []*httptest.ResponseRecorder,
+	cancels []context.CancelFunc,
 ) {
+	defer func() {
+		for _, cancel := range cancels {
+			cancel()
+		}
+	}()
 	defer func() {
 		if recovered := recover(); recovered != nil {
 			logger.L().Error("image_task.execution_panicked", zap.String("task_id", taskID), zap.Any("panic", recovered))
 			h.failTask(taskID, http.StatusInternalServerError, imageTaskErrorPayload("api_error", "image generation task panicked"))
 		}
 	}()
-	if quantity <= 0 {
-		quantity = 1
-	}
-
+	quantity := len(taskContexts)
 	results := make([]asyncImageCallResult, quantity)
-	taskContexts := make([]*gin.Context, quantity)
-	recorders := make([]*httptest.ResponseRecorder, quantity)
-	cancels := make([]context.CancelFunc, quantity)
 	for index := 0; index < quantity; index++ {
-		taskContexts[index], recorders[index], cancels[index] = newAsyncImageContext(baseContext, body, executionTimeout)
 		childID := taskID + "-" + strconv.Itoa(index+1)
 		childContext := context.WithValue(taskContexts[index].Request.Context(), ctxkey.RequestID, childID)
 		childContext = context.WithValue(childContext, ctxkey.ClientRequestID, childID)
@@ -634,13 +657,23 @@ func (h *AsyncImageHandler) failTask(taskID string, statusCode int, taskErr json
 	}
 }
 
-func newAsyncImageContext(c *gin.Context, body []byte, timeoutDuration time.Duration) (*gin.Context, *httptest.ResponseRecorder, context.CancelFunc) {
-	base := context.WithoutCancel(c.Request.Context())
-	executionCtx, cancel := context.WithTimeout(base, timeoutDuration)
+func newAsyncImageContext(c *gin.Context, body []byte, timeoutDuration time.Duration) (*gin.Context, *httptest.ResponseRecorder, context.CancelFunc, error) {
+	// The task keeps body after Submit returns and the ingress reservation is
+	// released, so it holds the body, and whatever it buffers, on its own one.
+	retained, releaseBody, err := pkghttputil.DetachRequestBodyMemory(c.Request.Context(), int64(len(body)))
+	if err != nil {
+		return nil, nil, nil, err
+	}
+	base := context.WithoutCancel(retained)
+	executionCtx, cancelExecution := context.WithTimeout(base, timeoutDuration)
+	cancel := func() {
+		cancelExecution()
+		releaseBody()
+	}
 	request := c.Request.Clone(executionCtx)
-	request.Body = io.NopCloser(bytes.NewReader(body))
+	request.Body = pkghttputil.NewPrereadBody(body)
 	request.GetBody = func() (io.ReadCloser, error) {
-		return io.NopCloser(bytes.NewReader(body)), nil
+		return pkghttputil.NewPrereadBody(body), nil
 	}
 	request.ContentLength = int64(len(body))
 	request.URL.Path = strings.TrimSuffix(request.URL.Path, "/async")
@@ -650,7 +683,7 @@ func newAsyncImageContext(c *gin.Context, body []byte, timeoutDuration time.Dura
 	recorderCtx, _ := gin.CreateTestContext(recorder)
 	taskCtx.Writer = recorderCtx.Writer
 	taskCtx.Request = request
-	return taskCtx, recorder, cancel
+	return taskCtx, recorder, cancel, nil
 }
 
 func asyncImageRequestStreams(contentType string, body []byte) bool {

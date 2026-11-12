@@ -95,6 +95,7 @@ func (h *SettingHandler) GetPublicSettings(c *gin.Context) {
 		GoogleOAuthEnabled:                  settings.GoogleOAuthEnabled,
 		BackendModeEnabled:                  settings.BackendModeEnabled,
 		WebAccessCNBlockEnabled:             settings.WebAccessCNBlockEnabled,
+		MCPEnabled:                          settings.MCPEnabled,
 		PaymentEnabled:                      settings.PaymentEnabled,
 		PaymentBalanceDisabled:              settings.PaymentBalanceDisabled,
 		Version:                             h.version,

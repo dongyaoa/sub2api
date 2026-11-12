@@ -158,7 +158,12 @@ func (s *GatewayService) ForwardAsChatCompletions(
 		upstreamMsg := strings.TrimSpace(extractUpstreamErrorMessage(respBody))
 		upstreamMsg = sanitizeUpstreamErrorMessage(upstreamMsg)
 
-		if s.shouldFailoverUpstreamError(resp.StatusCode) {
+		// Apply account policies even for statuses outside the default failover list.
+		shouldDisable := false
+		if s.rateLimitService != nil {
+			shouldDisable = s.rateLimitService.HandleUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody, mappedModel)
+		}
+		if shouldDisable || s.shouldFailoverUpstreamError(resp.StatusCode) {
 			appendOpsUpstreamError(c, OpsUpstreamErrorEvent{
 				ProxyID:            opsUpstreamProxyID(account),
 				ProxyName:          opsUpstreamProxyName(account),
@@ -170,10 +175,6 @@ func (s *GatewayService) ForwardAsChatCompletions(
 				Kind:               "failover",
 				Message:            upstreamMsg,
 			})
-			shouldDisable := false
-			if s.rateLimitService != nil {
-				shouldDisable = s.rateLimitService.HandleUpstreamError(ctx, account, resp.StatusCode, resp.Header, respBody, mappedModel)
-			}
 			return nil, &UpstreamFailoverError{
 				StatusCode:             resp.StatusCode,
 				ResponseBody:           respBody,
@@ -247,10 +248,12 @@ func (s *GatewayService) handleCCBufferedFromAnthropic(
 		maxLineSize = s.cfg.Gateway.MaxLineSize
 	}
 	scanner.Buffer(make([]byte, 0, 64*1024), maxLineSize)
+	scanner.Split(newBoundedSSESplit(s.cfg, maxLineSize, nil))
 
 	var finalResp *apicompat.AnthropicResponse
 	var usage ClaudeUsage
-	var sawMessageStop, sawResponseError bool
+	var sawResponseError bool
+	streamStatus := &anthropicCompatStream{body: resp.Body}
 
 	for scanner.Scan() {
 		line := scanner.Text()
@@ -277,8 +280,9 @@ func (s *GatewayService) handleCCBufferedFromAnthropic(
 			continue
 		}
 
-		if event.Type == "message_stop" {
-			sawMessageStop = true
+		streamStatus.observe(&event, payload)
+		if streamStatus.upstreamErrType != "" {
+			break
 		}
 
 		// message_start carries the initial response structure and cache usage
@@ -322,8 +326,19 @@ func (s *GatewayService) handleCCBufferedFromAnthropic(
 				zap.String("request_id", requestID),
 			)
 		}
-	} else if !sawMessageStop && !sawResponseError {
+	} else if !streamStatus.sawTerminal && !sawResponseError {
 		markRecentRequestFailure(c, resp.StatusCode, "Upstream stream ended before message_stop")
+	}
+
+	streamStatus.readErr = scanner.Err()
+	if failure := streamStatus.failure(); failure != nil {
+		_ = resp.Body.Close()
+		writeGatewayCCError(c, http.StatusBadGateway, "server_error", failure.message)
+		return &ForwardResult{
+			RequestID: requestID, UpstreamHeaders: resp.Header, Usage: usage,
+			Model: originalModel, UpstreamModel: mappedModel, ReasoningEffort: reasoningEffort,
+			Duration: time.Since(startTime),
+		}, failure.err
 	}
 
 	if finalResp == nil {

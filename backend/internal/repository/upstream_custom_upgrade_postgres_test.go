@@ -11,6 +11,7 @@ import (
 	"testing/fstest"
 	"time"
 
+	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
 	"github.com/Wei-Shaw/sub2api/migrations"
 	"github.com/google/uuid"
 	"github.com/lib/pq"
@@ -22,6 +23,25 @@ import (
 // migrations and fixtures run in a new UUID-named disposable database. This test
 // requires CREATEDB and never starts a monitor or sends a model request.
 func TestUpstreamCustomUpgradePostgresPreservesCustomData(t *testing.T) {
+	t.Run("before_upstream_center", func(t *testing.T) {
+		testUpstreamCustomUpgradePostgresPreservesCustomData(t, func(name string) bool {
+			return name[:3] < "242"
+		})
+	})
+	t.Run("v0219_custom7", func(t *testing.T) {
+		testUpstreamCustomUpgradePostgresPreservesCustomData(t, func(name string) bool {
+			switch name {
+			case "249_add_usage_logs_api_key_cost_index_notx.sql", "249_mcp_oauth.sql", "250_openai_cache_write_ttl.sql":
+				return false
+			default:
+				return true
+			}
+		})
+	})
+}
+
+func testUpstreamCustomUpgradePostgresPreservesCustomData(t *testing.T, inBaseline func(string) bool) {
+	t.Helper()
 	dsn := os.Getenv("UPSTREAM_TEST_DATABASE_URL")
 	if dsn == "" {
 		t.Skip("UPSTREAM_TEST_DATABASE_URL is not configured")
@@ -56,13 +76,14 @@ func TestUpstreamCustomUpgradePostgresPreservesCustomData(t *testing.T) {
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT current_database()`).Scan(&actualDatabase))
 	require.Equal(t, databaseName, actualDatabase, "migration connection must use the disposable database")
 
-	// Reconstruct the custom schema before any upstream-center migration. Keep
-	// every same-number custom migration; filenames, not numeric IDs, identify them.
+	// Reconstruct each released custom schema, including one whose higher-number
+	// migrations already exist before the new upstream 249/250 files are applied.
+	// Keep same-number custom files: filenames, not numeric IDs, identify migrations.
 	files, err := fs.Glob(migrations.FS, "*.sql")
 	require.NoError(t, err)
 	baseline := fstest.MapFS{}
 	for _, name := range files {
-		if name[:3] >= "242" {
+		if !inBaseline(name) {
 			continue
 		}
 		content, readErr := migrations.FS.ReadFile(name)
@@ -119,6 +140,7 @@ VALUES(93001,93001,30,25,'COMPLETED',NOW(),'CUSTOM-UPGRADE',$1::jsonb)`, promoti
 		require.Equal(t, stamp, after[name], "existing migration checksum and application time must remain unchanged: %s", name)
 	}
 	for _, name := range []string{
+		"249_add_usage_logs_api_key_cost_index_notx.sql", "249_mcp_oauth.sql", "250_openai_cache_write_ttl.sql",
 		"242_upstream_center.sql", "243_upstream_finance.sql", "244_upstream_remote_billing.sql",
 		"245_intelligence_monitor.sql", "246_intelligence_monitor_oauth.sql", "247_upstream_finance_usage_totals.sql",
 		"248_upstream_monitor_defaults.sql", "249_intelligence_monitor_interval_seconds.sql", "250_intelligence_monitor_generation_timeout.sql",
@@ -128,7 +150,7 @@ VALUES(93001,93001,30,25,'COMPLETED',NOW(),'CUSTOM-UPGRADE',$1::jsonb)`, promoti
 		"260_intelligence_candy_grading_version.sql", "261_intelligence_candy_fingerprint.sql", "262_intelligence_monitor_models.sql",
 		"263_intelligence_deleted_oauth_cleanup.sql", "264_upstream_account_monitor_lookup.sql",
 		"268_intelligence_monitor_prompts.sql",
-		"271_upstream_account_history_queue.sql",
+		"271_upstream_account_history_queue.sql", "275_video_task_billing_model.sql", "276_video_task_seed.sql",
 	} {
 		require.Contains(t, after, name, "all upstream-center migrations must be recorded")
 	}
@@ -166,9 +188,14 @@ VALUES(93001,93001,30,25,'COMPLETED',NOW(),'CUSTOM-UPGRADE',$1::jsonb)`, promoti
 INSERT INTO upstream_suppliers(id,name) VALUES(93001,'Imported supplier');
 INSERT INTO upstream_targets(id,supplier_id,name,provider,endpoint,api_key_encrypted,api_key_fingerprint,enabled,interval_seconds)
  VALUES(93001,93001,'Imported key','openai','https://example.test','cipher:fixture',
- encode(sha256(convert_to('https://example.test','UTF8') || decode('00','hex') || convert_to('fixture-key','UTF8')),'hex'),FALSE,30);
-INSERT INTO usage_logs(user_id,api_key_id,account_id,group_id,model,actual_cost,total_cost,account_rate_multiplier,input_tokens,output_tokens,created_at)
- VALUES(93001,93001,93001,93001,'fixture-history',5,3,0.5,100,40,NOW()-INTERVAL '1 day');
+ encode(sha256(convert_to('https://example.test','UTF8') || decode('00','hex') || convert_to('fixture-key','UTF8')),'hex'),FALSE,30);`)
+	require.NoError(t, err)
+	today := timezone.StartOfDay(time.Now())
+	_, err = db.ExecContext(ctx, `INSERT INTO usage_logs(user_id,api_key_id,account_id,group_id,model,actual_cost,total_cost,account_rate_multiplier,input_tokens,output_tokens,created_at)
+ VALUES(93001,93001,93001,93001,'fixture-history',5,3,0.5,100,40,$1),
+       (93001,93001,93001,93001,'fixture-yesterday',7,4,0.5,100,40,$2)`, today, today.Add(-time.Second))
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, `
 INSERT INTO upstream_account_bindings(target_id,account_id,supplier_id,target_name,supplier_name,valid_from)
  VALUES(93001,93001,93001,'Imported key','Imported supplier',NOW()-INTERVAL '1 minute');
 INSERT INTO usage_logs(user_id,api_key_id,account_id,group_id,model,actual_cost,total_cost,account_rate_multiplier,input_tokens,output_tokens)
@@ -192,6 +219,8 @@ INSERT INTO intelligence_monitor_plans(id,name,source_type,group_id,local_api_ke
 	require.Equal(t, 5.0, revenue)
 	require.Equal(t, 1.5, cost)
 	require.Equal(t, int64(140), tokens)
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT COUNT(*) FROM upstream_finance_ledger WHERE model='fixture-yesterday'`).Scan(&historyRows))
+	require.Zero(t, historyRows, "the current history worker only imports today's usage")
 	require.NoError(t, ApplyMigrations(ctx, db), "startup replay must remain idempotent")
 	require.Equal(t, after, readStamps(), "startup replay must not rewrite any migration history")
 	assertCustomData()

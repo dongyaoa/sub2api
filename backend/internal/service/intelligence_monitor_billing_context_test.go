@@ -52,12 +52,17 @@ func TestIntelligenceQuotaPersistenceSurvivesCallerCancellationWithIndependentDe
 			deps := &billingDeps{cfg: cfg, billingCacheService: &BillingCacheService{cfg: cfg}, deferredService: &DeferredService{}, userPlatformQuotaRepo: repo}
 			params := &postUsageBillingParams{Cost: &CostBreakdown{TotalCost: 0.25, ActualCost: 0.25}, User: &User{ID: 7}, APIKey: &APIKey{ID: 11}, Account: &Account{ID: 55}, Platform: PlatformOpenAI}
 			callerBilling, cancelCallerBilling := detachedBillingContext(parent)
-			finalizePostUsageBilling(callerBilling, params, deps, nil)
+			defer cancelCallerBilling()
+			finished := make(chan struct{})
+			go func() {
+				finalizePostUsageBilling(callerBilling, params, deps, nil)
+				close(finished)
+			}()
 			var write intelligenceQuotaWrite
 			select {
 			case write = <-repo.started:
 			case <-time.After(time.Second):
-				t.Fatal("asynchronous quota write did not start")
+				t.Fatal("quota write did not start")
 			}
 			cancelCallerBilling()
 			cancel()
@@ -65,7 +70,7 @@ func TestIntelligenceQuotaPersistenceSurvivesCallerCancellationWithIndependentDe
 			require.NoError(t, write.ctx.Err(), "quota persistence must survive both the request and billing caller finishing")
 			deadline, bound := write.ctx.Deadline()
 			require.True(t, bound, "quota persistence must have its own finite budget")
-			require.InDelta(t, postUsageBillingTimeout.Seconds(), time.Until(deadline).Seconds(), 1)
+			require.InDelta(t, 5, time.Until(deadline).Seconds(), 1)
 			require.Equal(t, int64(7), write.userID)
 			require.Equal(t, PlatformOpenAI, write.platform)
 			require.Equal(t, 0.25, write.cost)
@@ -74,10 +79,10 @@ func TestIntelligenceQuotaPersistenceSurvivesCallerCancellationWithIndependentDe
 			case err := <-repo.result:
 				require.NoError(t, err)
 			case <-time.After(time.Second):
-				t.Fatal("asynchronous quota write did not complete")
+				t.Fatal("quota write did not complete")
 			}
 			select {
-			case <-write.ctx.Done():
+			case <-finished:
 				require.ErrorIs(t, write.ctx.Err(), context.Canceled, "completion must release the independent deadline")
 			case <-time.After(time.Second):
 				t.Fatal("completed quota write retained its context")

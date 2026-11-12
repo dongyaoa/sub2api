@@ -15,7 +15,7 @@ import (
 func TestGatewayModelsImageStudioQueryIncludesNewAllowlistedImageModel(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	group := &service.Group{ID: 41, Platform: service.PlatformGemini, ModelAllowlist: service.GroupModelAllowlist{
-		Enabled: true, Models: []string{"gemini-nano-banana-2.1", "gemini-2.5-pro"},
+		Enabled: true, Models: []string{"gemini-nano-banana-2.1", "gemini-3.5-flash"},
 	}}
 	h := newGatewayModelsHandlerForTest(&gatewayModelsAccountRepoStub{byGroup: map[int64][]service.Account{group.ID: {
 		{ID: 1, Platform: service.PlatformGemini},
@@ -25,7 +25,7 @@ func TestGatewayModelsImageStudioQueryIncludesNewAllowlistedImageModel(t *testin
 		ids   []string
 	}{
 		{"?image_studio=1", []string{"gemini-nano-banana-2.1"}},
-		{"", []string{"gemini-2.5-pro"}},
+		{"", []string{"gemini-3.5-flash"}},
 	} {
 		t.Run(tt.query, func(t *testing.T) {
 			rec := httptest.NewRecorder()

@@ -201,7 +201,7 @@
                       </div>
 
                       <p v-if="balanceRechargeMultiplier !== 1" class="rounded-xl bg-primary-50 px-3 py-2 text-xs text-primary-700 dark:bg-primary-900/30 dark:text-primary-300">
-                        {{ t('payment.rechargeRatePreview', { currency: selectedCurrency, usd: balanceRechargeMultiplier.toFixed(2) }) }}
+                        {{ t('payment.rechargeRatePreview', { currency: selectedCurrency, usd: formatBalanceRechargeMultiplier(balanceRechargeMultiplier) }) }}
                       </p>
 
                       <button :class="['btn mt-auto w-full py-3 text-base font-medium shadow-lg shadow-primary-500/15', paymentButtonClass]" :disabled="!canSubmit || submitting" @click="handleSubmitRecharge">
@@ -402,7 +402,7 @@ import { extractApiErrorMessage, extractI18nErrorMessage } from '@/utils/apiErro
 import { isMobileDevice } from '@/utils/device'
 import { hasPeakRate, formatPeakRateWindow, serverTimezoneLabel, type PeakRateFields } from '@/utils/peak-rate'
 import type { SubscriptionPlan, CheckoutInfoResponse, CreateOrderResult, OrderType } from '@/types/payment'
-import { formatRechargeBonusNumber, normalizeRechargeBonusMode, normalizeRechargeBonusTiers, quoteRechargeBonus } from '@/utils/rechargeBonus'
+import { formatBalanceRechargeMultiplier, formatRechargeBonusNumber, normalizeRechargeBonusMode, normalizeRechargeBonusTiers, quoteRechargeBonus } from '@/utils/rechargeBonus'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import AmountInput from '@/components/payment/AmountInput.vue'
 import RechargePromotionBanner from '@/components/payment/RechargePromotionBanner.vue'

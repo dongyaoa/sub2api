@@ -34,7 +34,7 @@ func TestRecentRequestAnthropicAdaptersObserveStreamErrors(t *testing.T) {
 	}
 	const started = "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"id\":\"msg_test\",\"type\":\"message\",\"role\":\"assistant\",\"model\":\"model\",\"content\":[],\"usage\":{\"input_tokens\":1}}}\n\n"
 	for _, handler := range handlers {
-		for _, scenario := range []string{"error event", "read error", "complete", "missing terminal"} {
+		for _, scenario := range []string{"error event", "read error", "complete", "stop reason", "missing terminal"} {
 			t.Run(handler.name+"/"+scenario, func(t *testing.T) {
 				c, store, account := newRecentObserverTest(t)
 				finish := beginAccountRecentRequest(c.Request.Context(), c, store, account, "model")
@@ -49,6 +49,8 @@ func TestRecentRequestAnthropicAdaptersObserveStreamErrors(t *testing.T) {
 					reader = io.MultiReader(strings.NewReader(started), iotest.ErrReader(errors.New(message)))
 				case "complete":
 					reader = strings.NewReader(started + "event: message_stop\ndata: {\"type\":\"message_stop\"}\n\n")
+				case "stop reason":
+					reader = strings.NewReader(started + "event: message_delta\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"end_turn\"},\"usage\":{\"output_tokens\":1}}\n\n")
 				case "missing terminal":
 					message = "Upstream stream ended before message_stop"
 					reader = strings.NewReader(started)
@@ -56,18 +58,21 @@ func TestRecentRequestAnthropicAdaptersObserveStreamErrors(t *testing.T) {
 				resp := &http.Response{StatusCode: http.StatusOK, Header: make(http.Header), Body: io.NopCloser(reader)}
 				result, err := handler.call(&GatewayService{}, resp, c)
 				streaming := strings.HasSuffix(handler.name, "streaming")
-				if streaming && scenario != "complete" {
+				completed := scenario == "complete" || scenario == "stop reason"
+				if !completed {
 					require.Error(t, err)
-					if scenario == "error event" {
+					if streaming && scenario == "error event" {
 						require.Nil(t, result)
 					} else {
 						require.NotNil(t, result)
 					}
-					switch scenario {
-					case "read error":
-						message = "upstream stream disconnected: upstream connection error"
-					case "missing terminal":
-						message = "upstream stream ended without a terminal event"
+					if streaming {
+						switch scenario {
+						case "read error":
+							message = "upstream stream disconnected: upstream connection error"
+						case "missing terminal":
+							message = "upstream stream ended without a terminal event"
+						}
 					}
 				} else {
 					require.NoError(t, err)
@@ -75,7 +80,7 @@ func TestRecentRequestAnthropicAdaptersObserveStreamErrors(t *testing.T) {
 				}
 				finish(result != nil, err)
 				record := takeRecentObserverRecord(t, store)
-				require.Equal(t, scenario == "complete", record.Success)
+				require.Equal(t, completed, record.Success)
 				require.Equal(t, http.StatusOK, record.StatusCode)
 				require.Equal(t, message, record.ErrorMessage)
 				require.Empty(t, store.records)

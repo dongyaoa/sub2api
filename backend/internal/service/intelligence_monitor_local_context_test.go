@@ -65,7 +65,9 @@ func TestIntelligenceLocalRequestOneUseAndBoundedLifecycle(t *testing.T) {
 	require.Zero(t, HTTPUpstreamResponseHeaderTimeoutFromContext(replayedCtx))
 
 	for _, detach := range []func(context.Context) (context.Context, context.CancelFunc){
-		detachUpstreamContext,
+		func(value context.Context) (context.Context, context.CancelFunc) {
+			return detachUpstreamContext(value)
+		},
 		func(value context.Context) (context.Context, context.CancelFunc) {
 			return detachStreamUpstreamContext(value, true)
 		},
