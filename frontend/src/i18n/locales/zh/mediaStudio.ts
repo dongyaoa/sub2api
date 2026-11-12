@@ -5,5 +5,6 @@ export default {
     switcher: '创作类型',
     image: '图片',
     video: '视频',
+    recentHistory: '最近 {count} 条',
   },
 }

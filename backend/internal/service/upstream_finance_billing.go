@@ -60,7 +60,7 @@ func (s *UpstreamFinanceService) fetchRemoteBilling(ctx context.Context, target 
 	if err != nil {
 		return fail("invalid_endpoint")
 	}
-	if err = validateUpstreamEndpoint(target.Endpoint); err != nil {
+	if err = validateUpstreamRequestEndpoint(ctx, target.Endpoint); err != nil {
 		return fail("endpoint_unavailable")
 	}
 	if s.encryptor == nil {

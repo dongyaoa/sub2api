@@ -17,6 +17,9 @@ export function isValidUpstreamEndpoint(value: string | null | undefined): boole
 /** Return a translation key without exposing raw endpoint diagnostics. */
 export function upstreamEndpointErrorKey(error: unknown): string | undefined {
   switch (extractApiErrorCode(error)) {
+    case 'UPSTREAM_PROXY_UNAVAILABLE': return 'upstreamCenter.syncErrors.proxyUnavailable'
+    case 'UPSTREAM_PROXY_CONFLICT': return 'upstreamCenter.syncErrors.proxyConflict'
+    case 'UPSTREAM_PROXY_ACCOUNT_MISMATCH': return 'upstreamCenter.syncErrors.proxyAccountMismatch'
     case 'CHANNEL_MONITOR_ENDPOINT_PRIVATE': return 'upstreamCenter.endpointError.private'
     case 'CHANNEL_MONITOR_ENDPOINT_UNREACHABLE': return 'upstreamCenter.endpointError.unreachable'
     case 'CHANNEL_MONITOR_INVALID_ENDPOINT':

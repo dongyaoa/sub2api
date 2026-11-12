@@ -2,9 +2,12 @@ package service
 
 import (
 	"context"
+	"regexp"
 	"sort"
 	"strings"
 )
+
+var imageStudioVideoNamePattern = regexp.MustCompile(`(^|[-_./ ])(videos?|veo|sora|seedance|t2v|i2v)($|[-_./ ]|[0-9])`)
 
 // ImageStudioModel is a model whose image capability is known from account
 // mappings, its public name, or a model-level image pricing card.
@@ -91,21 +94,24 @@ func (s *GatewayService) ImageStudioModels(ctx context.Context, group *Group, pl
 	}
 	for _, id := range source {
 		channelTarget, allowed := s.imageStudioChannelModel(ctx, group.ID, id)
-		if !allowed {
+		if !allowed || s.imageStudioVideoModel(ctx, group, id) || s.imageStudioVideoModel(ctx, group, channelTarget) {
 			continue
 		}
 		isImage := imageStudioModelName(id) || s.imageStudioImagePricing(ctx, group, id) ||
 			imageStudioModelName(channelTarget) || s.imageStudioImagePricing(ctx, group, channelTarget)
-		if !isImage {
-			for _, account := range eligibleAccounts {
-				if target, matched := account.ResolveMappedModel(channelTarget); matched &&
-					(imageStudioModelName(target) || s.imageStudioImagePricing(ctx, group, target)) {
-					isImage = true
+		isVideo := false
+		for _, account := range eligibleAccounts {
+			if target, matched := account.ResolveMappedModel(channelTarget); matched {
+				// An image-looking alias or price card cannot override a video
+				// routing target. Inspect every mapping even after image evidence.
+				if s.imageStudioVideoModel(ctx, group, target) {
+					isVideo = true
 					break
 				}
+				isImage = isImage || imageStudioModelName(target) || s.imageStudioImagePricing(ctx, group, target)
 			}
 		}
-		if isImage {
+		if isImage && !isVideo {
 			models = append(models, ImageStudioModel{ID: id, Object: "model", DisplayName: id, ImageGeneration: true})
 		}
 	}
@@ -133,7 +139,23 @@ func (s *GatewayService) imageStudioImagePricing(ctx context.Context, group *Gro
 		return false
 	}
 	pricing := s.resolver.ResolveImagePricing(ctx, PricingInput{Model: id, GroupID: &group.ID, Group: group})
-	return pricing != nil && (pricing.Mode == BillingModeImage || pricing.Mode == BillingModePerRequest)
+	// Per-request billing is also used by video and text models. Only an
+	// explicit image card proves an otherwise unknown alias has image output;
+	// per-request image models remain discoverable by their name or mapping.
+	return pricing != nil && pricing.Mode == BillingModeImage
+}
+
+func (s *GatewayService) imageStudioVideoModel(ctx context.Context, group *Group, id string) bool {
+	model := strings.ToLower(imageStudioModelID(id))
+	if IsGeminiOmniVideoModel(model) || IsMuseVideoModel(model) || isVideoStudioGrokModel(model) ||
+		imageStudioVideoNamePattern.MatchString(model) {
+		return true
+	}
+	if s.resolver == nil {
+		return false
+	}
+	pricing := s.resolver.ResolveImagePricing(ctx, PricingInput{Model: id, GroupID: &group.ID, Group: group})
+	return pricing != nil && pricing.Mode == BillingModeVideo
 }
 
 func imageStudioModelID(model string) string {

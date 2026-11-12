@@ -1,12 +1,10 @@
 <template>
   <AppLayout>
     <div class="mx-auto w-full max-w-[1920px]">
-      <MediaStudioHeader active="video" />
-
-      <div class="video-workspace grid grid-cols-1 items-stretch gap-4 xl:grid-cols-[380px_minmax(0,1fr)] 2xl:grid-cols-[380px_minmax(0,1fr)_260px]">
-        <aside class="flex min-w-0 flex-col">
-          <div class="mb-2 flex min-h-8 items-center justify-between gap-3">
-            <h2 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('videoStudio.settings') }}</h2>
+      <div class="media-workspace video-workspace grid grid-cols-1 items-stretch gap-4 xl:grid-cols-[380px_minmax(0,1fr)] 2xl:grid-cols-[380px_minmax(0,1fr)_260px]">
+        <aside class="media-settings-column flex min-w-0 flex-col" :aria-label="t('videoStudio.settings')">
+          <div class="media-panel-heading mb-2 flex min-h-8 items-center justify-between gap-3">
+            <MediaStudioHeader active="video" />
             <span
               v-if="estimatedCost != null"
               class="rounded-md bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
@@ -15,8 +13,9 @@
             </span>
           </div>
 
-          <section class="video-settings-panel flex-1 rounded-lg border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-900">
-            <form class="space-y-3" @submit.prevent="generateVideo">
+          <section class="media-settings-panel video-settings-panel flex-1 rounded-lg border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-900">
+            <form class="media-settings-form" @submit.prevent="generateVideo">
+              <div class="media-settings-fields space-y-3">
               <div class="grid grid-cols-2 gap-1 rounded-lg bg-gray-100 p-1 dark:bg-dark-800" role="tablist" :aria-label="t('videoStudio.operationMode')">
                 <button
                   type="button"
@@ -291,6 +290,8 @@
                 </div>
               </section>
 
+              </div>
+              <div class="media-settings-actions space-y-2 border-t border-gray-200 pt-3 dark:border-dark-700">
               <button
                 type="submit"
                 class="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-primary-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500/40 focus:ring-offset-2 disabled:cursor-not-allowed disabled:bg-gray-300 dark:disabled:bg-dark-700"
@@ -301,12 +302,13 @@
                 <span v-if="!isWorking && estimatedCost != null" class="text-white/75">{{ formatUSD(estimatedCost) }}</span>
               </button>
               <p class="text-center text-[11px] leading-5 text-gray-400">{{ t('videoStudio.multitaskHint') }}</p>
+              </div>
             </form>
           </section>
         </aside>
 
-        <main class="flex min-w-0 flex-col">
-          <div class="mb-2 flex min-h-8 flex-wrap items-center justify-between gap-3">
+        <main class="media-preview-column flex min-w-0 flex-col">
+          <div class="media-panel-heading mb-2 flex min-h-8 flex-wrap items-center justify-between gap-3">
             <div class="flex min-w-0 flex-wrap items-center gap-2">
               <h2 class="shrink-0 text-sm font-semibold text-gray-900 dark:text-white">{{ t('videoStudio.canvas') }}</h2>
               <span v-if="runningCount" class="rounded-md bg-amber-50 px-2 py-1 text-[11px] font-medium text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">{{ t('videoStudio.runningTasks', { count: runningCount }) }}</span>
@@ -316,7 +318,7 @@
             </button>
           </div>
 
-          <section class="video-canvas relative flex min-h-0 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-dark-700 dark:bg-dark-900">
+          <section class="media-preview-panel video-canvas relative flex min-h-0 flex-col overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-dark-700 dark:bg-dark-900">
             <div v-if="viewState !== 'idle'" data-testid="task-status" class="flex shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-gray-100 px-4 py-2.5 text-xs dark:border-dark-700">
               <span class="flex min-w-0 items-center gap-1.5 font-medium text-gray-700 dark:text-gray-300"><span class="h-1.5 w-1.5 shrink-0 rounded-full" :class="statusDotClass" />{{ statusLabel }}</span>
               <span class="whitespace-nowrap tabular-nums text-gray-400">{{ t('videoStudio.elapsedTime') }} {{ formatElapsed(elapsedSeconds) }}</span>
@@ -434,16 +436,18 @@
           </section>
         </main>
 
-        <aside class="video-history flex min-w-0 flex-col xl:col-span-2 2xl:col-span-1">
-          <div class="mb-2 flex min-h-8 items-center justify-between gap-2">
-            <div class="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
-              <h2 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('videoStudio.history') }}</h2>
-              <span class="text-xs tabular-nums text-gray-400">{{ history.length }}</span>
-              <span class="text-[11px] text-gray-400">{{ persistentHistory ? t('videoStudio.historyPermanent') : t('videoStudio.historyRetention', { count: retentionDays }) }}</span>
+        <aside class="media-history-column video-history flex min-w-0 flex-col xl:col-span-2 2xl:col-span-1">
+          <div class="media-panel-heading mb-2 flex min-h-8 items-center justify-between gap-2">
+            <div class="min-w-0">
+              <div class="flex items-center gap-2">
+                <h2 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('videoStudio.history') }}</h2>
+                <span class="text-[10px] tabular-nums text-gray-400">{{ t('mediaStudio.recentHistory', { count: visibleHistory.length }) }}</span>
+              </div>
+              <p class="truncate text-[10px] leading-4 text-gray-400">{{ persistentHistory ? t('videoStudio.historyPermanent') : t('videoStudio.historyRetention', { count: retentionDays }) }}</p>
             </div>
             <button
               type="button"
-              class="flex h-8 w-8 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-30 dark:hover:bg-dark-800 dark:hover:text-gray-200"
+              class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-30 dark:hover:bg-dark-800 dark:hover:text-gray-200"
               :disabled="history.length === 0 || isWorking || loadingHistory || runningCount > 0 || deliveringCount > 0"
               :title="runningCount || deliveringCount ? t('videoStudio.clearHistoryBusy') : t('videoStudio.clearHistory')"
               :aria-label="t('videoStudio.clearHistory')"
@@ -453,16 +457,16 @@
             </button>
           </div>
 
-          <section class="video-history-panel flex-1 overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-dark-700 dark:bg-dark-900">
+          <section class="media-history-panel video-history-panel flex-1 overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-dark-700 dark:bg-dark-900">
             <div v-if="history.length === 0" class="flex min-h-40 flex-col items-center justify-center px-4 text-center text-gray-400">
               <Icon name="clock" size="lg" class="mb-2" />
               <p class="text-xs font-medium">{{ loadingHistory ? t('videoStudio.loading') : t('videoStudio.historyEmpty') }}</p>
               <p class="mt-1 text-[11px]">{{ t('videoStudio.historyHint') }}</p>
             </div>
 
-            <div v-else class="video-history-list divide-y divide-gray-100 overflow-y-auto dark:divide-dark-700">
+            <div v-else class="media-history-list video-history-list divide-y divide-gray-100 overflow-y-auto dark:divide-dark-700">
               <button
-                v-for="item in history"
+                v-for="item in visibleHistory"
                 :key="item.requestId"
                 type="button"
                 class="grid w-full min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-2.5 gap-y-2 overflow-hidden border-l-2 px-3 py-3 text-left transition-colors"
@@ -507,6 +511,7 @@ import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import MediaStudioHeader from '@/features/media-studio/MediaStudioHeader.vue'
+import '@/features/media-studio/workspace.css'
 import VideoReferenceInput from './VideoReferenceInput.vue'
 import { useAppStore } from '@/stores/app'
 import type { ApiKey } from '@/types'
@@ -579,6 +584,7 @@ const tasks = useVideoTasks(apiKeys, {
 })
 const { history, activeHistoryId, activeHistoryItem, runningCount, submitting,
   loadingHistory, clearingHistory, deliveringCount, retentionDays, persistentHistory } = tasks
+const visibleHistory = computed(() => history.value.slice(0, 9))
 const task = computed(() => activeHistoryItem.value?.task || null)
 const requestId = computed(() => activeHistoryItem.value?.requestId || '')
 const viewState = computed(() => activeHistoryItem.value?.status || 'idle')
@@ -1150,10 +1156,6 @@ onBeforeUnmount(() => {
   font-size: 0.875rem;
 }
 
-.video-history-list {
-  max-height: 672px;
-}
-
 @keyframes video-progress-slide {
   from { transform: translateX(-100%); }
   to { transform: translateX(350%); }
@@ -1164,29 +1166,4 @@ onBeforeUnmount(() => {
   animation: video-progress-slide 1.6s ease-in-out infinite;
 }
 
-@media (min-width: 1280px) {
-  .video-canvas {
-    height: max(600px, calc(100vh - 10rem));
-  }
-
-  .video-workspace {
-    min-height: calc(100vh - 9rem);
-  }
-
-  .video-history-panel,
-  .video-history-panel > div {
-    min-height: 600px;
-  }
-
-  .video-history-list {
-    height: 100%;
-    max-height: calc(100vh - 11rem);
-  }
-}
-
-@media (max-width: 1279px) {
-  .video-history-list {
-    max-height: 360px;
-  }
-}
 </style>

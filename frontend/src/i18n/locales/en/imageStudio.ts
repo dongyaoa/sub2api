@@ -39,7 +39,7 @@ export default {
     hideKey: 'Hide API Key',
     estimate: 'Est. {amount}',
     loadingKeys: 'Loading API keys...',
-    noKeys: 'No image-enabled API key is available. Create a key and select an image-enabled group.',
+    noKeys: 'No image API key is available. Select an image-enabled group with available image models.',
     createKey: 'Create API Key',
     apiKey: 'API Key',
     selectKey: 'Select an image group key',

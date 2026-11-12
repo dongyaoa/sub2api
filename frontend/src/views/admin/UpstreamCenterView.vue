@@ -15,7 +15,7 @@
         <IntelligenceMonitorPanel v-if="visitedMonitorTabs.oauth" v-show="tab === 'oauth'" :hidden="tab !== 'oauth'" :active="tab === 'oauth'" oauth-only :overview="overview" :refresh-key="storageRevision" @refresh-overview="reload()" />
         <template v-if="tab === 'suppliers' || tab === 'monitors'">
           <section v-if="overview" class="grid grid-cols-2 gap-3 lg:grid-cols-4" :aria-label="t(tab === 'suppliers' ? 'upstreamCenter.finance.title' : 'upstreamCenter.tabs.monitors')">
-            <div v-for="metric in tab === 'suppliers' ? supplierMetrics : monitorMetrics" :key="metric.key" class="card flex min-w-0 items-center gap-3 px-3 py-3 sm:px-4"><div class="shrink-0 rounded-lg bg-primary-50 p-2 text-primary-600 dark:bg-primary-500/10 dark:text-primary-400"><Icon :name="metric.icon" size="md" :stroke-width="2" /></div><div class="min-w-0"><p class="text-[11px] font-medium text-gray-500 dark:text-dark-400">{{ t(metric.key) }}</p><p class="mt-0.5 truncate text-xl font-bold tabular-nums text-gray-900 dark:text-white" :class="metric.color">{{ metric.value }}</p><p v-if="metric.note" class="mt-0.5 truncate text-[10px] text-gray-400 dark:text-dark-400">{{ metric.note }}</p></div></div>
+            <div v-for="metric in tab === 'suppliers' ? supplierMetrics : monitorMetrics" :key="metric.key" class="card flex min-w-0 items-center gap-3 px-3 py-3 sm:px-4"><div class="shrink-0 rounded-lg bg-primary-50 p-2 text-primary-600 dark:bg-primary-500/10 dark:text-primary-400"><Icon :name="metric.icon" size="md" :stroke-width="2" /></div><div class="min-w-0"><p class="text-[11px] font-medium text-gray-500 dark:text-dark-400">{{ t(metric.key) }}</p><p class="mt-0.5 truncate text-xl font-bold tabular-nums text-gray-900 dark:text-white" :class="metric.color">{{ metric.value }}</p><p v-if="metric.note" :title="metric.note" class="mt-0.5 truncate text-[10px] text-gray-400 dark:text-dark-400">{{ metric.note }}</p></div></div>
           </section>
           <div class="flex flex-wrap items-center justify-between gap-2">
             <div class="relative w-full sm:max-w-[280px]"><Icon name="search" size="sm" class="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" /><input v-model="search" class="input !py-2 !pl-9 !text-xs" :aria-label="t('upstreamCenter.search')" :placeholder="t('upstreamCenter.search')" /></div>
@@ -38,7 +38,7 @@
             <EmptyState v-else class="card py-12" :title="t(tab === 'suppliers' ? 'upstreamCenter.emptySuppliers' : 'upstreamCenter.emptyMonitors')" :description="t(tab === 'suppliers' ? 'upstreamCenter.emptySuppliersHint' : 'upstreamCenter.emptyMonitorsHint')" :action-text="t(tab === 'suppliers' ? 'upstreamCenter.addSupplier' : 'upstreamCenter.addMonitor')" @action="tab === 'suppliers' ? openSupplier() : openTarget()"><template #icon><Icon :name="tab === 'suppliers' ? 'server' : 'chart'" size="xl" class="text-primary-500" /></template></EmptyState>
             </div>
           </div>
-          <p v-if="overview && tab === 'suppliers'" class="text-[10px] leading-5 text-gray-400 dark:text-dark-400">{{ t(overview.summary.history_sync_pending ? profitPendingKey(overview.summary) : actualProfit(overview.summary) == null ? 'upstreamCenter.financeUnavailable' : 'upstreamCenter.finance.note') }}<span class="ml-1">{{ t('upstreamCenter.finance.accountingDate', { from: dateTime(overview.summary.from), to: dateTime(overview.summary.to) }) }}</span><span v-if="actualProfit(overview.summary) != null && overview.summary.remote_synced_at" class="ml-1">{{ t('upstreamCenter.wallet.syncedAt', { time: dateTime(overview.summary.remote_synced_at) }) }}</span></p>
+          <p v-if="overview && tab === 'suppliers'" class="text-[10px] leading-5 text-gray-400 dark:text-dark-400">{{ t('upstreamCenter.totalFinance.basis') }}<span class="ml-1">{{ t('upstreamCenter.finance.accountingDate', { from: dateTime(overview.summary.from), to: dateTime(overview.summary.to) }) }}</span><span v-if="overview.summary.remote_synced_at" class="ml-1">{{ t('upstreamCenter.wallet.syncedAt', { time: dateTime(overview.summary.remote_synced_at) }) }}</span></p>
           <p v-else-if="overview" class="text-[10px] leading-5 text-gray-400 dark:text-dark-400">{{ t('upstreamCenter.latencyHint') }}</p>
         </template>
       </div>
@@ -74,7 +74,7 @@ import UpstreamTargetDialog from '@/components/admin/upstream/UpstreamTargetDial
 import UpstreamDetailDialog from '@/components/admin/upstream/UpstreamDetailDialog.vue'
 import UpstreamOrderDialog from '@/components/admin/upstream/UpstreamOrderDialog.vue'
 import { upstreamCenterAPI, type UpstreamHistoryRecord, type UpstreamOverview, type UpstreamSupplier, type UpstreamTarget, type UpstreamWindow } from '@/api/admin/upstreamCenter'
-import { actualProfit, actualUpstreamUsed, profitPendingKey, dateTime, financeSource, money, shortTime, overallTargetStatus } from '@/components/admin/upstream/format'
+import { actualUpstreamUsed, dateTime, financeSource, money, shortTime, overallTargetStatus } from '@/components/admin/upstream/format'
 import { extractApiErrorMessage } from '@/utils/apiError'
 import { useAppStore } from '@/stores/app'
 import { useMonitorRefresh } from '@/composables/useMonitorRefresh'
@@ -154,12 +154,26 @@ function openGroupOrder(supplier: UpstreamSupplier) { ordering.value = { scope: 
 function orderSaved() { ordering.value = null; void reload() }
 const supplierMetrics = computed(() => {
   const summary = overview.value?.summary
-  const profit = actualProfit(summary)
+  // Top-level totals are the difference between the displayed amounts. A
+  // delayed or missing Key must not hide the entire total; only verified
+  // same-day upstream costs from the server are included in this subtotal.
+  const reportedCost = actualUpstreamUsed(summary)
+  const hasCost = typeof reportedCost === 'number' && Number.isFinite(reportedCost) && reportedCost >= 0
+  const cost = hasCost ? reportedCost : 0
+  const revenue = Number.isFinite(summary?.revenue) ? summary!.revenue : 0
+  const profit = revenue - cost
+  const notes: string[] = []
+  if (!hasCost) notes.push(t('upstreamCenter.totalFinance.noCost'))
+  if (summary?.missing_key_count) notes.push(t('upstreamCenter.totalFinance.missing', { count: summary.missing_key_count }))
+  else if (summary?.cost_partial) notes.push(t('upstreamCenter.totalFinance.partial'))
+  if (hasCost && summary?.remote_stale) notes.push(t('upstreamCenter.totalFinance.stale'))
+  if (summary?.history_sync_pending) notes.push(t('upstreamCenter.totalFinance.incomePending'))
+  const profitNote = notes.join(' · ') || (summary?.remote_synced_at ? t('upstreamCenter.wallet.syncedAt', { time: dateTime(summary.remote_synced_at) }) : t('upstreamCenter.totalFinance.basis'))
   return [
     { key: 'upstreamCenter.supplierCount', value: overview.value?.suppliers.length || 0, icon: 'server' as const, color: '', note: t('upstreamCenter.groupCount', { count: allGroups.value.length }) },
-    { key: 'upstreamCenter.finance.todayCost', value: money(actualUpstreamUsed(summary), summary?.currency), icon: 'creditCard' as const, color: '', note: t(summary?.remote_stale ? 'upstreamCenter.finance.stale' : `upstreamCenter.finance.${financeSource(summary)}`) },
-    { key: 'upstreamCenter.finance.todayRevenue', value: money(summary?.revenue, summary?.currency), icon: 'chart' as const, color: '', note: summary?.history_sync_pending ? t('upstreamCenter.finance.historySyncPending') : t('upstreamCenter.finance.requests', { count: summary?.request_count || 0 }) },
-    { key: 'upstreamCenter.finance.todayProfit', value: profit == null ? t(profitPendingKey(summary)) : money(profit, summary?.currency), icon: 'chart' as const, color: profit == null ? '!text-sm !text-amber-600 dark:!text-amber-400' : profit < 0 ? '!text-rose-600 dark:!text-rose-400' : '!text-primary-700 dark:!text-primary-300', note: financeSource(summary) === 'reported' && summary?.remote_synced_at ? t('upstreamCenter.wallet.syncedAt', { time: dateTime(summary.remote_synced_at) }) : t(`upstreamCenter.finance.${financeSource(summary)}`) },
+    { key: 'upstreamCenter.finance.todayCost', value: money(cost, summary?.currency), icon: 'creditCard' as const, color: '', note: hasCost ? t(summary?.remote_stale ? 'upstreamCenter.finance.stale' : `upstreamCenter.finance.${financeSource(summary)}`) : t('upstreamCenter.totalFinance.noCost') },
+    { key: 'upstreamCenter.finance.todayRevenue', value: money(revenue, summary?.currency), icon: 'chart' as const, color: '', note: summary?.history_sync_pending ? t('upstreamCenter.finance.historySyncPending') : t('upstreamCenter.finance.requests', { count: summary?.request_count || 0 }) },
+    { key: 'upstreamCenter.finance.todayProfit', value: money(profit, summary?.currency), icon: 'chart' as const, color: profit < 0 ? '!text-rose-600 dark:!text-rose-400' : '!text-primary-700 dark:!text-primary-300', note: profitNote },
   ]
 })
 const monitorMetrics = computed(() => {

@@ -108,7 +108,17 @@ func (s *UpstreamCenterService) AccountMonitor(ctx context.Context, id int64, en
 				Models: []string{defaultUpstreamMonitorModel(identity.Provider)}, Enabled: false, IntervalSeconds: defaultUpstreamMonitorIntervalSeconds, TimeoutSeconds: 45, DegradedThresholdMs: 6000,
 				WalletRef: "default", APIKeyFingerprint: identity.Fingerprint, AccountIDs: []int64{id}}
 			key := strings.TrimSpace(identity.Credentials.APIKey)
-			if err := validateUpstreamTargetConfig(candidate, key, true); err != nil {
+			if err := validateUpstreamTargetConfig(candidate, key, false); err != nil {
+				return nil, err
+			}
+			routeCtx, proxyClient, err := s.targetRequestRoute(ctx, candidate, key, 15*time.Second)
+			if err != nil {
+				return nil, err
+			}
+			if proxyClient != nil {
+				defer proxyClient.CloseIdleConnections()
+			}
+			if err := validateUpstreamRequestEndpoint(routeCtx, candidate.Endpoint); err != nil {
 				return nil, err
 			}
 			candidate.APIKeyEncrypted, err = s.encryptor.Encrypt(key)

@@ -34,7 +34,11 @@ func monitorSourceFixture() (*UpstreamCenterService, *upstreamMonitorSourceTestR
 	source.NewAPIUserID, source.NewAPIAccessTokenEncrypted = 42, "encrypted:source-console"
 	source.NewAPICredentialsInherited = true
 	repo := &upstreamMonitorSourceTestRepo{upstreamTestRepo: &upstreamTestRepo{}, source: source}
-	return NewUpstreamCenterService(repo, upstreamTestEncryptor{}, nil, nil), repo
+	accounts := &upstreamProxyAccounts{accounts: map[int64]*Account{}}
+	for _, id := range source.AccountIDs {
+		accounts.accounts[id] = &Account{ID: id, Type: AccountTypeAPIKey, Platform: source.Provider, Credentials: map[string]any{"base_url": source.Endpoint, "api_key": "secret-testing-key"}}
+	}
+	return NewUpstreamCenterService(repo, upstreamTestEncryptor{}, accounts, nil), repo
 }
 
 func TestUpstreamMonitorSourceImportsGroupWithoutBusinessBindings(t *testing.T) {
@@ -167,6 +171,9 @@ func TestUpstreamMonitorSourceDetachAcceptsExplicitIndependentAuthorization(t *t
 func TestUpstreamMonitorSourceModelsUsesSavedGroupWithoutBindings(t *testing.T) {
 	svc, repo := monitorSourceFixture()
 	repo.source.Provider = MonitorProviderOpenAI
+	for _, account := range svc.accounts.(*upstreamProxyAccounts).accounts {
+		account.Platform = MonitorProviderOpenAI
+	}
 	calls := 0
 	svc.modelsClient.Transport = upstreamModelsTransport(func(r *http.Request) (*http.Response, error) {
 		calls++

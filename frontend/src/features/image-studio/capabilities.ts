@@ -1,3 +1,4 @@
+import { isVideoGenerationModel, isVideo15Model } from '@/features/video-studio/capabilities'
 import type {
   GenerateImageRequest,
   ImageAspectRatio,
@@ -66,9 +67,16 @@ export function isImageStudioPlatform(platform: string | undefined): platform is
 
 export function isImageGenerationModel(platform: ImageStudioPlatform, modelId: string): boolean {
   const id = modelId.trim().toLowerCase()
+  if (isVideoOnlyModel(id)) return false
   if (platform === 'openai') return id.startsWith('gpt-image-')
   if (platform === 'gemini') return /(?:image|imagen|nano[-_ ]?banana)/i.test(id)
   return id === 'grok-imagine-image' || id === 'grok-imagine-image-quality' || id === 'grok-imagine-image-2.0'
+}
+
+function isVideoOnlyModel(modelId: string): boolean {
+  const id = modelId.trim().toLowerCase().replace(/^models\//, '')
+  return isVideoGenerationModel(id) || isVideo15Model(id)
+    || /(?:^|[-_/. ])(?:videos?|veo|sora|seedance|t2v|i2v)(?=$|[-_/. ]|\d)/.test(id)
 }
 
 export function filterImageModels(platform: ImageStudioPlatform, models: ImageModel[]): ImageModel[] {
@@ -76,6 +84,8 @@ export function filterImageModels(platform: ImageStudioPlatform, models: ImageMo
   return models.filter((model) => {
     const id = model.id?.trim()
     if (!id || seen.has(id.toLowerCase())) return false
+    // Older gateways may label per-request video pricing as image capability.
+    if (model.video_generation === true || isVideoOnlyModel(id)) return false
     if (model.image_generation === false || (model.image_generation !== true && !isImageGenerationModel(platform, id))) return false
     seen.add(id.toLowerCase())
     return true

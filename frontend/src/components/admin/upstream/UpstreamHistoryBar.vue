@@ -15,7 +15,7 @@
             <div class="font-semibold" :class="record.status === 'error' || record.status === 'failed' ? 'text-rose-400' : record.status === 'degraded' ? 'text-amber-300' : 'text-emerald-400'">{{ t(`upstreamCenter.status.${record.status}`) }}<span v-if="record.http_status"> · HTTP {{ record.http_status }}</span></div>
             <div class="break-words">{{ t('upstreamCenter.model') }}: {{ record.model }}</div>
             <div>{{ t('upstreamCenter.responseLatency') }}: {{ latency(record.latency_ms) }}</div>
-            <div v-if="record.message" class="max-h-48 overflow-auto whitespace-pre-wrap break-words" :class="record.status === 'error' || record.status === 'failed' ? 'text-rose-200' : 'text-gray-200'">{{ record.message }}</div>
+            <div v-if="record.message" class="max-h-48 overflow-auto whitespace-pre-wrap break-words" :class="record.status === 'error' || record.status === 'failed' ? 'text-rose-200' : 'text-gray-200'">{{ upstreamSyncError(record.message, t) }}</div>
           </div>
         </HelpTooltip>
         <span v-else class="history-bar history-bar--empty" data-status="unknown" aria-hidden="true"></span>
@@ -35,6 +35,7 @@ import { useClipboard } from '@/composables/useClipboard'
 import type { UpstreamHistoryRecord } from '@/api/admin/upstreamCenter'
 import { dateTime, latency, recentHistory } from './format'
 import { useUpstreamHistoryClock } from './useUpstreamHistoryClock'
+import { upstreamSyncError } from './newapi'
 const props = withDefaults(defineProps<{ records?: UpstreamHistoryRecord[]; lastCheckedAt?: string | null; enabled?: boolean; legend?: boolean }>(), { records: () => [], lastCheckedAt: null, enabled: false, legend: false })
 const emit = defineEmits<{ select: [record: UpstreamHistoryRecord] }>()
 const { t, locale } = useI18n()
@@ -56,9 +57,9 @@ const updatedLabel = computed(() => {
 })
 const colors: Record<string, string> = { operational: 'history-bar--success', degraded: 'history-bar--degraded', error: 'history-bar--failure', failed: 'history-bar--failure' }
 function barClass(record: UpstreamHistoryRecord) { return colors[record.status] || 'history-bar--empty' }
-function recordLabel(record: UpstreamHistoryRecord) { return `${dateTime(record.checked_at)} · ${record.model} · ${t(`upstreamCenter.status.${record.status}`)} · ${latency(record.latency_ms)}${record.http_status ? ` · HTTP ${record.http_status}` : ''}${record.message ? ` · ${record.message}` : ''}` }
+function recordLabel(record: UpstreamHistoryRecord) { return `${dateTime(record.checked_at)} · ${record.model} · ${t(`upstreamCenter.status.${record.status}`)} · ${latency(record.latency_ms)}${record.http_status ? ` · HTTP ${record.http_status}` : ''}${record.message ? ` · ${upstreamSyncError(record.message, t)}` : ''}` }
 function copyDetails(record: UpstreamHistoryRecord) {
-  void copyToClipboard([dateTime(record.checked_at), `${t('upstreamCenter.model')}: ${record.model}`, t(`upstreamCenter.status.${record.status}`), `${t('upstreamCenter.responseLatency')}: ${latency(record.latency_ms)}`, record.http_status ? `HTTP ${record.http_status}` : '', record.message].filter(Boolean).join('\n'))
+  void copyToClipboard([dateTime(record.checked_at), `${t('upstreamCenter.model')}: ${record.model}`, t(`upstreamCenter.status.${record.status}`), `${t('upstreamCenter.responseLatency')}: ${latency(record.latency_ms)}`, record.http_status ? `HTTP ${record.http_status}` : '', upstreamSyncError(record.message, t)].filter(Boolean).join('\n'))
 }
 </script>
 <style scoped>

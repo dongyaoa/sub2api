@@ -7,7 +7,9 @@ const { listKeys, listModels, getPricing, showError } = vi.hoisted(() => ({
   listKeys: vi.fn(), listModels: vi.fn(), getPricing: vi.fn(), showError: vi.fn(),
 }))
 
-vi.mock('../access', () => ({ listEligibleImageKeys: listKeys }))
+vi.mock('../access', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../access')>(), listEligibleImageKeys: listKeys,
+}))
 vi.mock('../api', () => ({
   listImageModels: listModels,
   getImageModelPricing: getPricing,
@@ -68,6 +70,76 @@ beforeEach(() => {
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
 describe('image studio model and billing integration', () => {
+  it('selects only image models from a mixed catalog with incorrect video image flags', async () => {
+    listModels.mockResolvedValue({ object: 'list', data: [
+      { id: 'gemini-omni-1.2-flash', image_generation: true },
+      { id: 'muse-video', image_generation: true },
+      { id: 'gemini-nano-banana-2.1', image_generation: true },
+    ] })
+    const wrapper = mountStudio()
+    try {
+      await flushPromises()
+      const select = wrapper.find('#image-studio-model')
+      expect(select.findAll('option').map(option => option.attributes('value'))).toEqual(['gemini-nano-banana-2.1'])
+      expect((select.element as HTMLSelectElement).value).toBe('gemini-nano-banana-2.1')
+      expect(getPricing.mock.calls.every(([, model]) => model === 'gemini-nano-banana-2.1')).toBe(true)
+    } finally { wrapper.unmount() }
+  })
+
+  it('disables image generation when the group only contains video models', async () => {
+    listModels.mockResolvedValue({ object: 'list', data: [
+      { id: 'gemini-omni-1.2-flash', image_generation: true },
+      { id: 'omni-featured', image_generation: true },
+    ] })
+    const wrapper = mountStudio()
+    try {
+      await flushPromises()
+      await wrapper.find('#image-studio-prompt').setValue('A landscape')
+      expect(wrapper.find('#image-studio-key').exists()).toBe(false)
+      expect(wrapper.text()).toContain('imageStudio.noKeys')
+      expect(wrapper.find('#image-studio-model').findAll('option')).toHaveLength(0)
+      expect(wrapper.find('button[type="submit"]').attributes('disabled')).toBeDefined()
+      expect(getPricing).not.toHaveBeenCalled()
+    } finally { wrapper.unmount() }
+  })
+
+  it('hides video-only and empty groups and falls back from a remembered video key to an image key', async () => {
+    const imageKey = { ...keys[0], id: 3, key: 'key-3', group: { ...keys[0].group, id: 3, platform: 'openai', name: 'Images' } }
+    const emptyKey = { ...keys[0], id: 4, key: 'key-4', group: { ...keys[0].group, id: 4, name: 'Empty' } }
+    listKeys.mockResolvedValue([...keys, imageKey, emptyKey])
+    localStorage.setItem('image_studio_last_key_v1:local', '1')
+    listModels.mockImplementation(async (key: string) => ({ object: 'list', data:
+      key === 'key-1' ? [{ id: 'gemini-omni-1.2-flash', image_generation: true }]
+        : key === 'key-2' ? [{ id: 'gemini-omni-1.2-flash', image_generation: true }, { id: 'custom-art', image_generation: true }]
+        : key === 'key-3' ? [{ id: 'gpt-image-2', image_generation: true }] : [],
+    }))
+    const wrapper = mountStudio()
+    try {
+      await flushPromises()
+      const selector = wrapper.find('#image-studio-key')
+      expect(selector.findAll('option').map(option => option.attributes('value'))).toEqual(['2', '3'])
+      expect((selector.element as HTMLSelectElement).value).toBe('3')
+      expect((wrapper.find('#image-studio-model').element as HTMLSelectElement).value).toBe('gpt-image-2')
+      expect(listModels).toHaveBeenCalledTimes(4)
+      await selector.setValue('2')
+      await flushPromises()
+      expect(wrapper.find('#image-studio-model').findAll('option').map(option => option.attributes('value'))).toEqual(['custom-art'])
+    } finally { wrapper.unmount() }
+  })
+
+  it('removes a group if its refreshed catalog no longer has image models', async () => {
+    const wrapper = mountStudio()
+    try {
+      await flushPromises()
+      listModels.mockResolvedValue({ object: 'list', data: [{ id: 'gemini-omni-1.2-flash', image_generation: true }] })
+      await wrapper.find('#image-studio-key').setValue('2')
+      await flushPromises()
+      expect(wrapper.find('#image-studio-key').findAll('option').map(option => option.attributes('value'))).toEqual(['1'])
+      expect(wrapper.find('#image-studio-model').findAll('option')).toHaveLength(0)
+      expect(wrapper.find('button[type="submit"]').attributes('disabled')).toBeDefined()
+    } finally { wrapper.unmount() }
+  })
+
   it('accepts fourteen Gemini references, refuses excess files, and allows replacing a removed image', async () => {
     const revokeURL = vi.fn()
     vi.stubGlobal('URL', class extends URL {

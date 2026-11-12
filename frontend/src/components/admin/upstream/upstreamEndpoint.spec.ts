@@ -9,6 +9,9 @@ describe('upstream endpoint syntax', () => {
     expect(isValidUpstreamEndpoint(endpoint)).toBe(false)
   })
   it('maps backend endpoint failures without hiding unrelated errors', () => {
+    expect(upstreamEndpointErrorKey({ reason: 'UPSTREAM_PROXY_UNAVAILABLE' })).toBe('upstreamCenter.syncErrors.proxyUnavailable')
+    expect(upstreamEndpointErrorKey({ reason: 'UPSTREAM_PROXY_CONFLICT' })).toBe('upstreamCenter.syncErrors.proxyConflict')
+    expect(upstreamEndpointErrorKey({ reason: 'UPSTREAM_PROXY_ACCOUNT_MISMATCH' })).toBe('upstreamCenter.syncErrors.proxyAccountMismatch')
     expect(upstreamEndpointErrorKey({ reason: 'CHANNEL_MONITOR_ENDPOINT_PRIVATE' })).toBe('upstreamCenter.endpointError.private')
     expect(upstreamEndpointErrorKey({ reason: 'CHANNEL_MONITOR_ENDPOINT_UNREACHABLE' })).toBe('upstreamCenter.endpointError.unreachable')
     expect(upstreamEndpointErrorKey({ metadata: { field: 'endpoint' }, message: 'invalid upstream configuration' })).toBe('upstreamCenter.form.validUrl')

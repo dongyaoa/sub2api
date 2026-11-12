@@ -245,7 +245,7 @@ func TestIntelligenceHTTPExecutionKeepsCapturedTimeoutAcrossSources(t *testing.T
 			repo := &intelligenceTestRepository{}
 			groupID, keyID := int64(9), int64(22)
 			key := "generation-fixture-key"
-			upstreams := &upstreamTestRepo{target: &UpstreamTarget{ID: 7, Name: "fixture", Endpoint: "https://8.8.8.8", APIKeyEncrypted: "encrypted:" + key}}
+			upstreams := &upstreamTestRepo{target: &UpstreamTarget{ID: 7, Name: "fixture", Provider: MonitorProviderOpenAI, Endpoint: "https://8.8.8.8", APIKeyEncrypted: "encrypted:" + key}}
 			keyRepo := &intelligenceKeyRepoStub{key: &APIKey{ID: keyID, UserID: 1, GroupID: &groupID, Key: key, Status: StatusActive}}
 			svc := NewIntelligenceMonitorService(repo, upstreamTestEncryptor{}, upstreams, nil, &APIKeyService{apiKeyRepo: keyRepo}, nil, nil)
 			calls := 0

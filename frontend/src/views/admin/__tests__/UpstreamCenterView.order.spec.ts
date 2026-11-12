@@ -10,9 +10,11 @@ vi.mock('@/stores/app', () => ({ useAppStore: () => ({ showSuccess: mocks.showSu
 vi.mock('vue-i18n', async importOriginal => {
   const original = await importOriginal<typeof import('vue-i18n')>()
   const { default: messages } = await import('@/i18n/locales/zh/upstreamCenter')
-  return { ...original, useI18n: () => ({ t: (key: string) => {
+  return { ...original, useI18n: () => ({ t: (key: string, values: Record<string, unknown> = {}) => {
     const [, section, name] = key.split('.')
-    return section === 'finance' ? (messages.upstreamCenter.finance as Record<string, string>)[name!] || key : key
+    if (section !== 'finance' && section !== 'totalFinance') return key
+    const text = (messages.upstreamCenter[section] as Record<string, string>)[name!] || key
+    return text.replace(/\{(\w+)\}/g, (placeholder, field) => String(values[field] ?? placeholder))
   } }) }
 })
 const supplierCard = defineComponent({ props: ['supplier', 'syncingIds', 'busyIds'], emits: ['order-groups', 'delete', 'intelligence', 'force-sync', 'sync'], template: '<article data-supplier><h2>{{ supplier.name }}</h2><button data-group-order @click="$emit(\'order-groups\',supplier)">groups</button></article>' })
@@ -80,21 +82,59 @@ describe('upstream center manual ordering', () => {
     expect(mocks.showSuccess).not.toHaveBeenCalled()
     expect(kind === 'info' ? mocks.showInfo : mocks.showError).toHaveBeenCalledWith(expect.stringContaining(`upstreamCenter.newapi.${message}`))
   })
-  it('shows unreconciled Chinese labels instead of a legacy estimated negative profit', async () => {
+  it('shows a numeric total without using legacy estimated cost or profit', async () => {
     const data = overview()
-    data.summary = { revenue: 0, remote_used: null, profit: -0.007152, cost_source: 'estimated', currency: 'USD', request_count: 0 } as UpstreamOverview['summary']
+    data.summary = { revenue: 0, remote_used: null, business_cost: 999, profit: -0.007152, cost_source: 'estimated', currency: 'USD', request_count: 0 } as UpstreamOverview['summary']
     mocks.overview.mockResolvedValue(data)
     const view = render(); await flushPromises()
     const cards = view.findAll('section[aria-label="消费与利润"] > div')
     expect(cards).toHaveLength(4)
     expect(cards[1]!.text()).toContain('上游今日实际消费')
-    expect(cards[1]!.text()).toContain('旧版预估，待实报同步')
-    expect(cards[1]!.text()).toContain('—')
-    expect(cards[3]!.text()).toContain('等待上游消费')
+    expect(cards[1]!.findAll('p')[1].text()).toBe('$0.00')
+    expect(cards[1]!.text()).toContain('已计入成本合计暂为 0')
+    expect(cards[3]!.findAll('p')[1].text()).toBe('$0.00')
+    expect(cards[3]!.text()).not.toContain('等待上游消费')
     expect(cards[3]!.text()).not.toContain('0.007152')
     expect(cards[3]!.text()).not.toContain('upstreamCenter.finance.')
-    expect(view.text()).toContain('upstreamCenter.financeUnavailable')
-    expect(view.text()).not.toContain('利润 =')
+    expect(view.text()).not.toContain('upstreamCenter.financeUnavailable')
+    expect(view.text()).toContain('总利润 = 今日用户消费合计')
+  })
+  it('keeps the total visible during a stale upstream sync and updates it when costs catch up', async () => {
+    const data = overview()
+    data.summary = { revenue: 2451.88, remote_used: 1607.51, profit: null, remote_stale: true, cost_source: 'reported', currency: 'USD' } as UpstreamOverview['summary']
+    mocks.overview.mockResolvedValue(data)
+    const view = render(); await flushPromises()
+    let cards = view.findAll('section[aria-label="消费与利润"] > div')
+    expect(cards[1].findAll('p')[1].text()).toBe('$1,607.51')
+    expect(cards[2].findAll('p')[1].text()).toBe('$2,451.88')
+    expect(cards[3].findAll('p')[1].text()).toBe('$844.37')
+    expect(cards[3].text()).toContain('按当天最近一次成功同步的消费计算')
+    expect(cards[3].text()).not.toContain('等待上游消费')
+    mocks.overview.mockResolvedValue({ ...data, summary: { ...data.summary, remote_used: 1700, profit: 751.88, remote_stale: false } })
+    await view.get('[data-testid="upstream-refresh"]').trigger('click'); await flushPromises()
+    cards = view.findAll('section[aria-label="消费与利润"] > div')
+    expect(cards[1].findAll('p')[1].text()).toBe('$1,700.00')
+    expect(cards[3].findAll('p')[1].text()).toBe('$751.88')
+    expect(cards[3].text()).not.toContain('按当天最近一次成功同步的消费计算')
+  })
+  it.each([
+    { name: 'some costs missing', summary: { revenue: 200, remote_used: 70, cost_partial: true, missing_key_count: 2 }, cost: '$70.00', profit: '$130.00', note: '暂未计入成本' },
+    { name: 'all costs missing', summary: { revenue: 200, remote_used: null, cost_source: 'unknown', cost_partial: true, missing_key_count: 3 }, cost: '$0.00', profit: '$200.00', note: '已计入成本合计暂为 0' },
+    { name: 'local income import pending', summary: { revenue: 70, remote_used: 20, history_sync_pending: 1 }, cost: '$20.00', profit: '$50.00', note: '本站今日消费仍在补齐' },
+    { name: 'zero recorded usage', summary: { revenue: 0, remote_used: 0 }, cost: '$0.00', profit: '$0.00', note: '' },
+    { name: 'negative total', summary: { revenue: 10, remote_used: 20 }, cost: '$20.00', profit: '-$10.00', note: '' },
+  ])('shows the current difference for $name', async ({ summary, cost, profit, note }) => {
+    const data = overview()
+    data.summary = { cost_source: 'reported', currency: 'USD', profit: null, ...summary } as UpstreamOverview['summary']
+    mocks.overview.mockResolvedValue(data)
+    const view = render(); await flushPromises()
+    const cards = view.findAll('section[aria-label="消费与利润"] > div')
+    expect(cards[1].findAll('p')[1].text()).toBe(cost)
+    expect(cards[3].findAll('p')[1].text()).toBe(profit)
+    expect(cards[3].text()).not.toContain('等待上游消费')
+    if (note) expect(cards[3].text()).toContain(note)
+    if ('missing_key_count' in summary) expect(cards[3].text()).toContain(`${summary.missing_key_count} 个 Key`)
+    if (summary.revenue < (summary.remote_used ?? 0)) expect(cards[3].findAll('p')[1].classes()).toContain('!text-rose-600')
   })
   it('opens a dedicated local group tab and retains its panel while other intelligence tabs are shown', async () => {
     const view = render(); await flushPromises()

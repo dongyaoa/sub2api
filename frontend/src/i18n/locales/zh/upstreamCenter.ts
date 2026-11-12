@@ -1,5 +1,14 @@
 export default {
   upstreamCenter: {
+    accountProxyHint: '监测、模型获取及消费与余额同步会自动使用绑定账号当前的出口代理，无需重复配置。',
+    totalFinance: {
+      basis: '总利润 = 今日用户消费合计 − 已同步的今日上游消费合计，随同步数据更新。',
+      noCost: '尚未取得今日上游消费，已计入成本合计暂为 0',
+      missing: '{count} 个 Key 的今日消费待核对，暂未计入成本',
+      partial: '部分 Key 今日消费待核对，暂未计入成本',
+      stale: '按当天最近一次成功同步的消费计算',
+      incomePending: '本站今日消费仍在补齐，金额会继续更新',
+    },
     floatingSwitch: '切换上游', collapseSwitch: '收起上游切换', backToTop: '回到顶部',
     navigation: { title: '上游目录', settings: '总设置', show: '显示上游目录', showHint: '在卡片旁显示目录，方便快速切换上游。', position: '目录位置', positionHint: '选择桌面端的显示位置，小屏幕下目录使用横向滚动。', savedHint: '修改立即生效，并保存在当前浏览器。', left: '左侧', right: '右侧', hint: '选择上游，快速查看分组与用量' },
     endpointError: { private: '请使用公网地址；暂不支持内网、回环或云元数据地址。', unreachable: '无法解析上游地址，请检查域名或 IP 是否正确。' },
@@ -36,6 +45,10 @@ export default {
     },
     localBadge: '站内', localBadgeHint: '包含已关联站内 API Key 账号的分组',
     syncErrors: {
+      proxyUnavailable: '绑定账号的出口代理不可用，请在账号管理中检查代理配置、状态和有效期。',
+      proxyConflict: '绑定账号的出口代理配置不一致，请统一代理配置或拆分为不同 Key 分组。',
+      proxyAccountMismatch: '绑定账号的地址、协议或 Key 已变化，请重新绑定对应账号后同步。',
+      proxyRequestFailed: '通过绑定账号的出口代理访问上游失败，请检查代理是否可用。',
       timeout: '上游统计接口响应超时，将自动重试；模型检测正常不代表统计接口同样正常。',
       dnsFailed: '服务器无法解析上游域名，请检查服务器的 DNS。',
       tlsFailed: '无法验证上游 HTTPS 连接，请检查上游证书和服务器时间。',

@@ -5,5 +5,6 @@ export default {
     switcher: 'Creation type',
     image: 'Images',
     video: 'Videos',
+    recentHistory: 'Latest {count}',
   },
 }

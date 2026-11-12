@@ -45,8 +45,19 @@ func (s *IntelligenceMonitorService) generate(ctx context.Context, run *Intellig
 		return nil, "", "unsupported intelligence model"
 	}
 	client, endpoint := s.clientAndEndpoint(run)
+	if run.SourceType == "upstream" {
+		routeCtx, routeClient, err := s.upstreamGenerationRoute(ctx, run, key)
+		if err != nil {
+			return nil, "", upstreamProxyErrorCode(err)
+		}
+		ctx = routeCtx
+		if routeClient != nil {
+			defer routeClient.CloseIdleConnections()
+			client = routeClient
+		}
+	}
 	if run.SourceType != "local_group" {
-		if err := validateUpstreamEndpoint(endpoint); err != nil {
+		if err := validateUpstreamRequestEndpoint(ctx, endpoint); err != nil {
 			return nil, "", "upstream endpoint is unavailable or rejected by the public HTTP/HTTPS policy"
 		}
 	}

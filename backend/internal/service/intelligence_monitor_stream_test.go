@@ -23,6 +23,10 @@ func TestIntelligenceStreamingCompletesWithoutWaitingForConnectionClose(t *testi
 				defer writer.Close()
 				defer reader.Close()
 				svc := NewIntelligenceMonitorService(nil, nil, nil, nil, nil, nil, nil)
+				if source == "upstream" {
+					svc.encryptor = upstreamTestEncryptor{}
+					svc.upstreams = &upstreamTestRepo{target: &UpstreamTarget{ID: 7, Provider: MonitorProviderOpenAI, Endpoint: "https://8.8.8.8", APIKeyEncrypted: "encrypted:private-fixture-key"}}
+				}
 				calls := 0
 				client := &http.Client{Transport: upstreamModelsTransport(func(req *http.Request) (*http.Response, error) {
 					calls++
@@ -65,7 +69,7 @@ func TestIntelligenceStreamingCompletesWithoutWaitingForConnectionClose(t *testi
 				defer cancel()
 				stopClose := context.AfterFunc(ctx, func() { _ = reader.CloseWithError(ctx.Err()) })
 				defer stopClose()
-				status, text, message := svc.generate(ctx, &IntelligenceMonitorRun{SourceType: source, SourceEndpoint: "https://8.8.8.8", APIMode: mode, SourceSnapshot: map[string]any{"local_api_key_id": int64(72)}}, "private-fixture-key")
+				status, text, message := svc.generate(ctx, &IntelligenceMonitorRun{SourceType: source, SourceEndpoint: "https://8.8.8.8", APIMode: mode, SourceSnapshot: map[string]any{"local_api_key_id": int64(72), "upstream_target_id": int64(7)}}, "private-fixture-key")
 				require.NoError(t, ctx.Err(), "must finish on terminal event, before cancellation")
 				require.Empty(t, message)
 				require.Equal(t, 200, *status)

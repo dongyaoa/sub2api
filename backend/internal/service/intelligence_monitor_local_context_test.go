@@ -213,9 +213,13 @@ func TestIntelligenceLocalGeneratePermitScopedAndCleaned(t *testing.T) {
 				return nil, errors.New("simulated dispatch failure")
 			})}
 			svc := &IntelligenceMonitorService{localClient: client, externalClient: client, localEndpoint: "http://127.0.0.1:8081"}
+			if source == "upstream" {
+				svc.encryptor = upstreamTestEncryptor{}
+				svc.upstreams = &upstreamTestRepo{target: &UpstreamTarget{ID: 7, Provider: MonitorProviderOpenAI, Endpoint: "https://8.8.8.8", APIKeyEncrypted: "encrypted:monitor-secret"}}
+			}
 			ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 			defer cancel()
-			_, _, message := svc.generate(ctx, &IntelligenceMonitorRun{SourceType: source, SourceEndpoint: "https://8.8.8.8", SourceSnapshot: map[string]any{"local_api_key_id": int64(72)}}, "monitor-secret")
+			_, _, message := svc.generate(ctx, &IntelligenceMonitorRun{SourceType: source, SourceEndpoint: "https://8.8.8.8", SourceSnapshot: map[string]any{"local_api_key_id": int64(72), "upstream_target_id": int64(7)}}, "monitor-secret")
 			require.Contains(t, message, "failed to connect")
 			if source == "local_group" {
 				require.Len(t, token, 64)

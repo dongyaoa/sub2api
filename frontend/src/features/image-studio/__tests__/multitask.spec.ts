@@ -9,7 +9,9 @@ const api = vi.hoisted(() => ({
   showError: vi.fn(), showSuccess: vi.fn(),
 }))
 
-vi.mock('../access', () => ({ listEligibleImageKeys: api.listKeys }))
+vi.mock('../access', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../access')>(), listEligibleImageKeys: api.listKeys,
+}))
 vi.mock('../api', () => ({
   listImageModels: api.listModels,
   getImageModelPricing: api.getPricing,
@@ -72,6 +74,30 @@ beforeEach(() => {
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
 describe('image studio independent tasks', () => {
+  it('keeps history and polling for a hidden group while selecting an image-capable key', async () => {
+    localStorage.setItem('image_studio_last_key_v1:1', '1')
+    api.listModels.mockImplementation(async (key: string) => ({ object: 'list', data: key === 'key-1'
+      ? [{ id: 'gemini-omni-1.2-flash', image_generation: true }]
+      : [{ id: 'gemini-nano-banana-2.1', image_generation: true }],
+    }))
+    api.listTasks.mockImplementation(async (key: string) => ({ tasks: key === 'key-1'
+      ? [task('hidden-history', 'completed'), task('hidden-running')] : [], retentionDays: 7 }))
+    api.getTask.mockImplementation(() => new Promise(() => {}))
+    const wrapper = mountStudio()
+    try {
+      await flushPromises()
+      const selector = wrapper.find('#image-studio-key')
+      expect(selector.findAll('option').map(option => option.attributes('value'))).toEqual(['2'])
+      expect((selector.element as HTMLSelectElement).value).toBe('2')
+      await vi.waitFor(() => expect(api.getTask).toHaveBeenCalledWith('key-1', 'hidden-running', expect.any(AbortSignal)))
+      await wrapper.find('button[title="hidden-history"]').trigger('click')
+      expect(wrapper.find('.studio-canvas img[src="https://images.example/hidden-history.png"]').exists()).toBe(true)
+      await wrapper.find('.studio-canvas').findAll('button').find(button => button.text() === 'imageStudio.reuseParameters')!.trigger('click')
+      expect(api.showError).toHaveBeenCalledWith('imageStudio.reuseKeyUnavailable')
+      expect((selector.element as HTMLSelectElement).value).toBe('2')
+    } finally { wrapper.unmount() }
+  })
+
   it.each(['1:1', '3:2', '2:3', '16:9', '9:16', '4:3', '3:4', '21:9'] as ImageAspectRatio[])(
     'contains %s result images without letting their intrinsic size drive the canvas layout', async (ratio) => {
       const completed = task('canvas-result', 'completed')

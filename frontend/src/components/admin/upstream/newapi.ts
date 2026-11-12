@@ -59,6 +59,10 @@ const errorKeys: Record<string, string> = {
 }
 
 const syncErrorKeys: Record<string, string> = {
+  upstream_proxy_unavailable: 'proxyUnavailable',
+  upstream_proxy_conflict: 'proxyConflict',
+  upstream_proxy_account_mismatch: 'proxyAccountMismatch',
+  upstream_proxy_request_failed: 'proxyRequestFailed',
   upstream_timeout: 'timeout',
   upstream_dns_failed: 'dnsFailed',
   upstream_tls_failed: 'tlsFailed',

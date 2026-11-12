@@ -211,9 +211,18 @@ func TestIntelligenceExecutionTraceDoesNotInventSourcesForExternalGenerations(t 
 			})}
 			svc := &IntelligenceMonitorService{externalClient: client}
 			run := &IntelligenceMonitorRun{SourceType: source, SourceEndpoint: "https://8.8.8.8", SourceSnapshot: map[string]any{"supplier_id": int64(4)}}
+			if source == "upstream" {
+				svc.encryptor = upstreamTestEncryptor{}
+				svc.upstreams = &upstreamTestRepo{target: &UpstreamTarget{ID: 7, Provider: MonitorProviderOpenAI, Endpoint: run.SourceEndpoint, APIKeyEncrypted: "encrypted:sample-key"}}
+				run.SourceSnapshot["upstream_target_id"] = int64(7)
+			}
 			_, _, message := svc.generate(context.Background(), run, "sample-key")
 			require.Empty(t, message)
-			require.Equal(t, map[string]any{"supplier_id": int64(4)}, run.SourceSnapshot)
+			expected := map[string]any{"supplier_id": int64(4)}
+			if source == "upstream" {
+				expected["upstream_target_id"] = int64(7)
+			}
+			require.Equal(t, expected, run.SourceSnapshot)
 		})
 	}
 	_, _, message := (&IntelligenceMonitorService{}).generate(context.Background(), nil, "sample-key")

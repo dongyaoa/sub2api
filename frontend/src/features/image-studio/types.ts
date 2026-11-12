@@ -11,6 +11,7 @@ export interface ImageModel {
   object?: string
   display_name?: string
   image_generation?: boolean
+  video_generation?: boolean
 }
 
 export interface ImageModelsResponse {

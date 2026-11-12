@@ -90,7 +90,8 @@ func TestIntelligenceHTTPUpstreamGeneration(t *testing.T) {
 		require.Equal(t, "Bearer test-http-key", r.Header.Get("Authorization"))
 		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": []string{"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"choices":[{"message":{"content":"<!doctype html><html><body>Pelican</body></html>"}}]}`))}, nil
 	})
-	status, text, message := svc.generate(context.Background(), &IntelligenceMonitorRun{SourceType: "upstream", SourceEndpoint: endpoint, APIMode: MonitorAPIModeChatCompletions}, key)
+	svc.upstreams = &upstreamTestRepo{target: &UpstreamTarget{ID: 7, Provider: MonitorProviderOpenAI, Endpoint: endpoint, APIKeyEncrypted: "encrypted:" + key}}
+	status, text, message := svc.generate(context.Background(), &IntelligenceMonitorRun{SourceType: "upstream", SourceEndpoint: endpoint, APIMode: MonitorAPIModeChatCompletions, SourceSnapshot: map[string]any{"upstream_target_id": int64(7)}}, key)
 	require.Empty(t, message)
 	require.NotNil(t, status)
 	require.Equal(t, http.StatusOK, *status)

@@ -38,6 +38,8 @@ describe('New API sync display', () => {
     expect(upstreamSyncError(code, value => value)).toBe(`upstreamCenter.newapi.errors.${key}`)
   })
   it.each([
+    ['upstream_proxy_unavailable', 'proxyUnavailable'], ['upstream_proxy_conflict', 'proxyConflict'],
+    ['upstream_proxy_account_mismatch', 'proxyAccountMismatch'], ['upstream_proxy_request_failed', 'proxyRequestFailed'],
     ['upstream_timeout', 'timeout'], ['upstream_dns_failed', 'dnsFailed'], ['upstream_tls_failed', 'tlsFailed'],
     ['upstream_connection_failed', 'connectionFailed'], ['upstream_request_cancelled', 'cancelled'],
     ['upstream_request_failed', 'requestFailed'], ['response_read_failed', 'responseReadFailed'],

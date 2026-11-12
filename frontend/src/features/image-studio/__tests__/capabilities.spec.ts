@@ -53,6 +53,29 @@ describe('image studio capabilities', () => {
     ])).toEqual([{ id: 'my-art-model', image_generation: true }])
   })
 
+  it.each(['openai', 'gemini', 'grok'] as const)('excludes video models even with stale image flags on %s', (platform) => {
+    const videos = [
+      'gemini-omni-1.2-flash', 'gemini-omni-1.2', 'omni-1.2', 'omni-featured',
+      'grok-imagine-video', 'grok-imagine-video-1.5', 'grok-imagine-video-1.5-preview',
+      'svggrok-imagine-video-1.5', 'muse-video', 'models/GEMINI-OMNI-1.2-FLASH',
+      'custom-image-to-video', 'veo-3.1', 'sora-2', 'seedance-2', 'custom-t2v-1',
+    ]
+    expect(filterImageModels(platform, [
+      ...videos.map(id => ({ id, image_generation: true })),
+      { id: 'custom-motion', image_generation: true, video_generation: true },
+      { id: 'custom-art', image_generation: true },
+    ])).toEqual([{ id: 'custom-art', image_generation: true }])
+  })
+
+  it('excludes image-to-video names without affecting image model families', () => {
+    expect(filterImageModels('gemini', [
+      { id: 'gemini-image-to-video' },
+      { id: 'gemini-3-pro-image' },
+      { id: 'gemini-nano-banana-2.1' },
+    ]).map(item => item.id)).toEqual(['gemini-3-pro-image', 'gemini-nano-banana-2.1'])
+    expect(filterImageModels('openai', [{ id: 'gpt-image-to-video' }])).toEqual([])
+  })
+
   it('maps OpenAI ratio and tier to supported image sizes', () => {
     expect(getOpenAIImageSize('1:1', '2K')).toBe('1024x1024')
     expect(getOpenAIImageSize('3:2', '2K')).toBe('1536x1024')

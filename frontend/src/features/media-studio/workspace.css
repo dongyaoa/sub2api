@@ -1,0 +1,82 @@
+.media-workspace .media-settings-panel,
+.media-workspace .media-settings-form {
+  display: flex;
+  min-height: 0;
+  flex-direction: column;
+}
+
+.media-workspace .media-settings-form {
+  flex: 1;
+  gap: 0.75rem;
+}
+
+.media-workspace .media-settings-actions {
+  flex: none;
+}
+
+.media-workspace .media-panel-heading {
+  min-height: 2.5rem;
+}
+
+.media-workspace .media-history-list {
+  max-height: 560px;
+  overscroll-behavior: contain;
+}
+
+@media (min-width: 1280px) {
+  .media-workspace {
+    /* App header (65px), page padding (64px); each column includes its heading. */
+    --media-column-height: calc(100vh - 8rem - 1px);
+    --media-column-height: calc(100dvh - 8rem - 1px);
+  }
+
+  .media-workspace .media-settings-column,
+  .media-workspace .media-preview-column {
+    height: var(--media-column-height);
+    min-height: 0;
+  }
+
+  .media-workspace .media-panel-heading {
+    height: 2.5rem;
+    flex: none;
+    flex-wrap: nowrap;
+  }
+
+  .media-workspace .media-settings-panel {
+    overflow: hidden;
+  }
+
+  .media-workspace .media-settings-fields {
+    min-height: 0;
+    flex: 1;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-gutter: stable;
+    margin-right: -0.5rem;
+    padding-right: 0.5rem;
+    padding-bottom: 2px;
+  }
+
+  .media-workspace .media-preview-column .media-preview-panel {
+    height: auto;
+    min-height: 0;
+    flex: 1;
+  }
+}
+
+@media (min-width: 1536px) {
+  .media-workspace .media-history-column {
+    height: var(--media-column-height);
+    min-height: 0;
+  }
+
+  .media-workspace .media-history-panel {
+    min-height: 0;
+  }
+
+  .media-workspace .media-history-panel > div {
+    height: 100%;
+    min-height: 0;
+    max-height: 100%;
+  }
+}

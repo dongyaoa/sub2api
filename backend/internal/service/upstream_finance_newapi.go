@@ -80,7 +80,7 @@ func (s *UpstreamFinanceService) newAPIGet(ctx context.Context, base, path, key 
 		req.Header.Set("New-Api-User", strconv.FormatInt(userID, 10))
 	}
 	req.Header.Set("Accept", "application/json")
-	resp, err := s.client.Do(req)
+	resp, err := upstreamRequestClient(ctx, s.client).Do(req)
 	if err != nil {
 		return nil, "newapi_request_failed"
 	}
@@ -120,7 +120,7 @@ func (s *UpstreamFinanceService) fetchNewAPIBalance(ctx context.Context, target 
 		return snapshot, false
 	}
 	usageURL, err := upstreamUsageURL(target.Endpoint)
-	if err != nil || validateUpstreamEndpoint(target.Endpoint) != nil {
+	if err != nil || validateUpstreamRequestEndpoint(ctx, target.Endpoint) != nil {
 		return fail("endpoint_unavailable")
 	}
 	if s.encryptor == nil {

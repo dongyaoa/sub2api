@@ -1,12 +1,10 @@
 <template>
   <AppLayout>
     <div class="mx-auto w-full max-w-[1920px]">
-      <MediaStudioHeader active="image" />
-
-      <div class="studio-workspace grid grid-cols-1 items-stretch gap-4 xl:grid-cols-[380px_minmax(0,1fr)] 2xl:grid-cols-[380px_minmax(0,1fr)_260px]">
-        <aside class="flex min-w-0 flex-col">
-          <div class="mb-2 flex min-h-8 items-center justify-between gap-3">
-            <h2 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('imageStudio.settings') }}</h2>
+      <div class="media-workspace studio-workspace grid grid-cols-1 items-stretch gap-4 xl:grid-cols-[380px_minmax(0,1fr)] 2xl:grid-cols-[380px_minmax(0,1fr)_260px]">
+        <aside class="media-settings-column flex min-w-0 flex-col" :aria-label="t('imageStudio.settings')">
+          <div class="media-panel-heading mb-2 flex min-h-8 items-center justify-between gap-3">
+            <MediaStudioHeader active="image" />
             <span
               v-if="estimatedCost != null"
               class="rounded-md bg-emerald-50 px-2 py-1 text-xs font-medium text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
@@ -15,8 +13,10 @@
             </span>
           </div>
 
-          <section class="studio-settings-panel image-studio-panel flex-1 rounded-lg border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-900">
-            <div class="mb-3">
+          <section class="media-settings-panel studio-settings-panel image-studio-panel flex-1 rounded-lg border border-gray-200 bg-white p-4 dark:border-dark-700 dark:bg-dark-900">
+          <form class="media-settings-form" @submit.prevent="generateImages">
+          <div class="media-settings-fields space-y-3">
+            <div>
             <div class="grid grid-cols-2 gap-1 rounded-lg bg-gray-100 p-1 dark:bg-dark-800" role="tablist" :aria-label="t('imageStudio.operationMode')">
             <button
               type="button"
@@ -46,14 +46,12 @@
             </div>
           </div>
 
-          <form class="space-y-3" @submit.prevent="generateImages">
-
               <div v-if="loadingKeys" class="flex h-10 items-center justify-center rounded-lg border border-gray-200 text-xs text-gray-500 dark:border-dark-700 dark:text-gray-400">
                 <Icon name="refresh" size="sm" class="mr-2 animate-spin" />
                 {{ t('imageStudio.loadingKeys') }}
               </div>
 
-              <div v-else-if="apiKeys.length === 0" class="flex min-h-12 items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 dark:border-amber-900/60 dark:bg-amber-950/20">
+              <div v-else-if="availableKeys.length === 0" class="flex min-h-12 items-center justify-between gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 dark:border-amber-900/60 dark:bg-amber-950/20">
                 <span class="min-w-0 text-xs leading-5 text-amber-800 dark:text-amber-300">{{ t('imageStudio.noKeys') }}</span>
                 <RouterLink to="/keys" class="inline-flex shrink-0 items-center gap-1 text-xs font-semibold text-primary-600 hover:text-primary-700 dark:text-primary-400">
                   <Icon name="plus" size="xs" />
@@ -316,6 +314,8 @@
               </div>
             </section>
 
+          </div>
+          <div class="media-settings-actions space-y-2 border-t border-gray-200 pt-3 dark:border-dark-700">
             <button
               type="submit"
               class="flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-primary-600 px-4 text-sm font-semibold text-white transition-colors hover:bg-primary-700 focus:outline-none focus:ring-2 focus:ring-primary-500/40 focus:ring-offset-2 disabled:cursor-not-allowed disabled:bg-gray-300 dark:disabled:bg-dark-700"
@@ -326,12 +326,13 @@
               <span v-if="!isWorking && estimatedCost != null" class="text-white/75">{{ formatUSD(estimatedCost) }}</span>
             </button>
             <p class="text-center text-[11px] leading-5 text-gray-400">{{ t('imageStudio.multitaskHint') }}</p>
+          </div>
           </form>
           </section>
         </aside>
 
-        <main class="flex min-w-0 flex-col">
-          <div class="mb-2 flex min-h-8 flex-wrap items-center justify-between gap-3">
+        <main class="media-preview-column flex min-w-0 flex-col">
+          <div class="media-panel-heading mb-2 flex min-h-8 flex-wrap items-center justify-between gap-3">
             <div class="flex min-w-0 items-center gap-3">
               <h2 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('imageStudio.canvas') }}</h2>
               <span v-if="runningCount" class="rounded-full bg-amber-50 px-2 py-1 text-xs text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">{{ t('imageStudio.runningTasks', { count: runningCount }) }}</span>
@@ -346,7 +347,7 @@
             </button>
           </div>
 
-          <section class="studio-canvas relative min-h-0 min-w-0 overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-dark-700 dark:bg-dark-900">
+          <section class="media-preview-panel studio-canvas relative min-h-0 min-w-0 overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-dark-700 dark:bg-dark-900">
             <div v-if="viewState === 'idle'" class="flex h-full min-h-0 flex-col items-center justify-center overflow-y-auto px-6 text-center">
               <div class="mb-4 flex h-14 w-14 items-center justify-center rounded-lg border border-gray-200 bg-gray-50 dark:border-dark-700 dark:bg-dark-800">
                 <Icon :name="operation === 'edit' ? 'edit' : 'sparkles'" size="xl" class="text-gray-400 dark:text-gray-500" />
@@ -479,16 +480,18 @@
           </section>
         </main>
 
-        <aside class="studio-history flex min-w-0 flex-col xl:col-span-2 2xl:col-span-1">
-          <div class="mb-2 flex min-h-8 items-center justify-between gap-2">
-            <div class="flex items-center gap-2">
-              <h2 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('imageStudio.history') }}</h2>
-              <span class="text-xs tabular-nums text-gray-400">{{ history.length }}</span>
-              <span class="text-[11px] text-gray-400">{{ t('imageStudio.historyRetention', { days: historyRetentionDays }) }}</span>
+        <aside class="media-history-column studio-history flex min-w-0 flex-col xl:col-span-2 2xl:col-span-1">
+          <div class="media-panel-heading mb-2 flex min-h-8 items-center justify-between gap-2">
+            <div class="min-w-0">
+              <div class="flex items-center gap-2">
+                <h2 class="text-sm font-semibold text-gray-900 dark:text-white">{{ t('imageStudio.history') }}</h2>
+                <span class="text-[10px] tabular-nums text-gray-400">{{ t('mediaStudio.recentHistory', { count: visibleHistory.length }) }}</span>
+              </div>
+              <p class="truncate text-[10px] leading-4 text-gray-400">{{ t('imageStudio.historyRetention', { days: historyRetentionDays }) }}</p>
             </div>
             <button
               type="button"
-              class="flex h-8 w-8 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-30 dark:hover:bg-dark-800 dark:hover:text-gray-200"
+              class="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 disabled:cursor-not-allowed disabled:opacity-30 dark:hover:bg-dark-800 dark:hover:text-gray-200"
               :disabled="!history.some(item => item.status !== 'processing') || loadingHistory || clearingHistory || !!deletingHistoryId"
               :title="t('imageStudio.clearHistory')"
               :aria-label="t('imageStudio.clearHistory')"
@@ -498,7 +501,7 @@
             </button>
           </div>
 
-          <section class="studio-history-panel flex-1 overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-dark-700 dark:bg-dark-900">
+          <section class="media-history-panel studio-history-panel flex-1 overflow-hidden rounded-lg border border-gray-200 bg-white dark:border-dark-700 dark:bg-dark-900">
             <div v-if="loadingHistory && history.length === 0" class="flex min-h-40 items-center justify-center text-gray-400">
               <Icon name="refresh" size="md" class="animate-spin" />
             </div>
@@ -509,9 +512,9 @@
               <p class="mt-1 text-[11px]">{{ t('imageStudio.historyHint') }}</p>
             </div>
 
-            <div v-else class="studio-history-list divide-y divide-gray-100 overflow-y-auto dark:divide-dark-700">
+            <div v-else class="media-history-list studio-history-list divide-y divide-gray-100 overflow-y-auto dark:divide-dark-700">
               <div
-                v-for="item in history"
+                v-for="item in visibleHistory"
                 :key="item.id"
                 class="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_2rem] items-center gap-x-2 gap-y-2.5 overflow-hidden border-l-2 px-3 py-2.5 text-left transition-colors"
                 :class="activeHistoryId === item.id ? 'border-l-primary-500 bg-primary-50/60 dark:bg-primary-950/20' : 'border-l-transparent hover:bg-gray-50 dark:hover:bg-dark-800'"
@@ -616,11 +619,12 @@ import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import MediaStudioHeader from '@/features/media-studio/MediaStudioHeader.vue'
+import '@/features/media-studio/workspace.css'
 import { saveVideoStudioImageDraft } from '@/features/video-studio/draft'
 import { useAppStore } from '@/stores/app'
 import type { ApiKey } from '@/types'
 import { platformLabel, platformTextClass } from '@/utils/platformColors'
-import { listEligibleImageKeys } from './access'
+import { listEligibleImageKeys, loadImageModelCatalogs } from './access'
 import {
   extractTaskImageData,
   getImageModelPricing,
@@ -673,6 +677,7 @@ const sourcePreviewUrls = ref<string[]>([])
 const sourceInput = ref<HTMLInputElement | null>(null)
 const sourceDragActive = ref(false)
 const apiKeys = ref<ApiKey[]>([])
+const modelCatalogs = ref(new Map<number, ImageModel[]>())
 const selectedKeyId = ref<number | null>(null)
 const models = ref<ImageModel[]>([])
 const modelPricing = ref<ImageModelPricing | null>(null)
@@ -696,24 +701,28 @@ const {
   loadingHistory, submitting, deletingHistoryId, clearingHistory,
   loadHistory, restore, submit, remove,
 } = useImageTasks(apiKeys, message => appStore.showError(message || t('imageStudio.historyLoadFailed')), () => t('imageStudio.emptyResult'))
+const visibleHistory = computed(() => history.value.slice(0, 9))
 const task = computed(() => activeHistoryItem.value?.task || null)
 const viewState = computed(() => activeHistoryItem.value?.status || 'idle')
 const errorMessage = computed(() => activeHistoryItem.value?.errorMessage || '')
 const displayQuantity = computed(() => activeHistoryItem.value?.quantity || 1)
 const reusing = ref(false)
 
+let disposed = false
+const catalogsController = new AbortController()
 let modelController: AbortController | null = null
 let pricingController: AbortController | null = null
 let elapsedTimer: ReturnType<typeof setInterval> | null = null
 
-const selectedKey = computed(() => apiKeys.value.find((key) => key.id === selectedKeyId.value) || null)
+const availableKeys = computed(() => apiKeys.value.filter(key => (modelCatalogs.value.get(key.id)?.length || 0) > 0))
+const selectedKey = computed(() => availableKeys.value.find((key) => key.id === selectedKeyId.value) || null)
 const selectedGroup = computed(() => selectedKey.value?.group || null)
 const platform = computed<ImageStudioPlatform>(() => {
   const value = selectedGroup.value?.platform
   return isImageStudioPlatform(value) ? value : 'openai'
 })
 
-const keyOptions = computed(() => apiKeys.value.map((key) => ({
+const keyOptions = computed(() => availableKeys.value.map((key) => ({
   value: key.id,
   label: key.name + ' · ' + (key.group?.name || '-'),
   keyName: key.name,
@@ -930,28 +939,37 @@ function operationLabel(value: StudioOperation): string {
   return t(value === 'edit' ? 'imageStudio.editShort' : 'imageStudio.generateShort')
 }
 
-async function loadModels(preferredModel = '') {
+async function loadModels(preferredModel = '', useCached = false) {
   modelController?.abort()
   loadingModels.value = true
   models.value = []
   model.value = preferredModel
   const key = selectedKey.value
   if (!key) {
+    model.value = ''
     loadingModels.value = false
     return
   }
   const controller = new AbortController()
   modelController = controller
   try {
-    const response = await listImageModels(key.key, controller.signal)
-    if (modelController !== controller || selectedKey.value?.id !== key.id) return
+    const cached = useCached ? modelCatalogs.value.get(key.id) : undefined
+    const response = cached ? { data: cached } : await listImageModels(key.key, controller.signal)
+    if (disposed || modelController !== controller || selectedKey.value?.id !== key.id) return
     const filtered = filterImageModels(platform.value, response.data || [])
+    const groupID = key.group_id ?? key.group?.id
+    for (const groupKey of apiKeys.value) {
+      if (groupKey.id === key.id || (groupID != null && (groupKey.group_id ?? groupKey.group?.id) === groupID)) {
+        modelCatalogs.value.set(groupKey.id, filtered)
+      }
+    }
     models.value = filtered
     if (!filtered.some((item) => item.id === preferredModel)) {
       model.value = filtered[0]?.id || ''
     }
+    if (filtered.length === 0) selectedKeyId.value = null
   } catch (error) {
-    if (modelController === controller && selectedKey.value?.id === key.id && (error as Error).name !== 'AbortError') {
+    if (!disposed && modelController === controller && selectedKey.value?.id === key.id && (error as Error).name !== 'AbortError') {
       model.value = ''
       appStore.showError(errorText(error, t('imageStudio.modelsFailed')))
     }
@@ -1035,7 +1053,7 @@ async function reuseParameters(item: StudioHistoryItem, promptOnly = false) {
     previewIndex.value = null
     return
   }
-  const key = apiKeys.value.find(key => key.id === item.apiKeyId)
+  const key = availableKeys.value.find(key => key.id === item.apiKeyId)
   if (!key) { appStore.showError(t('imageStudio.reuseKeyUnavailable')); return }
   reusing.value = true
   try {
@@ -1203,14 +1221,23 @@ function triggerDownload(url: string, filename: string) {
 onMounted(async () => {
   elapsedTimer = setInterval(() => { now.value = Date.now() }, 1000)
   try {
-    apiKeys.value = await listEligibleImageKeys()
-    loadingKeys.value = false
+    const keys = await listEligibleImageKeys()
+    if (disposed) return
+    apiKeys.value = keys
+    // Restoring a slow in-flight task must not block choosing a new group.
+    void restore().catch(error => {
+      if (!disposed) appStore.showError(errorText(error, t('imageStudio.historyLoadFailed')))
+    })
+    const catalogs = await loadImageModelCatalogs(keys, catalogsController.signal)
+    if (disposed) return
+    modelCatalogs.value = catalogs
+    if (catalogs.size < keys.length) appStore.showError(t('imageStudio.modelsFailed'))
     let remembered: number | null = null
     try { remembered = Number(localStorage.getItem(keyPreferenceStorage())) } catch { /* Optional preference. */ }
-    const defaultKey = apiKeys.value.find(key => key.id === remembered)
-      || apiKeys.value.find(key => key.group?.platform === 'openai') || apiKeys.value[0]
+    const defaultKey = availableKeys.value.find(key => key.id === remembered)
+      || availableKeys.value.find(key => key.group?.platform === 'openai') || availableKeys.value[0]
     selectedKeyId.value = defaultKey?.id || null
-    await Promise.all([loadModels(getPreferredImageModel(platform.value)), restore()])
+    await loadModels(getPreferredImageModel(platform.value), true)
   } catch (error) {
     appStore.showError(errorText(error, t('imageStudio.keysFailed')))
   } finally {
@@ -1219,6 +1246,8 @@ onMounted(async () => {
 })
 
 onBeforeUnmount(() => {
+  disposed = true
+  catalogsController.abort()
   modelController?.abort()
   pricingController?.abort()
   if (elapsedTimer) clearInterval(elapsedTimer)
@@ -1250,10 +1279,6 @@ onBeforeUnmount(() => {
   margin-bottom: 4px;
 }
 
-.studio-history-list {
-  max-height: 560px;
-}
-
 .studio-canvas {
   /* Definite height in every state; intrinsic image dimensions must not size the workspace. */
   height: clamp(420px, 70vh, 600px);
@@ -1263,26 +1288,6 @@ onBeforeUnmount(() => {
 
 .studio-single-media {
   flex: 1 1 0%;
-}
-
-@media (min-width: 1280px) {
-  .studio-canvas {
-    height: max(600px, calc(100vh - 10rem));
-  }
-}
-
-@media (min-width: 1536px) {
-  .studio-history-panel {
-    height: max(600px, calc(100vh - 10rem));
-  }
-
-  .studio-history-panel > div {
-    height: 100%;
-  }
-
-  .studio-history-list {
-    max-height: 100%;
-  }
 }
 
 .studio-generating-frame::after {

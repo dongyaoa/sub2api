@@ -1,5 +1,14 @@
 export default {
   upstreamCenter: {
+    accountProxyHint: 'Checks, model discovery, usage and balance synchronization automatically use the linked account’s current egress proxy. No duplicate setup is needed.',
+    totalFinance: {
+      basis: 'Total profit = local charges today − synced upstream usage today, updated as data arrives.',
+      noCost: 'No upstream usage received for today; the included cost total is currently 0',
+      missing: 'Today’s usage for {count} keys is unverified and excluded from cost',
+      partial: 'Unverified key usage for today is excluded from cost',
+      stale: 'Using the latest successful usage observations from today',
+      incomePending: 'Local charges for today are still being imported; totals will update',
+    },
     floatingSwitch: 'Switch upstream', collapseSwitch: 'Collapse switcher', backToTop: 'Back to top',
     navigation: { title: 'Upstreams', settings: 'General settings', show: 'Show upstream navigation', showHint: 'Show a directory beside the cards to switch upstreams quickly.', position: 'Navigation position', positionHint: 'Choose its position on desktop. On smaller screens, the directory scrolls horizontally.', savedHint: 'Changes apply immediately and are saved in this browser.', left: 'Left', right: 'Right', hint: 'Select an upstream to view groups and usage' },
     endpointError: { private: 'Use a public address. Private, loopback and cloud metadata addresses are not supported.', unreachable: 'Unable to resolve the upstream address. Check the domain or IP.' },
@@ -36,6 +45,10 @@ export default {
     },
     localBadge: 'Local', localBadgeHint: 'Includes groups linked to local API key accounts',
     syncErrors: {
+      proxyUnavailable: 'The linked account’s egress proxy is unavailable. Check its configuration, status and expiry in account management.',
+      proxyConflict: 'Linked accounts have different egress proxy settings. Use matching proxy settings or separate key groups.',
+      proxyAccountMismatch: 'The linked account’s URL, protocol or key has changed. Link the matching account again before syncing.',
+      proxyRequestFailed: 'The upstream could not be reached through the linked account’s egress proxy. Check proxy availability.',
       timeout: 'The upstream statistics request timed out and will retry automatically. Model checks use a separate endpoint.',
       dnsFailed: 'The server could not resolve the upstream hostname. Check the server DNS settings.',
       tlsFailed: 'The upstream HTTPS connection could not be verified. Check its certificate and the server clock.',

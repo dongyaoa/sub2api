@@ -312,8 +312,20 @@ func (s *UpstreamCenterService) SaveTarget(ctx context.Context, id int64, in Ups
 		}
 		t.BindingCredentials[aid] = UpstreamBindingCredential{APIKey: a.GetCredential("api_key"), BaseURL: a.GetCredential("base_url")}
 	}
-	if err := validateUpstreamTargetConfig(t, plain, id == 0 || normalizeEndpoint(t.Endpoint) != oldEndpoint); err != nil {
+	if err := validateUpstreamTargetConfig(t, plain, false); err != nil {
 		return nil, err
+	}
+	if id == 0 || normalizeEndpoint(t.Endpoint) != oldEndpoint || in.AccountIDs != nil {
+		routeCtx, proxyClient, err := s.targetRequestRoute(ctx, t, plain, 15*time.Second)
+		if err != nil {
+			return nil, err
+		}
+		if proxyClient != nil {
+			defer proxyClient.CloseIdleConnections()
+		}
+		if err := validateUpstreamRequestEndpoint(routeCtx, t.Endpoint); err != nil {
+			return nil, err
+		}
 	}
 	t.Endpoint = normalizeEndpoint(t.Endpoint)
 	var supplier *UpstreamSupplier
@@ -551,14 +563,25 @@ func (s *UpstreamCenterService) runCheck(ctx context.Context, id int64, manual b
 		return nil, err
 	}
 	key, err := s.encryptor.Decrypt(t.APIKeyEncrypted)
+	requestCtx := ctx
+	var routeErr error
+	var proxyClient *http.Client
+	if err == nil && key != "" {
+		requestCtx, proxyClient, routeErr = s.targetRequestRoute(ctx, t, key, upstreamProbeMaxTimeout)
+		if proxyClient != nil {
+			defer proxyClient.CloseIdleConnections()
+		}
+	}
 	entries := make([]*UpstreamHistoryRecord, 0, len(t.Models))
 	for _, model := range t.Models {
 		var result *CheckResult
 		if err != nil || key == "" {
 			result = &CheckResult{Model: model, Status: MonitorStatusError, Message: "API key cannot be decrypted; edit this target and enter the key again", CheckedAt: time.Now()}
+		} else if routeErr != nil {
+			result = &CheckResult{Model: model, Status: MonitorStatusError, Message: upstreamProxyErrorCode(routeErr), CheckedAt: time.Now()}
 		} else {
-			probeCtx, cancel := context.WithTimeout(ctx, time.Duration(t.TimeoutSeconds)*time.Second)
-			result = s.checkModel(probeCtx, t.Provider, t.Endpoint, key, model, &CheckOptions{APIMode: t.APIMode, HTTPClient: s.probeClient})
+			probeCtx, cancel := context.WithTimeout(requestCtx, time.Duration(t.TimeoutSeconds)*time.Second)
+			result = s.checkModel(probeCtx, t.Provider, t.Endpoint, key, model, &CheckOptions{APIMode: t.APIMode, HTTPClient: upstreamRequestClient(requestCtx, s.probeClient)})
 			cancel()
 			if result.Status == MonitorStatusOperational || result.Status == MonitorStatusDegraded {
 				result.Status = MonitorStatusOperational
@@ -615,6 +638,7 @@ func upstreamCheckMessage(r *CheckResult, key string) string {
 
 func (s *UpstreamCenterService) Models(ctx context.Context, in UpstreamModelsInput) ([]string, error) {
 	provider, endpoint, key := strings.TrimSpace(in.Provider), normalizeEndpoint(in.Endpoint), strings.TrimSpace(in.APIKey)
+	var routeTarget *UpstreamTarget
 	if in.SourceTargetID != nil {
 		if *in.SourceTargetID <= 0 || in.TargetID != nil || in.AccountID != nil || key != "" {
 			return nil, ErrUpstreamInvalid.WithMetadata(map[string]string{"field": "source_target_id", "detail": "choose one existing supplier group without another credential source"})
@@ -624,6 +648,7 @@ func (s *UpstreamCenterService) Models(ctx context.Context, in UpstreamModelsInp
 			return nil, err
 		}
 		provider, endpoint = source.Provider, source.Endpoint
+		routeTarget = source
 	}
 	if in.AccountID != nil {
 		if key != "" {
@@ -644,6 +669,7 @@ func (s *UpstreamCenterService) Models(ctx context.Context, in UpstreamModelsInp
 			return nil, ErrUpstreamInvalid.WithMetadata(map[string]string{"field": "provider", "detail": "account credentials can only be used with that account's provider"})
 		}
 		key = accountKey
+		routeTarget = &UpstreamTarget{Provider: provider, Endpoint: endpoint, AccountIDs: []int64{*in.AccountID}}
 	}
 	if in.TargetID != nil && in.AccountID == nil {
 		t, err := s.repo.GetTarget(ctx, *in.TargetID)
@@ -664,12 +690,28 @@ func (s *UpstreamCenterService) Models(ctx context.Context, in UpstreamModelsInp
 			if err != nil {
 				return nil, ErrChannelMonitorAPIKeyDecryptFailed
 			}
+			routeTarget = t
+		} else if endpoint == normalizeEndpoint(t.Endpoint) && provider == t.Provider {
+			savedKey, decryptErr := s.encryptor.Decrypt(t.APIKeyEncrypted)
+			if decryptErr == nil && strings.TrimSpace(savedKey) == key {
+				routeTarget = t
+			}
 		}
 	}
 	if key == "" || len(key) > 2000 || strings.ContainsAny(key, "\r\n") {
 		return nil, ErrChannelMonitorMissingAPIKey
 	}
-	if err := validateUpstreamEndpoint(endpoint); err != nil {
+	if routeTarget != nil {
+		routeCtx, proxyClient, err := s.targetRequestRoute(ctx, routeTarget, key, 15*time.Second)
+		if err != nil {
+			return nil, err
+		}
+		if proxyClient != nil {
+			defer proxyClient.CloseIdleConnections()
+		}
+		ctx = routeCtx
+	}
+	if err := validateUpstreamRequestEndpoint(ctx, endpoint); err != nil {
 		return nil, err
 	}
 	u, err := url.Parse(endpoint)
@@ -698,7 +740,7 @@ func (s *UpstreamCenterService) Models(ctx context.Context, in UpstreamModelsInp
 		return nil, ErrChannelMonitorInvalidProvider
 	}
 	req.Header.Set("Accept", "application/json")
-	resp, err := s.modelsClient.Do(req)
+	resp, err := upstreamRequestClient(ctx, s.modelsClient).Do(req)
 	if err != nil {
 		return nil, ErrUpstreamInvalid.WithMetadata(map[string]string{"field": "models", "detail": "model discovery failed; models can be entered manually"})
 	}
