@@ -106,6 +106,9 @@ func TestWebAccessAllowedHTMLIsPrivateAndAssetsRemainAvailable(t *testing.T) {
 	require.Equal(t, http.StatusOK, recorder.Code)
 	require.Equal(t, "private, no-store", recorder.Header().Get("Cache-Control"))
 	require.Contains(t, recorder.Body.String(), "normal application")
+	require.Equal(t, "no-store", recorder.Header().Get("CDN-Cache-Control"))
+	require.Equal(t, "no-store", recorder.Header().Get("Surrogate-Control"))
+	require.Equal(t, "no-cache", recorder.Header().Get("Pragma"))
 	access.decision.Blocked = true
 	access.ips = nil
 	recorder = httptest.NewRecorder()

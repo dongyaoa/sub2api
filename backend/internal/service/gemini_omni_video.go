@@ -472,7 +472,7 @@ func (s *OpenAIGatewayService) ForwardGeminiOmniVideo(ctx context.Context, c *gi
 	}
 	if endpoint == GrokMediaEndpointVideoContent {
 		if !complete {
-			writeGrokMediaErrorResponse(c, http.StatusConflict, "video_not_ready", "Video content is not available")
+			writeGrokMediaErrorResponse(c, http.StatusConflict, "video_not_ready", "Video content is not available", "")
 			return nil, fmt.Errorf("Gemini Omni video content is not available")
 		}
 		if err := s.forwardGeminiOmniVideoContent(upstreamCtx, c, account, base, proxy, requestID, token); err != nil {

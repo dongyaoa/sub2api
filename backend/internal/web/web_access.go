@@ -60,11 +60,10 @@ func allowWebPage(c *gin.Context, provider WebAccessProvider) bool {
 }
 
 func setFrontendHTMLCacheHeaders(c *gin.Context) {
+	applyHTMLNoCacheHeaders(c.Writer.Header())
 	if c.GetBool(privateWebAccessCacheKey) {
 		c.Header("Cache-Control", "private, no-store")
-		return
 	}
-	c.Header("Cache-Control", "no-cache")
 }
 
 type webAccessPageData struct {

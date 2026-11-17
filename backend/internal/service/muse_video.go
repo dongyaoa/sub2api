@@ -304,7 +304,7 @@ func (s *OpenAIGatewayService) ForwardMuseVideo(ctx context.Context, c *gin.Cont
 	}
 	if endpoint == GrokMediaEndpointVideoContent {
 		if mediaURL == "" {
-			writeGrokMediaErrorResponse(c, http.StatusConflict, "video_not_ready", "Video content is not available")
+			writeGrokMediaErrorResponse(c, http.StatusConflict, "video_not_ready", "Video content is not available", "")
 			return nil, fmt.Errorf("Muse video content is not available")
 		}
 		if err := s.forwardMuseVideoContent(upstreamCtx, c, account, base, proxy, requestID, mediaURL); err != nil {

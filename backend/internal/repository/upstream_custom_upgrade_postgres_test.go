@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/Wei-Shaw/sub2api/internal/pkg/timezone"
+	"github.com/Wei-Shaw/sub2api/internal/service"
 	"github.com/Wei-Shaw/sub2api/migrations"
 	"github.com/google/uuid"
 	"github.com/lib/pq"
@@ -32,6 +33,18 @@ func TestUpstreamCustomUpgradePostgresPreservesCustomData(t *testing.T) {
 		testUpstreamCustomUpgradePostgresPreservesCustomData(t, func(name string) bool {
 			switch name {
 			case "249_add_usage_logs_api_key_cost_index_notx.sql", "249_mcp_oauth.sql", "250_openai_cache_write_ttl.sql":
+				return false
+			case "251_group_force_openai_ultrafast.sql", "251_group_usage_rollup_nonblocking_build.sql":
+				return false
+			default:
+				return true
+			}
+		})
+	})
+	t.Run("v0221_custom1", func(t *testing.T) {
+		testUpstreamCustomUpgradePostgresPreservesCustomData(t, func(name string) bool {
+			switch name {
+			case "251_group_force_openai_ultrafast.sql", "251_group_usage_rollup_nonblocking_build.sql":
 				return false
 			default:
 				return true
@@ -77,7 +90,7 @@ func testUpstreamCustomUpgradePostgresPreservesCustomData(t *testing.T, inBaseli
 	require.Equal(t, databaseName, actualDatabase, "migration connection must use the disposable database")
 
 	// Reconstruct each released custom schema, including one whose higher-number
-	// migrations already exist before the new upstream 249/250 files are applied.
+	// migrations already exist before lower-numbered upstream files are applied.
 	// Keep same-number custom files: filenames, not numeric IDs, identify migrations.
 	files, err := fs.Glob(migrations.FS, "*.sql")
 	require.NoError(t, err)
@@ -140,6 +153,7 @@ VALUES(93001,93001,30,25,'COMPLETED',NOW(),'CUSTOM-UPGRADE',$1::jsonb)`, promoti
 		require.Equal(t, stamp, after[name], "existing migration checksum and application time must remain unchanged: %s", name)
 	}
 	for _, name := range []string{
+		"251_group_force_openai_ultrafast.sql", "251_group_usage_rollup_nonblocking_build.sql",
 		"249_add_usage_logs_api_key_cost_index_notx.sql", "249_mcp_oauth.sql", "250_openai_cache_write_ttl.sql",
 		"242_upstream_center.sql", "243_upstream_finance.sql", "244_upstream_remote_billing.sql",
 		"245_intelligence_monitor.sql", "246_intelligence_monitor_oauth.sql", "247_upstream_finance_usage_totals.sql",
@@ -227,4 +241,51 @@ INSERT INTO intelligence_monitor_plans(id,name,source_type,group_id,local_api_ke
 	var model string
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT model FROM intelligence_monitor_plans WHERE id=93001`).Scan(&model))
 	require.Equal(t, "gpt-6.1-sol", model, "replay must preserve newly configured monitoring")
+	assertUpgradedCustomMediaBatchBilling(t, ctx, db)
+}
+
+// Media requests share the new user billing lane. Their already calculated
+// charges must settle exactly once without consuming an existing image hold.
+func assertUpgradedCustomMediaBatchBilling(t *testing.T, ctx context.Context, db *sql.DB) {
+	t.Helper()
+	repo := NewUsageBillingRepository(nil, db)
+	cmds := make([]*service.UsageBillingCommand, 0, 3)
+	for _, media := range []struct {
+		kind string
+		cost float64
+	}{{"image", 1.25}, {"audio", 0.5}, {"video", 2.75}} {
+		cmds = append(cmds, &service.UsageBillingCommand{
+			RequestID: "custom-upgrade-" + media.kind,
+			APIKeyID:  93001, UserID: 93001, AccountID: 93001,
+			AccountType: service.AccountTypeAPIKey, Model: "fixture-" + media.kind,
+			MediaType: media.kind, BalanceCost: media.cost, APIKeyQuotaCost: media.cost,
+		})
+	}
+	outcomes, err := repo.ApplyBatch(ctx, cmds)
+	require.NoError(t, err)
+	require.Len(t, outcomes, len(cmds))
+	for i, remaining := range []float64{28.75, 28.25, 25.5} {
+		require.NoError(t, outcomes[i].Err)
+		require.True(t, outcomes[i].Result.Applied)
+		require.NotNil(t, outcomes[i].Result.NewBalance)
+		require.Equal(t, remaining, *outcomes[i].Result.NewBalance)
+	}
+	// A retry can take either path as load changes; neither may bill again.
+	for _, cmd := range cmds {
+		result, applyErr := repo.Apply(ctx, cmd)
+		require.NoError(t, applyErr)
+		require.False(t, result.Applied)
+	}
+	outcomes, err = repo.ApplyBatch(ctx, cmds)
+	require.NoError(t, err)
+	for _, outcome := range outcomes {
+		require.NoError(t, outcome.Err)
+		require.False(t, outcome.Result.Applied)
+	}
+	var balance, frozen, quotaUsed float64
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT balance, frozen_balance FROM users WHERE id=93001`).Scan(&balance, &frozen))
+	require.Equal(t, 25.5, balance)
+	require.Equal(t, 2.0, frozen)
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT quota_used FROM api_keys WHERE id=93001`).Scan(&quotaUsed))
+	require.Equal(t, 4.5, quotaUsed)
 }
