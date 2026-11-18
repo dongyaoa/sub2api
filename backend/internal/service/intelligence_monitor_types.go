@@ -101,6 +101,7 @@ type IntelligenceMonitorInput struct {
 	CustomPrompt         *string                      `json:"custom_prompt"`
 	ChannelPrompts       *[]IntelligenceChannelPrompt `json:"channel_prompts"`
 	Model                *string                      `json:"model"`
+	ReasoningEffort      *string                      `json:"reasoning_effort"`
 	Name                 *string                      `json:"name"`
 	SourceType           *string                      `json:"source_type"`
 	Endpoint             *string                      `json:"endpoint"`

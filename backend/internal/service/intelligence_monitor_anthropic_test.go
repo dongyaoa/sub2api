@@ -28,11 +28,11 @@ func intelligenceAnthropicTestMessage(t *testing.T, stop string) string {
 	return string(message)
 }
 
-func TestIntelligenceAnthropicRequestUsesNativeModelAndHighEffort(t *testing.T) {
-	for _, tc := range []struct{ model, endpoint string }{
-		{"claude-opus-5-5", "https://8.8.8.8/prefix"},
-		{"claude-sonnet-5-5", "https://8.8.8.8/prefix/v1/"},
-		{"claude-fable-5-2", "https://8.8.8.8/prefix/v1/messages"},
+func TestIntelligenceAnthropicRequestUsesNativeModelAndSelectedEffort(t *testing.T) {
+	for _, tc := range []struct{ model, endpoint, effort string }{
+		{"claude-opus-5-5", "https://8.8.8.8/prefix", "max"},
+		{"claude-sonnet-5-5", "https://8.8.8.8/prefix/v1/", "xhigh"},
+		{"claude-fable-5-2", "https://8.8.8.8/prefix/v1/messages", "medium"},
 	} {
 		t.Run(tc.model, func(t *testing.T) {
 			svc := NewIntelligenceMonitorService(nil, nil, nil, nil, nil, nil, nil)
@@ -47,13 +47,13 @@ func TestIntelligenceAnthropicRequestUsesNativeModelAndHighEffort(t *testing.T) 
 				require.Equal(t, tc.model, body["model"])
 				require.Equal(t, true, body["stream"])
 				require.Equal(t, float64(24000), body["max_tokens"])
-				require.Equal(t, map[string]any{"effort": "high"}, body["output_config"])
+				require.Equal(t, map[string]any{"effort": tc.effort}, body["output_config"])
 				require.Equal(t, map[string]any{"type": "adaptive"}, body["thinking"])
 				require.NotContains(t, body, "input")
 				require.Equal(t, []any{map[string]any{"role": "user", "content": prompt}}, body["messages"])
 				return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"text/event-stream"}}, Body: io.NopCloser(strings.NewReader(intelligenceAnthropicTestMessage(t, "end_turn")))}, nil
 			})
-			status, text, issue := svc.generate(context.Background(), &IntelligenceMonitorRun{Model: tc.model, APIMode: IntelligenceMonitorAPIModeMessages, SourceType: "external", SourceEndpoint: tc.endpoint, Prompt: prompt}, "secret-key")
+			status, text, issue := svc.generate(context.Background(), &IntelligenceMonitorRun{Model: tc.model, ReasoningEffort: tc.effort, APIMode: IntelligenceMonitorAPIModeMessages, SourceType: "external", SourceEndpoint: tc.endpoint, Prompt: prompt}, "secret-key")
 			require.Empty(t, issue)
 			require.Equal(t, 200, *status)
 			require.NotContains(t, text, "private analysis")

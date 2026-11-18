@@ -74,6 +74,10 @@ func (s *IntelligenceMonitorService) generateOpenAIOAuth(ctx context.Context, ru
 	if !validTest {
 		return nil, "", "unsupported intelligence test"
 	}
+	effort, err := NormalizeIntelligenceReasoningEffort(run.ReasoningEffort)
+	if err != nil {
+		return nil, "", "unsupported monitoring reasoning effort"
+	}
 	run.Model = intelligenceMonitorModel(run.Model)
 	if err := ValidateIntelligenceMonitorProtocol(run.Model, MonitorAPIModeResponses, "openai_oauth"); err != nil {
 		return nil, "", "unsupported intelligence model"
@@ -133,7 +137,7 @@ func (s *IntelligenceMonitorService) generateOpenAIOAuth(ctx context.Context, ru
 	requestBody := map[string]any{
 		"model":     run.Model,
 		"input":     []map[string]any{{"role": "user", "content": []map[string]string{{"type": "input_text", "text": prompt}}}},
-		"reasoning": map[string]string{"effort": IntelligenceMonitorReasoning},
+		"reasoning": map[string]string{"effort": effort},
 		"stream":    false, "store": false,
 		"max_output_tokens": maxOutputTokens,
 	}
@@ -182,8 +186,8 @@ func (s *IntelligenceMonitorService) generateOpenAIOAuth(ctx context.Context, ru
 	if result.UpstreamModel != "" && result.UpstreamModel != run.Model {
 		message = "OAuth gateway used a different model than the selected comparison model"
 	}
-	if result.ReasoningEffort != nil && *result.ReasoningEffort != IntelligenceMonitorReasoning {
-		message = "OAuth gateway used a different reasoning effort than the fixed comparison setting"
+	if result.ReasoningEffort != nil && *result.ReasoningEffort != effort {
+		message = "OAuth gateway used a different reasoning effort than the selected monitoring effort"
 	}
 	return &status, text, message
 }

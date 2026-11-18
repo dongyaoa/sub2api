@@ -2,8 +2,16 @@
   <BaseDialog :show="show" :title="t(plan ? 'intelligenceMonitor.edit' : oauthOnly ? 'intelligenceMonitor.oauth.add' : localOnly ? 'intelligenceMonitor.local.add' : 'intelligenceMonitor.add')" width="wide" :show-close-button="!saving" :close-on-escape="!saving" @close="close">
     <form id="intelligence-plan-form" class="space-y-5" @submit.prevent="save">
       <div class="rounded-xl border border-gray-100 bg-gray-50 p-4 dark:border-dark-700 dark:bg-dark-900/50">
-        <div class="mb-3 flex items-center justify-between gap-3"><label for="intelligence-model" class="flex items-center gap-2 text-xs font-semibold text-gray-700 dark:text-gray-200"><Icon name="lightbulb" size="sm" class="text-primary-500"/>{{ t('intelligenceMonitor.model') }}</label><span class="rounded-md border border-primary-200 bg-white px-2 py-1 text-[10px] font-medium text-primary-600 dark:border-primary-800 dark:bg-dark-800">{{ t('intelligenceMonitor.reasoning') }} · {{ PELICAN_REASONING }}</span></div>
-        <Select id="intelligence-model" v-model="form.model" :options="modelOptions" :searchable="anthropic" :creatable="anthropic" :creatable-prefix="t('intelligenceMonitor.form.useModelID')" :disabled="saving" :aria-label="t('intelligenceMonitor.model')" />
+        <div class="grid gap-3 sm:grid-cols-[minmax(0,1fr)_10rem]">
+          <div class="min-w-0">
+            <label for="intelligence-model" class="input-label">{{ t('intelligenceMonitor.model') }}</label>
+            <Select id="intelligence-model" v-model="form.model" :options="modelOptions" :searchable="anthropic" :creatable="anthropic" :creatable-prefix="t('intelligenceMonitor.form.useModelID')" :disabled="saving" :aria-label="t('intelligenceMonitor.model')" />
+          </div>
+          <div class="min-w-0">
+            <label for="intelligence-effort" class="input-label">{{ t('intelligenceMonitor.reasoning') }}</label>
+            <Select id="intelligence-effort" v-model="form.reasoning_effort" :options="effortOptions" :searchable="false" :disabled="saving" :aria-label="t('intelligenceMonitor.reasoning')" />
+          </div>
+        </div>
         <p class="mt-2 text-xs leading-5 text-gray-500">{{ t(anthropic ? 'intelligenceMonitor.form.claudeModelHint' : 'intelligenceMonitor.form.modelHint') }}</p>
         <p v-if="duplicateSource" role="alert" class="mt-2 text-xs text-rose-500">{{ t(duplicateSource) }}</p>
       </div>
@@ -83,8 +91,8 @@ import BaseDialog from '@/components/common/BaseDialog.vue'
 import Select, { type SelectOption } from '@/components/common/Select.vue'
 import Toggle from '@/components/common/Toggle.vue'
 import Icon from '@/components/icons/Icon.vue'
-import { intelligenceMonitorAPI, PELICAN_MODEL, PELICAN_REASONING, PELICAN_PROMPT, type IntelligencePlan, type IntelligencePlanInput, type IntelligenceSource } from '@/api/admin/intelligenceMonitor'
-import { DEFAULT_CLAUDE_PELICAN_MODEL, PELICAN_MODELS, claudePelicanOptions, isClaudePelicanModel, isOpenAIPelicanModel, supportsPelicanProtocol } from '@/utils/pelicanModels'
+import { intelligenceMonitorAPI, PELICAN_MODEL, PELICAN_PROMPT, type IntelligencePlan, type IntelligencePlanInput, type IntelligenceSource } from '@/api/admin/intelligenceMonitor'
+import { DEFAULT_CLAUDE_PELICAN_MODEL, DEFAULT_PELICAN_REASONING_EFFORT, PELICAN_REASONING_EFFORTS, PELICAN_MODELS, claudePelicanOptions, isClaudePelicanModel, isOpenAIPelicanModel, supportsPelicanProtocol } from '@/utils/pelicanModels'
 import type { UpstreamOverview } from '@/api/admin/upstreamCenter'
 import { getAll } from '@/api/admin/groups'
 import type { AdminGroup, AccountListItem } from '@/types'
@@ -115,6 +123,7 @@ const timeoutOptions = computed(() => {
     : presets
 })
 const openAIModelOptions = PELICAN_MODELS.map(option => ({ ...option }))
+const effortOptions = PELICAN_REASONING_EFFORTS.map(value => ({ value, label: value }))
 const messagesOption = { value: 'messages', label: 'Anthropic Messages' }
 const openAIProtocolOptions = [{ value: 'responses', label: 'Responses' }, { value: 'chat_completions', label: 'Chat Completions' }]
 const defaults = (): IntelligencePlanInput & { model: string; candy_enabled: boolean; candy_interval_seconds: number } => ({ name:'',model:props.initialModel || PELICAN_MODEL,source_type:oauthOnly.value?'openai_oauth':localOnly.value?'local_group':'upstream',account_id:null,endpoint:'',api_key:'',upstream_target_id:null,group_id:null,local_api_key_id:null,supplier_note:'',group_note:'',rate_note:'',notes:'',custom_prompt:'',channel_prompts:[],api_mode:'responses',enabled:true,candy_enabled:false,candy_interval_seconds:180,interval_seconds:300,timeout_seconds:600 })
@@ -281,6 +290,7 @@ watch([() => props.show, () => props.upstreamTargetId, () => props.plan?.id, () 
   const current = generation
   Object.assign(form, defaults(), props.plan ? { ...props.plan, api_key:'' } : {})
   form.model = props.plan?.model || form.model || PELICAN_MODEL
+  form.reasoning_effort = props.plan?.reasoning_effort || DEFAULT_PELICAN_REASONING_EFFORT
   form.candy_enabled = Boolean(props.plan?.candy_enabled)
   form.candy_interval_seconds = candyIntervals.includes(props.plan?.candy_interval_seconds ?? 180) ? props.plan?.candy_interval_seconds ?? 180 : 180
   // Existing managed keys remain automatic; explicit administrator keys retain their binding.
@@ -350,7 +360,7 @@ async function save() {
     if (!form.api_key?.trim() && (!props.plan || props.plan.source_type !== 'external')) { error.value=t('intelligenceMonitor.form.requiredKey'); return }
   }
   saving.value=true
-  const input: IntelligencePlanInput = { name:oauthOnly.value?'':form.name.trim(),model:form.model,source_type:oauthOnly.value?'openai_oauth':form.source_type,account_id:oauthOnly.value?form.account_id:null,endpoint:form.source_type==='external' ? form.endpoint?.trim() : undefined,api_key:form.source_type==='external' ? form.api_key?.trim() || undefined : undefined,upstream_target_id:form.source_type==='upstream' ? form.upstream_target_id : null,group_id:form.source_type==='local_group' ? form.group_id : null,local_api_key_id:form.source_type==='local_group' ? form.local_api_key_id ?? null : undefined,supplier_note:form.supplier_note.trim(),group_note:form.group_note.trim(),rate_note:form.rate_note.trim(),notes:form.notes.trim(),api_mode:oauthOnly.value?'responses':form.api_mode,enabled:form.enabled,candy_enabled:Boolean(form.candy_enabled),candy_interval_seconds:form.candy_interval_seconds,interval_seconds:form.interval_seconds,timeout_seconds:form.timeout_seconds }
+  const input: IntelligencePlanInput = { name:oauthOnly.value?'':form.name.trim(),model:form.model,reasoning_effort:form.reasoning_effort,source_type:oauthOnly.value?'openai_oauth':form.source_type,account_id:oauthOnly.value?form.account_id:null,endpoint:form.source_type==='external' ? form.endpoint?.trim() : undefined,api_key:form.source_type==='external' ? form.api_key?.trim() || undefined : undefined,upstream_target_id:form.source_type==='upstream' ? form.upstream_target_id : null,group_id:form.source_type==='local_group' ? form.group_id : null,local_api_key_id:form.source_type==='local_group' ? form.local_api_key_id ?? null : undefined,supplier_note:form.supplier_note.trim(),group_note:form.group_note.trim(),rate_note:form.rate_note.trim(),notes:form.notes.trim(),api_mode:oauthOnly.value?'responses':form.api_mode,enabled:form.enabled,candy_enabled:Boolean(form.candy_enabled),candy_interval_seconds:form.candy_interval_seconds,interval_seconds:form.interval_seconds,timeout_seconds:form.timeout_seconds }
   if (form.source_type !== 'openai_oauth') input.custom_prompt = form.custom_prompt?.trim() || ''
   if (form.source_type === 'local_group') {
     input.channel_prompts = (form.channel_prompts || []).filter(item => item.prompt.trim()).map(item => ({ account_id: item.account_id, prompt: item.prompt.trim() }))
@@ -372,6 +382,8 @@ async function save() {
       ? t('intelligenceMonitor.groupMonitor.alreadyExists')
       : code === 'INTELLIGENCE_LOCAL_PLAN_EXISTS'
       ? t('intelligenceMonitor.local.alreadyAdded')
+      : metadata?.field === 'reasoning_effort'
+      ? t('intelligenceMonitor.form.validEffort')
       : metadata?.field === 'custom_prompt'
       ? t('intelligenceMonitor.promptSettings.invalidPrompt')
       : metadata?.field === 'channel_prompts'

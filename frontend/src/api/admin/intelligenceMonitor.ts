@@ -1,7 +1,7 @@
+import type { PelicanReasoningEffort } from '@/utils/pelicanModels'
 import { apiClient } from '../client'
 
 export const PELICAN_MODEL = 'gpt-6-astra'
-export const PELICAN_REASONING = 'high'
 export const PELICAN_PROMPT = '创建一个 HTML，内容是用 SVG 绘制一个鹈鹕骑自行车的 2D 动画。你不需要任何测试。'
 export type IntelligenceSource = 'external' | 'upstream' | 'local_group' | 'openai_oauth'
 export type IntelligenceRunStatus = 'pending' | 'running' | 'succeeded' | 'failed'
@@ -32,6 +32,7 @@ export interface IntelligencePublicDisplaySettings {
 export interface IntelligencePlanInput {
   name: string
   model?: string
+  reasoning_effort?: PelicanReasoningEffort
   source_type: IntelligenceSource
   endpoint?: string
   api_key?: string
@@ -78,7 +79,7 @@ export interface IntelligenceRun {
   http_status: number | null
   error: string
   model: string
-  reasoning_effort: string
+  reasoning_effort: PelicanReasoningEffort
   prompt: string
   source_type: IntelligenceSource
   source_name: string
@@ -99,7 +100,7 @@ export interface IntelligencePlan extends Omit<IntelligencePlanInput, 'api_key'>
   }
   id: number
   model: string
-  reasoning_effort: string
+  reasoning_effort: PelicanReasoningEffort
   prompt: string
   api_key_masked: string
   source_name: string

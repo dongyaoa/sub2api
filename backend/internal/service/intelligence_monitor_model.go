@@ -14,6 +14,18 @@ const (
 
 var intelligenceClaudeModelID = regexp.MustCompile(`^claude-[a-z0-9]+([.-][a-z0-9]+)*$`)
 
+// NormalizeIntelligenceReasoningEffort defaults legacy plans and snapshots to high.
+func NormalizeIntelligenceReasoningEffort(raw string) (string, error) {
+	switch value := strings.ToLower(strings.TrimSpace(raw)); value {
+	case "":
+		return IntelligenceMonitorReasoning, nil
+	case "low", "medium", "high", "xhigh", "max":
+		return value, nil
+	default:
+		return "", ErrIntelligenceInvalid.WithMetadata(map[string]string{"field": "reasoning_effort", "detail": "choose low, medium, high, xhigh or max"})
+	}
+}
+
 // Omitted models retain the original comparison model for legacy plans/runs.
 func intelligenceMonitorModel(model string) string {
 	model = strings.TrimSpace(model)

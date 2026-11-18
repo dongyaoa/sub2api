@@ -1,3 +1,4 @@
+import type { PelicanReasoningEffort } from '@/utils/pelicanModels'
 import { apiClient } from './client'
 
 export interface PelicanMonitorConfig { enabled: boolean; title: string; description: string; notice: string }
@@ -6,7 +7,7 @@ export interface PelicanRun {
   plan_id: number
   status: 'pending' | 'running' | 'succeeded' | 'failed'
   model: string
-  reasoning_effort: string
+  reasoning_effort: PelicanReasoningEffort
   created_at: string
   started_at: string | null
   finished_at: string | null
@@ -23,7 +24,7 @@ export interface PelicanMonitorGroup {
   next_run_at: string | null
   last_run_at: string | null
   model: string
-  reasoning_effort: string
+  reasoning_effort: PelicanReasoningEffort
   latest_run: PelicanRun | null
   recent_runs: PelicanRun[]
 }

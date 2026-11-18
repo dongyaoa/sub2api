@@ -11,7 +11,7 @@ vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (key: string, params?: { count
 vi.mock('@/api/keys', () => ({ list: mocks.keys }))
 vi.mock('@/api/admin/accounts', () => ({ list: mocks.accounts, getById: mocks.account }))
 vi.mock('@/api/admin/groups', () => ({ getAll: mocks.groups }))
-vi.mock('@/api/admin/intelligenceMonitor', () => ({ intelligenceMonitorAPI: { create: mocks.create, update: mocks.update, localChannels: mocks.channels }, PELICAN_MODEL: 'gpt-6-astra', PELICAN_REASONING: 'high', PELICAN_PROMPT: 'Pelican animation' }))
+vi.mock('@/api/admin/intelligenceMonitor', () => ({ intelligenceMonitorAPI: { create: mocks.create, update: mocks.update, localChannels: mocks.channels }, PELICAN_MODEL: 'gpt-6-astra', PELICAN_PROMPT: 'Pelican animation' }))
 const dialog = defineComponent({ props: ['show', 'title'], template: '<div v-if="show"><slot /><slot name="footer" /></div>' })
 const oauthAccount = (id: number, name: string, fields: Record<string, unknown> = {}) => ({ id, name, platform: 'openai', type: 'oauth', status: 'active', schedulable: true, ...fields })
 const page = (items: unknown[], number = 1, pages = 1) => ({ items, total: pages === 1 ? items.length : pages * 100, page: number, page_size: 100, pages })
@@ -43,25 +43,37 @@ beforeEach(() => {
 afterEach(() => { wrapper?.unmount(); wrapper = undefined; document.body.innerHTML = ''; vi.useRealTimers() })
 
 describe('OAuth intelligence plan dialog', () => {
+  it('loads the saved effort, applies edits, and resets to high for a new plan', async () => {
+    const plan = savedPlan({ source_type: 'external', account_id: null, endpoint: 'https://relay.example', reasoning_effort: 'medium' })
+    const view = render({ oauthOnly: false, plan }); await flushPromises()
+    expect(view.get('#intelligence-effort').text()).toContain('medium')
+    await selectOption(view, '#intelligence-effort', 'max')
+    await view.get('form').trigger('submit'); await flushPromises()
+    expect(mocks.update).toHaveBeenCalledWith(plan.id, expect.objectContaining({ reasoning_effort: 'max' }))
+    await view.setProps({ show: false }); await view.setProps({ show: true, plan: null }); await flushPromises()
+    expect(view.get('#intelligence-effort').text()).toContain('high')
+  })
+
   it('saves an external HTTP IP and port endpoint unchanged', async () => {
     const endpoint = 'http://216.158.77.26:7070/v1'
     const plan = savedPlan({ source_type: 'external', account_id: null, endpoint })
     const view = render({ oauthOnly: false, plan }); await flushPromises()
     await view.get('form').trigger('submit'); await flushPromises()
-    expect(mocks.update).toHaveBeenCalledWith(plan.id, expect.objectContaining({ source_type: 'external', endpoint }))
+    expect(mocks.update).toHaveBeenCalledWith(plan.id, expect.objectContaining({ source_type: 'external', endpoint, reasoning_effort: 'high' }))
   })
   it('saves optional local prompts and clears only channel overrides when choosing another group', async () => {
     mocks.groups.mockResolvedValue([{ id: 5, name: 'Local GPT', platform: 'openai', rate_multiplier: 1 }, { id: 6, name: 'Backup GPT', platform: 'openai', rate_multiplier: 1 }])
     const view = render({ oauthOnly: false, localOnly: true }); await flushPromises()
     await selectOption(view, '#intelligence-group', 'Local GPT')
+    await selectOption(view, '#intelligence-effort', 'xhigh')
     await view.get('#intelligence-custom-prompt').setValue('  Draw a pelican in HTML  ')
     await view.get('[data-testid="toggle-channel-prompts"]').trigger('click'); await flushPromises()
     await view.get('#intelligence-channel-prompt-11').setValue('  Draw a red pelican in HTML  ')
     await view.get('form').trigger('submit'); await flushPromises()
-    expect(mocks.create).toHaveBeenLastCalledWith(expect.objectContaining({ group_id: 5, custom_prompt: 'Draw a pelican in HTML', channel_prompts: [{ account_id: 11, prompt: 'Draw a red pelican in HTML' }] }))
+    expect(mocks.create).toHaveBeenLastCalledWith(expect.objectContaining({ group_id: 5, reasoning_effort: 'xhigh', custom_prompt: 'Draw a pelican in HTML', channel_prompts: [{ account_id: 11, prompt: 'Draw a red pelican in HTML' }] }))
     await selectOption(view, '#intelligence-group', 'Backup GPT')
     await view.get('form').trigger('submit'); await flushPromises()
-    expect(mocks.create).toHaveBeenLastCalledWith(expect.objectContaining({ group_id: 6, custom_prompt: 'Draw a pelican in HTML', channel_prompts: [] }))
+    expect(mocks.create).toHaveBeenLastCalledWith(expect.objectContaining({ group_id: 6, reasoning_effort: 'xhigh', custom_prompt: 'Draw a pelican in HTML', channel_prompts: [] }))
   })
 
   it('restores saved local prompts and explicitly clears them to the default', async () => {
@@ -104,13 +116,14 @@ describe('OAuth intelligence plan dialog', () => {
     expect(mocks.update).toHaveBeenLastCalledWith(plan.id, expect.objectContaining({ custom_prompt: '' }))
   })
 
-  it('defaults to Astra and offers Sol using the native non-searchable model selector', async () => {
+  it('offers independent model and effort choices for OAuth', async () => {
     const view = render(); await flushPromises()
+    await selectOption(view, '#intelligence-effort', 'low')
     expect(view.get('#intelligence-model').text()).toContain('GPT-6 Astra')
     await selectOption(view, '#intelligence-model', 'GPT-6.1 Sol')
     await selectOAuth(view)
     await view.get('form').trigger('submit'); await flushPromises()
-    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ model: 'gpt-6.1-sol', source_type: 'openai_oauth', account_id: 7 }))
+    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ model: 'gpt-6.1-sol', reasoning_effort: 'low', source_type: 'openai_oauth', account_id: 7 }))
   })
 
   it('offers an existing account for another model and excludes it again for the occupied model', async () => {
@@ -647,9 +660,10 @@ describe('intelligence plan choices and interval validation', () => {
     const view = render({ oauthOnly: false, overview, upstreamTargetId: target.id }); await flushPromises()
     expect(view.get('#intelligence-model').text()).toContain('Claude Opus 5.5')
     expect(view.get('#intelligence-api-mode').text()).toContain('Anthropic Messages')
+    await selectOption(view, '#intelligence-effort', 'max')
     await selectOption(view, '#intelligence-model', label)
     await view.get('form').trigger('submit'); await flushPromises()
-    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ source_type: 'upstream', upstream_target_id: target.id, api_mode: 'messages', model }))
+    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ source_type: 'upstream', upstream_target_id: target.id, api_mode: 'messages', model, reasoning_effort: 'max' }))
   })
 
   it('saves custom external Claude IDs unchanged and switches back to GPT when changing protocol', async () => {
@@ -816,7 +830,7 @@ describe('intelligence plan choices and interval validation', () => {
     const view = render({ oauthOnly: false, overview })
     await flushPromises()
     expect(view.find('select').exists()).toBe(false)
-    expect(view.findAllComponents(Select)).toHaveLength(3)
+    expect(view.findAllComponents(Select).map(item => item.props('id'))).toEqual(['intelligence-model', 'intelligence-effort', 'intelligence-upstream', 'intelligence-api-mode'])
     for (const select of view.findAllComponents(Select)) expect(select.props('searchable')).toBe(false)
     await view.get('#intelligence-upstream').trigger('click')
     await flushPromises()

@@ -25,7 +25,7 @@ export default {
       title: '糖果测试', recent: '最近 60 个回答', run: '立即测试', running: '测试中', pending: '排队中', inspectFailure: '查看异常记录',
       failed: '请求失败', correct: '回答正确', incorrect: '回答错误', unknown: '尚未评分', answer: '模型答案',
       detail: '糖果测试记录', response: '完整回复', noResponse: '暂无回复内容', enabled: '添加糖果测试', queued: '糖果测试已加入队列',
-      enableHint: '沿用本计划的模型和 high 思考强度，按独立周期发起糖果测试请求，也可手动执行。',
+      enableHint: '沿用本计划的模型和思考强度，按独立周期发起糖果测试请求，也可手动执行。',
       interval: '糖果测试间隔', intervalHint: '默认 3 分钟。定时检测总开关同时控制两项测试；关闭后仍可分别手动执行。',
       scoringHint: '标准答案为 21，仅用于评分，不包含在发送给模型的题目中。',
     },
@@ -92,6 +92,7 @@ export default {
     historical: '展示这次执行时保存的参数与倍率', times: '{count} 次记录', seconds: '{count} 秒', minutes: '{count} 分钟', hours: '{count} 小时',
     sourceMissing: '来源已归档或暂不可用', notScored: '通过作品对比观察表现，不生成自动智商评分。',
     form: {
+      validEffort: '请选择有效的思考强度。',
       modelHint: '请选择上游支持的 GPT 模型。', claudeModelHint: '选择预设模型，或输入上游支持的完整 Claude 模型 ID。', useModelID: '使用模型 ID', validClaudeModel: '请输入以 claude- 开头的有效模型 ID，最长 100 个字符。', validModel: '请选择有效的监测模型。',
       name: '计划名称', namePlaceholder: '例如：北岸 · GPT 主力组', source: '检测来源', selectUpstream: '选择上游 Key 分组', selectGroup: '选择本站分组',
       endpoint: 'API 地址', key: 'API Key', keepKey: '留空保留已保存的 Key', protocol: '请求接口', sourceHint: '通过本站分组真实路由执行，使用当前管理员的专用监控 Key，并遵循正常计费与分组权限。',

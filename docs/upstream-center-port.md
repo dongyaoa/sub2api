@@ -141,6 +141,7 @@ New API Key 分组在「智商监控」旁提供「强制同步」，调用管�
 | `274_upstream_purge_finance_barrier.sql` | 消费写入与永久清理之间增加绑定行锁，避免删除后重新产生账目副本；为归档批量游标查询增加索引。 |
 | `277_intelligence_monitor_protocols.sql` | 允许两个 GPT-6.2 模型使用 OpenAI 协议，允许上游 Key 和外部地址使用 Claude 模型及 Anthropic Messages。 |
 | `278_upstream_monitor_retention.sql` | 将监测记录保留的默认值和下限改为 3 天。升级时仅把从未手动保存的旧默认值 30 天改为 3 天，保留管理员已保存的设置。 |
+| `279_intelligence_monitor_reasoning_effort.sql` | 保存计划的思考强度，已有计划使用 `high`。 |
 
 升级前按现有部署流程备份数据库。新增 `263` 会删除已删除账号关联的历史 OAuth 监控，这是来源版本的既定生命周期行为。原有在用账号、普通渠道监控及 custom 其他功能无需转移到上游中心。
 
@@ -156,7 +157,7 @@ intelligence_monitor:
 
 也可使用环境变量 `INTELLIGENCE_MONITOR_MAX_CONCURRENCY`（1–256）和 `INTELLIGENCE_MONITOR_CANDY_MAX_CONCURRENCY`（1–128）。同数据库的多个实例共享并发上限，部署默认值应一致；部署配置变更需要重启。在上游中心「并发设置」保存后的数据库值优先，在线调整立即生效，调小不会终止已发出的请求。
 
-OpenAI 鹈鹕计划默认使用 `gpt-6-astra` 和 `high` 思考强度，还可选择 `gpt-6.1-sol`、`gpt-6.2-astra` 或 `gpt-6.2-sol`。Anthropic 上游 Key 和外部 Messages 地址默认使用 `claude-opus-5-5`，可选择 `claude-sonnet-5-5`、`claude-fable-5-2` 或填写上游支持的其他 `claude-` 模型 ID。Messages 请求使用自适应思考和 `high` 强度。作品预览只提取最终文本块中的 HTML 或 SVG 动画。
+OpenAI 鹈鹕计划默认使用 `gpt-6-astra` 和 `high` 思考强度，还可选择 `gpt-6.1-sol`、`gpt-6.2-astra` 或 `gpt-6.2-sol`。Anthropic 上游 Key 和外部 Messages 地址默认使用 `claude-opus-5-5`，可选择 `claude-sonnet-5-5`、`claude-fable-5-2` 或填写上游支持的其他 `claude-` 模型 ID。智商监控和供用户端展示的站内鹈鹕计划都可选 `low`、`medium`、`high`、`xhigh` 或 `max`，默认 `high`。Messages 请求使用自适应思考和所选强度。修改计划后，已入队任务和历史作品保留当时的强度。作品预览只提取最终文本块中的 HTML 或 SVG 动画。
 
 新建计划默认每 5 分钟执行，生成超时默认 10 分钟，可选 5 / 10 / 15 分钟。可用性检测、鹈鹕和糖果各自独立调度。
 

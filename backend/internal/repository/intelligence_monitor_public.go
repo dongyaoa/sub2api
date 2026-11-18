@@ -118,15 +118,15 @@ func (r *intelligenceMonitorRepository) ListPublicPelican(ctx context.Context, a
 	if !cfg.Enabled || len(cfg.PlanIDs) == 0 || len(allowedGroupIDs) == 0 {
 		return page, tx.Commit()
 	}
-	rows, err := tx.QueryContext(ctx, `SELECT p.id,g.name,g.rate_multiplier,p.enabled,p.interval_seconds,p.next_run_at,p.last_run_at,p.model FROM intelligence_monitor_plans p JOIN groups g ON g.id=p.group_id WHERE `+publicPelicanPlanFilter+` ORDER BY p.sort_order ASC NULLS LAST,p.created_at DESC,p.id DESC LIMIT $3`, pq.Array(cfg.PlanIDs), pq.Array(allowedGroupIDs), service.IntelligencePublicDisplayMaxPlans)
+	rows, err := tx.QueryContext(ctx, `SELECT p.id,g.name,g.rate_multiplier,p.enabled,p.interval_seconds,p.next_run_at,p.last_run_at,p.model,p.reasoning_effort FROM intelligence_monitor_plans p JOIN groups g ON g.id=p.group_id WHERE `+publicPelicanPlanFilter+` ORDER BY p.sort_order ASC NULLS LAST,p.created_at DESC,p.id DESC LIMIT $3`, pq.Array(cfg.PlanIDs), pq.Array(allowedGroupIDs), service.IntelligencePublicDisplayMaxPlans)
 	if err != nil {
 		return nil, err
 	}
 	byID := make(map[int64]*service.PublicPelicanPlan)
 	ids := make([]int64, 0)
 	for rows.Next() {
-		plan := &service.PublicPelicanPlan{ReasoningEffort: service.IntelligenceMonitorReasoning, RecentRuns: []*service.PublicPelicanRun{}}
-		if err = rows.Scan(&plan.ID, &plan.GroupName, &plan.GroupRateMultiplier, &plan.Enabled, &plan.IntervalSeconds, &plan.NextRunAt, &plan.LastRunAt, &plan.Model); err != nil {
+		plan := &service.PublicPelicanPlan{RecentRuns: []*service.PublicPelicanRun{}}
+		if err = rows.Scan(&plan.ID, &plan.GroupName, &plan.GroupRateMultiplier, &plan.Enabled, &plan.IntervalSeconds, &plan.NextRunAt, &plan.LastRunAt, &plan.Model, &plan.ReasoningEffort); err != nil {
 			_ = rows.Close()
 			return nil, err
 		}

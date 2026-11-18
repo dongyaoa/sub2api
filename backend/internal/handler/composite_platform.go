@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"errors"
 	"net/http"
 	"strings"
 
@@ -139,7 +140,11 @@ func applyOpenAIReasoningEffortPolicyForRequest(c *gin.Context, apiKey *service.
 	if !ok {
 		return body, false, nil
 	}
-	return service.ApplyOpenAIReasoningEffortPolicy(body, maxEffort, mappings, overLimit)
+	updated, changed, err := service.ApplyOpenAIReasoningEffortPolicy(body, maxEffort, mappings, overLimit)
+	if changed && c != nil && c.Request != nil && service.IsIntelligenceLocalRequest(c.Request.Context()) {
+		return body, false, errors.New("group policy would change the requested reasoning effort; select a permitted effort for this monitoring plan")
+	}
+	return updated, changed, err
 }
 
 func respondOpenAIReasoningEffortPolicyError(c *gin.Context, err error, write func(*gin.Context, int, string, string)) {

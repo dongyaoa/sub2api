@@ -1,8 +1,10 @@
 package handler
 
 import (
+	"context"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	middleware2 "github.com/Wei-Shaw/sub2api/internal/server/middleware"
 	"github.com/Wei-Shaw/sub2api/internal/service"
@@ -197,6 +199,47 @@ func TestOpenAIReasoningEffortPolicyForCompositeTarget(t *testing.T) {
 	require.NoError(t, err)
 	require.False(t, changed)
 	require.Equal(t, body, got)
+}
+
+// A group may rewrite ordinary calls, but a monitoring result is labelled with
+// the effort captured when the run was queued.
+func TestLocalMonitorRejectsGroupEffortRewrites(t *testing.T) {
+	for _, tc := range []struct {
+		path, field, body string
+		group             service.Group
+	}{
+		{"/v1/responses", "reasoning.effort", `{"model":"gpt-6.2-astra","reasoning":{"effort":"max"}}`, service.Group{Platform: service.PlatformOpenAI, MaxReasoningEffort: "high"}},
+		{"/v1/chat/completions", "reasoning_effort", `{"model":"gpt-6.2-sol","reasoning_effort":"max"}`, service.Group{Platform: service.PlatformOpenAI, ReasoningEffortMappings: []service.ReasoningEffortMapping{{From: "max", To: "high"}}}},
+	} {
+		t.Run(tc.path, func(t *testing.T) {
+			key := &service.APIKey{ID: 42, Key: "local-test-key", Group: &tc.group}
+			body := []byte(tc.body)
+			c, _ := gin.CreateTestContext(httptest.NewRecorder())
+			c.Request = httptest.NewRequest("POST", "http://127.0.0.1"+tc.path, nil)
+			ctx, cancel := context.WithTimeout(c.Request.Context(), time.Minute)
+			defer cancel()
+			c.Request = c.Request.WithContext(ctx)
+			c.Request.RemoteAddr = "127.0.0.1:12345"
+			ordinary, changed, err := applyOpenAIReasoningEffortPolicyForRequest(c, key, body)
+			require.NoError(t, err)
+			require.True(t, changed)
+			require.Equal(t, "high", gjson.GetBytes(ordinary, tc.field).String())
+
+			done, err := service.AuthorizeIntelligenceLocalRequest(c.Request, key.ID, key.Key)
+			require.NoError(t, err)
+			defer done()
+			monitor, release := service.BindIntelligenceLocalRequest(c.Request, key)
+			defer release()
+			c.Request = c.Request.WithContext(monitor)
+			_, _, err = applyOpenAIReasoningEffortPolicyForRequest(c, key, body)
+			require.ErrorContains(t, err, "group policy would change the requested reasoning effort")
+
+			allowed, changed, err := applyOpenAIReasoningEffortPolicyForRequest(c, key, ordinary)
+			require.NoError(t, err)
+			require.False(t, changed)
+			require.Equal(t, ordinary, allowed)
+		})
+	}
 }
 
 func TestOpenAIShapedReasoningEffortPolicyForAnthropicGroup(t *testing.T) {

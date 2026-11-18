@@ -108,6 +108,12 @@ func BindIntelligenceLocalRequest(request *http.Request, key *APIKey) (context.C
 	return ctx, func() { stop(); cancel() }
 }
 
+// IsIntelligenceLocalRequest identifies a monitoring request after the loopback
+// permit has been consumed and its API key has been authenticated.
+func IsIntelligenceLocalRequest(ctx context.Context) bool {
+	return ctx != nil && ctx.Value(intelligenceGenerationContextKey{}) == true
+}
+
 // Only an authenticated local IQ request replaces the ordinary stream-idle
 // guard. Its original worker deadline still bounds the entire HTTP lifecycle.
 func intelligenceMonitorStreamInterval(c *gin.Context, ordinary time.Duration) time.Duration {
@@ -132,7 +138,7 @@ func intelligenceMonitorFirstOutputTimeout(c *gin.Context, ordinary time.Duratio
 }
 
 func intelligenceMonitorDeadline(c *gin.Context) (time.Time, bool) {
-	if c == nil || c.Request == nil || c.Request.Context().Value(intelligenceGenerationContextKey{}) != true {
+	if c == nil || c.Request == nil || !IsIntelligenceLocalRequest(c.Request.Context()) {
 		return time.Time{}, false
 	}
 	return c.Request.Context().Deadline()

@@ -1,25 +1,25 @@
 <template>
-  <component :is="embedded ? 'section' : BaseDialog" v-bind="embedded ? {} : { show: true, title: t(`${contextMessages}.title`, { name: contextName }), width: 'extra-wide', motion: 'fade', closeOnEscape: !childOpen, showCloseButton: true }" @close="close">
-    <div class="group-intelligence-content flex min-h-0 flex-col gap-4" :class="{ 'group-intelligence-embedded': embedded, 'group-intelligence-dual': fitTwoPlans }" data-testid="group-intelligence-content">
-      <div class="group-intelligence-heading flex shrink-0 flex-wrap items-center justify-between gap-3 rounded-xl border border-gray-100 bg-gray-50/70 px-4 py-3 dark:border-dark-700 dark:bg-dark-900/40">
-        <div v-if="!embedded" class="flex min-w-0 flex-1 items-center gap-3">
-          <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary-50 text-primary-600 dark:bg-primary-500/10 dark:text-primary-400"><Icon name="lightbulb" size="sm" /></div>
-          <div class="min-w-0"><p class="truncate text-sm font-semibold text-gray-800 dark:text-gray-100">{{ contextName }}</p><p class="mt-0.5 truncate text-[10px] text-gray-400" :class="!account && 'font-mono'" :title="contextHint">{{ contextHint }}</p></div>
+  <component :is="embedded ? 'section' : BaseDialog" v-bind="embedded ? {} : { show: true, title: t(`${contextMessages}.title`, { name: contextName }), width: manyPlans ? 'full' : 'extra-wide', motion: 'fade', closeOnEscape: !childOpen, showCloseButton: true }" @close="close">
+    <div class="group-intelligence-content flex min-h-0 flex-col gap-2" :class="{ 'group-intelligence-embedded': embedded }" data-testid="group-intelligence-content">
+      <div class="group-intelligence-heading flex shrink-0 flex-wrap items-center justify-between gap-2 rounded-xl border border-gray-100 bg-gray-50/70 px-3 py-1.5 dark:border-dark-700 dark:bg-dark-900/40">
+        <div v-if="!embedded" class="flex min-w-0 flex-1 items-center gap-2">
+          <div class="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-primary-50 text-primary-600 dark:bg-primary-500/10 dark:text-primary-400"><Icon name="lightbulb" size="sm" /></div>
+          <div class="min-w-0"><p class="truncate text-sm font-semibold text-gray-800 dark:text-gray-100">{{ contextName }}</p><p class="truncate text-[10px] text-gray-500 dark:text-dark-400" :title="contextModels">{{ contextModels }}</p></div>
         </div>
         <h4 v-else class="inline-flex items-center gap-2 text-sm font-semibold text-gray-800 dark:text-gray-100"><Icon name="lightbulb" size="sm" class="text-primary-600 dark:text-primary-400" />{{ t('intelligenceMonitor.local.pelican') }}</h4>
-        <div class="flex shrink-0 items-center gap-3">
-          <span class="hidden text-[11px] text-gray-400 sm:inline">{{ contextModels }} · {{ PELICAN_REASONING }}</span>
-          <button v-if="plans.length && canAddModel" type="button" class="btn btn-secondary btn-sm" :disabled="loading || !!error" data-testid="group-intelligence-add-model" @click="openEditor()"><Icon name="plus" size="sm" class="mr-1" />{{ t('intelligenceMonitor.addModel') }}</button>
+        <div class="flex max-w-full items-center gap-2">
+          <span v-if="embedded" class="hidden min-w-0 truncate text-[11px] text-gray-400 sm:inline" :title="contextModels">{{ contextModels }}</span>
+          <button v-if="plans.length && canAddModel" type="button" class="btn btn-secondary btn-sm shrink-0" :disabled="loading || !!error" data-testid="group-intelligence-add-model" @click="openEditor()"><Icon name="plus" size="sm" class="mr-1" />{{ t('intelligenceMonitor.addModel') }}</button>
           <button v-if="!embedded" type="button" class="inline-flex items-center gap-1.5 rounded-lg px-2 py-2 text-xs font-medium text-gray-500 hover:bg-white hover:text-primary-600 dark:hover:bg-dark-700 dark:hover:text-primary-400" :aria-busy="loading" data-testid="group-intelligence-refresh" @click="manualRefresh"><Icon name="refresh" size="sm" :class="loading && 'animate-spin'" />{{ t('intelligenceMonitor.refresh') }}</button>
         </div>
       </div>
-      <div class="group-intelligence-viewport min-h-0 flex-1" :class="embedded ? '' : 'overflow-y-auto overscroll-contain [scrollbar-gutter:stable]'" data-testid="group-intelligence-viewport" :aria-busy="loading && !loaded">
+      <div class="group-intelligence-viewport min-h-0" :class="embedded ? '' : 'overflow-y-auto overscroll-contain'" data-testid="group-intelligence-viewport" :aria-busy="loading && !loaded">
         <p v-if="error" role="alert" class="mb-3 rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-600 dark:bg-rose-500/10 dark:text-rose-400">{{ error }}</p>
-        <div v-if="!loaded && !error" class="h-full animate-pulse rounded-2xl border border-gray-100 bg-gray-50 motion-reduce:animate-none dark:border-dark-700 dark:bg-dark-800" :class="embedded && 'min-h-[220px]'" data-testid="group-intelligence-loading" />
-        <div v-if="plans.length" class="group-intelligence-plans" :class="!fitTwoPlans && 'space-y-3'">
-          <IntelligencePlanCard v-for="plan in plans" :key="plan.id" :plan="plan" :overview="overview" :busy="busy.has(plan.id)" :visible="!childOpen" :compact="fitTwoPlans" @run="run(plan)" @candy-run="runCandy(plan)" @candy-select="openCandy" @toggle="toggle(plan)" @edit="openEditor(plan)" @history="runID => openHistory(plan, runID)" @archive="openArchive(plan)" />
+        <div v-if="!loaded && !error" class="min-h-[220px] animate-pulse rounded-2xl border border-gray-100 bg-gray-50 motion-reduce:animate-none dark:border-dark-700 dark:bg-dark-800" data-testid="group-intelligence-loading" />
+        <div v-if="plans.length" class="group-intelligence-plans grid min-w-0 grid-cols-1 gap-2">
+          <IntelligencePlanCard v-for="plan in plans" :key="plan.id" :plan="plan" :overview="overview" :busy="busy.has(plan.id)" :visible="!childOpen" :compact="compactCards" @run="run(plan)" @candy-run="runCandy(plan)" @candy-select="openCandy" @toggle="toggle(plan)" @edit="openEditor(plan)" @history="runID => openHistory(plan, runID)" @archive="openArchive(plan)" />
         </div>
-        <div v-else-if="loaded && !error" class="flex flex-col items-center justify-center rounded-2xl border border-dashed border-gray-200 px-6 py-6 text-center dark:border-dark-700" :class="embedded ? 'min-h-[220px]' : 'min-h-full'" data-testid="group-intelligence-empty">
+        <div v-else-if="loaded && !error" class="flex min-h-[220px] flex-col items-center justify-center rounded-2xl border border-dashed border-gray-200 px-6 py-6 text-center dark:border-dark-700" data-testid="group-intelligence-empty">
           <div class="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-primary-50 text-primary-500 dark:bg-primary-500/10"><Icon name="lightbulb" size="xl" /></div>
           <h4 class="text-sm font-semibold text-gray-800 dark:text-gray-100">{{ t(`${contextMessages}.emptyTitle`) }}</h4>
           <p class="mt-2 max-w-md text-xs leading-6 text-gray-500 dark:text-dark-400">{{ t(`${contextMessages}.emptyHint`) }}</p>
@@ -41,7 +41,7 @@ import { computed, onBeforeUnmount, provide, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import BaseDialog from '@/components/common/BaseDialog.vue'
 import Icon from '@/components/icons/Icon.vue'
-import { intelligenceMonitorAPI, PELICAN_MODEL, PELICAN_REASONING, type IntelligencePlan, type IntelligenceRun } from '@/api/admin/intelligenceMonitor'
+import { intelligenceMonitorAPI, PELICAN_MODEL, type IntelligencePlan, type IntelligenceRun } from '@/api/admin/intelligenceMonitor'
 import { upstreamCenterAPI, type UpstreamOverview, type UpstreamTarget } from '@/api/admin/upstreamCenter'
 import type { Account } from '@/types'
 import { useAppStore } from '@/stores/app'
@@ -64,10 +64,10 @@ const emit = defineEmits<{ close: []; changed: []; refreshOverview: []; childOpe
 const { t } = useI18n()
 const app = useAppStore()
 const plans = ref<IntelligencePlan[]>([]), loaded = ref(false), error = ref('')
-const fitTwoPlans = computed(() => !props.embedded && !props.account && plans.value.length === 2)
+const compactCards = computed(() => !props.embedded && plans.value.length >= 2)
+const manyPlans = computed(() => !props.embedded && plans.value.length >= 3)
 const contextMessages = computed(() => props.account ? 'intelligenceMonitor.accountMonitor' : 'intelligenceMonitor.groupMonitor')
 const contextName = computed(() => props.account ? plans.value[0]?.source_name || props.account.name : props.target?.name || '')
-const contextHint = computed(() => props.account ? t('intelligenceMonitor.source.openai_oauth') : props.target?.endpoint || '')
 const anthropic = computed(() => props.target?.provider === 'anthropic' && !props.account)
 const catalog = computed(() => anthropic.value ? claudePelicanOptions(props.target?.models) : PELICAN_MODELS)
 const availableModel = computed(() => catalog.value.find(model => !plans.value.some(plan => (plan.model || PELICAN_MODEL) === model.value))?.value)
@@ -236,28 +236,15 @@ defineExpose({ refresh: () => { previewRefresh.value++; return refresh() } })
 </script>
 
 <style scoped>
-/* Reserve the same viewport before the first response, on refresh and after iframe loads. */
-.group-intelligence-content {
-  height: min(468px, calc(90vh - 112px));
-  height: min(468px, calc(90dvh - 112px));
+.group-intelligence-content:not(.group-intelligence-embedded) {
+  max-height: calc(95vh - 96px);
+  max-height: calc(95dvh - 96px);
 }
-.group-intelligence-embedded { height:auto; min-height:280px; }
-.group-intelligence-dual .group-intelligence-plans { display: grid; gap: 8px; }
-/* Fit the cards to their contents, shrinking together only when viewport space is limited. */
-@media (min-width: 1024px) {
-  .group-intelligence-dual {
-    height: auto;
+.group-intelligence-embedded { min-height: 280px; }
+@media (min-width: 640px) {
+  .group-intelligence-content:not(.group-intelligence-embedded) {
     max-height: calc(90vh - 104px);
     max-height: calc(90dvh - 104px);
-    gap: 8px;
-  }
-  .group-intelligence-dual .group-intelligence-heading { padding-block: 6px; }
-  .group-intelligence-dual .group-intelligence-heading > div:first-child > div:first-child { width: 28px; height: 28px; }
-  .group-intelligence-dual .group-intelligence-viewport { display: flex; flex: 0 1 auto; flex-direction: column; }
-  .group-intelligence-dual .group-intelligence-plans {
-    flex: 0 1 auto;
-    min-height: 450px;
-    grid-template-rows: repeat(2, minmax(0, 1fr));
   }
 }
 </style>

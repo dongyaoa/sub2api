@@ -1,5 +1,8 @@
 export const DEFAULT_PELICAN_MODEL = 'gpt-6-astra'
 export const DEFAULT_CLAUDE_PELICAN_MODEL = 'claude-opus-5-5'
+export const DEFAULT_PELICAN_REASONING_EFFORT = 'high'
+export const PELICAN_REASONING_EFFORTS = ['low', 'medium', 'high', 'xhigh', 'max'] as const
+export type PelicanReasoningEffort = typeof PELICAN_REASONING_EFFORTS[number]
 
 export const PELICAN_MODELS = [
   { value: DEFAULT_PELICAN_MODEL, label: 'GPT-6 Astra' },

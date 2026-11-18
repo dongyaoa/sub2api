@@ -53,6 +53,10 @@ func TestIntelligenceModelsSaveDefaultsValidationAndSnapshot(t *testing.T) {
 func TestIntelligenceModelsHTTPUsesSnapshotForPelicanCandyAndLocal(t *testing.T) {
 	for _, model := range []string{IntelligenceMonitorAstra62Model, IntelligenceMonitorSol62Model, IntelligenceMonitorSolModel} {
 		for _, source := range []string{"external", "local_group"} {
+			effort := "xhigh"
+			if source == "local_group" {
+				effort = "max"
+			}
 			for _, mode := range []string{MonitorAPIModeResponses, MonitorAPIModeChatCompletions} {
 				for _, kind := range []string{IntelligenceMonitorTestPelican, IntelligenceMonitorTestCandy} {
 					t.Run(model+"/"+source+"/"+mode+"/"+kind, func(t *testing.T) {
@@ -64,9 +68,9 @@ func TestIntelligenceModelsHTTPUsesSnapshotForPelicanCandyAndLocal(t *testing.T)
 							require.NoError(t, json.NewDecoder(req.Body).Decode(&payload))
 							require.Equal(t, model, payload["model"])
 							if mode == MonitorAPIModeResponses {
-								require.Equal(t, "high", payload["reasoning"].(map[string]any)["effort"])
+								require.Equal(t, effort, payload["reasoning"].(map[string]any)["effort"])
 							} else {
-								require.Equal(t, "high", payload["reasoning_effort"])
+								require.Equal(t, effort, payload["reasoning_effort"])
 							}
 							body := `{"output_text":"21","status":"completed"}`
 							if mode == MonitorAPIModeChatCompletions {
@@ -77,7 +81,7 @@ func TestIntelligenceModelsHTTPUsesSnapshotForPelicanCandyAndLocal(t *testing.T)
 						svc.externalClient, svc.localClient = client, client
 						ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
 						defer cancel()
-						run := &IntelligenceMonitorRun{Model: model, SourceType: source, SourceEndpoint: "https://8.8.8.8", APIMode: mode, TestKind: kind, SourceSnapshot: map[string]any{"local_api_key_id": int64(8)}}
+						run := &IntelligenceMonitorRun{Model: model, ReasoningEffort: effort, SourceType: source, SourceEndpoint: "https://8.8.8.8", APIMode: mode, TestKind: kind, SourceSnapshot: map[string]any{"local_api_key_id": int64(8)}}
 						status, _, message := svc.generate(ctx, run, "private-test-key")
 						require.True(t, called)
 						require.Equal(t, 200, *status)

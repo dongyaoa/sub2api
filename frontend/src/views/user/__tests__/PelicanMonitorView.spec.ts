@@ -62,6 +62,17 @@ describe('read-only user pelican page', () => {
     expect(view.get('[data-testid="pelican-plan-model"]').text()).toContain('GPT-6.1 Sol')
   })
 
+  it('shows the current plan effort and preserves the effort of each earlier artwork', async () => {
+    const latest = { ...run, id: 9, reasoning_effort: 'xhigh' } as PelicanRun
+    state.list.mockResolvedValue(snapshot([{ ...group, reasoning_effort: 'max', latest_run: latest, recent_runs: [latest, run] }]))
+    const view = render(); await flushPromises()
+    expect(view.get('[data-testid="pelican-plan-model"] .model-effort').text()).toBe('Max')
+    expect(view.get('[data-run-id="9"] .model-effort').text()).toBe('XHigh')
+    expect(view.get('[data-run-id="8"] .model-effort').text()).toBe('High')
+    await view.get('[data-run-id="9"] [data-testid="artwork"]').trigger('click'); await flushPromises()
+    expect(view.get('.pelican-artwork-dialog .model-effort').text()).toBe('XHigh')
+  })
+
   it('shows the 6.2 models in a consistent order and accepts raw IDs in searches', async () => {
     state.list.mockResolvedValue(snapshot([
       { ...group, model: 'gpt-6.2-sol', latest_run: { ...run, model: 'gpt-6.2-sol' } },

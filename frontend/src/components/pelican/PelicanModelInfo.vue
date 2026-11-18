@@ -17,7 +17,11 @@ import { pelicanModelLabel } from '@/utils/pelicanModels'
 
 const props = defineProps<{ model?: string; effort?: string; compact?: boolean }>()
 const { t } = useI18n()
-const effortLabel = computed(() => props.effort ? props.effort.charAt(0).toUpperCase() + props.effort.slice(1) : '—')
+const effortLabel = computed(() => {
+  const effort = props.effort
+  if (!effort) return '—'
+  return effort === 'xhigh' ? 'XHigh' : effort.charAt(0).toUpperCase() + effort.slice(1)
+})
 const description = computed(() => `${t('pelicanMonitor.model')}: ${pelicanModelLabel(props.model)} · ${t('pelicanMonitor.reasoning')}: ${effortLabel.value}`)
 </script>
 <style scoped>

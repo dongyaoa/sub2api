@@ -27,12 +27,12 @@ func intelligenceDBError(err error) error {
 	return err
 }
 
-const intelligencePlanColumns = `id,name,source_type,endpoint,api_key_encrypted,upstream_target_id,group_id,local_api_key_id,local_key_owner_id,supplier_note,group_note,rate_note,notes,api_mode,enabled,interval_seconds,timeout_seconds,created_by,last_run_at,next_run_at,created_at,updated_at,account_id,candy_enabled,candy_interval_seconds,candy_last_run_at,candy_next_run_at,local_api_key_borrowed,model,custom_prompt,channel_prompts`
+const intelligencePlanColumns = `id,name,source_type,endpoint,api_key_encrypted,upstream_target_id,group_id,local_api_key_id,local_key_owner_id,supplier_note,group_note,rate_note,notes,api_mode,enabled,interval_seconds,timeout_seconds,created_by,last_run_at,next_run_at,created_at,updated_at,account_id,candy_enabled,candy_interval_seconds,candy_last_run_at,candy_next_run_at,local_api_key_borrowed,model,custom_prompt,channel_prompts,reasoning_effort`
 
 func scanIntelligencePlan(row upstreamScanner) (*service.IntelligenceMonitorPlan, error) {
 	p := new(service.IntelligenceMonitorPlan)
 	var channels []byte
-	err := row.Scan(&p.ID, &p.Name, &p.SourceType, &p.Endpoint, &p.APIKeyEncrypted, &p.UpstreamTargetID, &p.GroupID, &p.LocalAPIKeyID, &p.LocalKeyOwnerID, &p.SupplierNote, &p.GroupNote, &p.RateNote, &p.Notes, &p.APIMode, &p.Enabled, &p.IntervalSeconds, &p.TimeoutSeconds, &p.CreatedBy, &p.LastRunAt, &p.NextRunAt, &p.CreatedAt, &p.UpdatedAt, &p.AccountID, &p.CandyEnabled, &p.CandyIntervalSeconds, &p.CandyLastRunAt, &p.CandyNextRunAt, &p.LocalAPIKeyBorrowed, &p.Model, &p.CustomPrompt, &channels)
+	err := row.Scan(&p.ID, &p.Name, &p.SourceType, &p.Endpoint, &p.APIKeyEncrypted, &p.UpstreamTargetID, &p.GroupID, &p.LocalAPIKeyID, &p.LocalKeyOwnerID, &p.SupplierNote, &p.GroupNote, &p.RateNote, &p.Notes, &p.APIMode, &p.Enabled, &p.IntervalSeconds, &p.TimeoutSeconds, &p.CreatedBy, &p.LastRunAt, &p.NextRunAt, &p.CreatedAt, &p.UpdatedAt, &p.AccountID, &p.CandyEnabled, &p.CandyIntervalSeconds, &p.CandyLastRunAt, &p.CandyNextRunAt, &p.LocalAPIKeyBorrowed, &p.Model, &p.CustomPrompt, &channels, &p.ReasoningEffort)
 	if err != nil {
 		return nil, intelligenceDBError(err)
 	}
@@ -90,6 +90,11 @@ func (r *intelligenceMonitorRepository) SavePlan(ctx context.Context, p *service
 	if err := service.ValidateIntelligenceMonitorProtocol(p.Model, p.APIMode, p.SourceType); err != nil {
 		return err
 	}
+	effort, err := service.NormalizeIntelligenceReasoningEffort(p.ReasoningEffort)
+	if err != nil {
+		return err
+	}
+	p.ReasoningEffort = effort
 	if p.CandyIntervalSeconds == 0 {
 		p.CandyIntervalSeconds = service.IntelligenceMonitorCandyDefaultIntervalSeconds
 	}
@@ -175,13 +180,13 @@ func (r *intelligenceMonitorRepository) SavePlan(ctx context.Context, p *service
 	}
 	args := []any{p.Name, p.SourceType, p.Endpoint, p.APIKeyEncrypted, p.UpstreamTargetID, p.GroupID, p.LocalAPIKeyID, p.LocalKeyOwnerID, p.SupplierNote, p.GroupNote, p.RateNote, p.Notes, p.APIMode, p.Enabled, p.IntervalSeconds, p.TimeoutSeconds, p.CreatedBy}
 	if p.ID == 0 {
-		args = append(args, p.AccountID, p.CandyEnabled, p.CandyIntervalSeconds, p.LocalAPIKeyBorrowed, p.Model, p.CustomPrompt, string(channelPrompts))
-		err = tx.QueryRowContext(ctx, `INSERT INTO intelligence_monitor_plans(name,source_type,endpoint,api_key_encrypted,upstream_target_id,group_id,local_api_key_id,local_key_owner_id,supplier_note,group_note,rate_note,notes,api_mode,enabled,interval_seconds,timeout_seconds,created_by,account_id,candy_enabled,candy_interval_seconds,local_api_key_borrowed,model,custom_prompt,channel_prompts,next_run_at,candy_next_run_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24::jsonb,CASE WHEN $14 THEN NOW() ELSE NULL END,CASE WHEN $14 AND $19 THEN NOW() ELSE NULL END) RETURNING id,created_at,updated_at,next_run_at,candy_next_run_at`, args...).Scan(&p.ID, &p.CreatedAt, &p.UpdatedAt, &p.NextRunAt, &p.CandyNextRunAt)
+		args = append(args, p.AccountID, p.CandyEnabled, p.CandyIntervalSeconds, p.LocalAPIKeyBorrowed, p.Model, p.CustomPrompt, string(channelPrompts), p.ReasoningEffort)
+		err = tx.QueryRowContext(ctx, `INSERT INTO intelligence_monitor_plans(name,source_type,endpoint,api_key_encrypted,upstream_target_id,group_id,local_api_key_id,local_key_owner_id,supplier_note,group_note,rate_note,notes,api_mode,enabled,interval_seconds,timeout_seconds,created_by,account_id,candy_enabled,candy_interval_seconds,local_api_key_borrowed,model,custom_prompt,channel_prompts,reasoning_effort,next_run_at,candy_next_run_at) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24::jsonb,$25,CASE WHEN $14 THEN NOW() ELSE NULL END,CASE WHEN $14 AND $19 THEN NOW() ELSE NULL END) RETURNING id,created_at,updated_at,next_run_at,candy_next_run_at`, args...).Scan(&p.ID, &p.CreatedAt, &p.UpdatedAt, &p.NextRunAt, &p.CandyNextRunAt)
 	} else {
 		// created_by is immutable and therefore is not an UPDATE argument. Keep
 		// placeholders contiguous: PostgreSQL cannot infer an unused $17 type.
-		args = append(args[:16], p.AccountID, p.CandyEnabled, p.CandyIntervalSeconds, p.LocalAPIKeyBorrowed, p.ID, p.UpdatedAt, p.Model, p.CustomPrompt, string(channelPrompts))
-		err = tx.QueryRowContext(ctx, `UPDATE intelligence_monitor_plans p SET name=$1,source_type=$2,endpoint=$3,api_key_encrypted=$4,upstream_target_id=$5,group_id=$6,local_api_key_id=$7,local_key_owner_id=$8,supplier_note=$9,group_note=$10,rate_note=$11,notes=$12,api_mode=$13,enabled=$14,interval_seconds=$15,timeout_seconds=$16,account_id=$17,candy_enabled=$18,candy_interval_seconds=$19,local_api_key_borrowed=$20,model=$23,custom_prompt=$24,channel_prompts=$25::jsonb,
+		args = append(args[:16], p.AccountID, p.CandyEnabled, p.CandyIntervalSeconds, p.LocalAPIKeyBorrowed, p.ID, p.UpdatedAt, p.Model, p.CustomPrompt, string(channelPrompts), p.ReasoningEffort)
+		err = tx.QueryRowContext(ctx, `UPDATE intelligence_monitor_plans p SET name=$1,source_type=$2,endpoint=$3,api_key_encrypted=$4,upstream_target_id=$5,group_id=$6,local_api_key_id=$7,local_key_owner_id=$8,supplier_note=$9,group_note=$10,rate_note=$11,notes=$12,api_mode=$13,enabled=$14,interval_seconds=$15,timeout_seconds=$16,account_id=$17,candy_enabled=$18,candy_interval_seconds=$19,local_api_key_borrowed=$20,model=$23,custom_prompt=$24,channel_prompts=$25::jsonb,reasoning_effort=$26,
 next_run_at=CASE WHEN NOT $14 OR EXISTS(SELECT 1 FROM intelligence_monitor_runs r WHERE r.plan_id=p.id AND r.test_kind='pelican' AND r.status IN ('pending','running')) THEN NULL WHEN NOT enabled THEN NOW() WHEN interval_seconds<>$15 THEN NOW()+make_interval(secs=>$15) ELSE COALESCE(next_run_at,NOW()) END,
 candy_next_run_at=CASE WHEN NOT $14 OR NOT $18 OR EXISTS(SELECT 1 FROM intelligence_monitor_runs r WHERE r.plan_id=p.id AND r.test_kind='candy' AND r.status IN ('pending','running')) THEN NULL WHEN NOT enabled OR NOT candy_enabled THEN NOW() WHEN candy_interval_seconds<>$19 THEN NOW()+make_interval(secs=>$19) ELSE COALESCE(candy_next_run_at,NOW()) END,
 sort_order=CASE WHEN (source_type='openai_oauth') IS DISTINCT FROM ($2::varchar='openai_oauth') THEN NULL ELSE sort_order END,updated_at=clock_timestamp() WHERE id=$21 AND updated_at=$22 AND deleted_at IS NULL RETURNING updated_at,next_run_at,candy_next_run_at`, args...).Scan(&p.UpdatedAt, &p.NextRunAt, &p.CandyNextRunAt)

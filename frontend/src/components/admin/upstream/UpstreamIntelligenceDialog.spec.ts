@@ -203,11 +203,19 @@ describe('upstream group intelligence dialog', () => {
     expect(cards(view)[0]!.element).toBe(originalCards[0])
   })
 
-  it('keeps legacy groups with more than two plans fully available in the regular list', async () => {
-    mocks.plans.mockResolvedValue({ items: [plan(1), plan(2), plan(3)] })
+  it('expands for three or more tasks and preserves artwork when the count changes', async () => {
+    const items = [plan(1), plan(2), plan(3), plan(4)]
+    mocks.plans.mockResolvedValue({ items: items.slice(0, 2) })
     const view = render(); await flushPromises()
-    expect(cards(view).map(card => card.props('plan').id)).toEqual([1, 2, 3])
-    expect(cards(view).every(card => card.props('compact') === false)).toBe(true)
+    const first = cards(view)[0]!.element
+    for (const count of [3, 4, 2]) {
+      mocks.plans.mockResolvedValue({ items: items.slice(0, count) })
+      await refresh(view); await flushPromises()
+      expect(cards(view)).toHaveLength(count)
+      expect(view.getComponent({ name: 'BaseDialog' }).props('width')).toBe(count > 2 ? 'full' : 'extra-wide')
+      expect(cards(view).every(card => card.props('compact'))).toBe(true)
+      expect(cards(view)[0]!.element).toBe(first)
+    }
   })
 
   it('uses the separate candy action, prevents duplicate runs and retains its result through refresh errors', async () => {
@@ -588,7 +596,7 @@ describe('account pelican monitoring dialog', () => {
     expect(mocks.plansForOAuthAccount).toHaveBeenCalledWith(42, expect.any(AbortSignal))
     expect(mocks.plans).not.toHaveBeenCalled()
     expect(cards(view).map(card => card.props('plan').id)).toEqual([7, 8])
-    expect(cards(view).every(card => card.props('compact') === false)).toBe(true)
+    expect(cards(view).every(card => card.props('compact'))).toBe(true)
     expect(view.text()).toContain('intelligenceMonitor.accountMonitor.sharedHint')
     expect(view.find('[data-testid="group-intelligence-create"]').exists()).toBe(false)
     expect(mocks.run).not.toHaveBeenCalled()

@@ -25,7 +25,7 @@ export default {
       title: 'Candy test', recent: 'Latest 60 answers', run: 'Run test', running: 'Testing', pending: 'Queued', inspectFailure: 'View diagnostic record',
       failed: 'Request failed', correct: 'Correct answer', incorrect: 'Incorrect answer', unknown: 'Not scored', answer: 'Model answer',
       detail: 'Candy test result', response: 'Full response', noResponse: 'No response yet', enabled: 'Add candy test', queued: 'Candy test queued',
-      enableHint: 'Uses this plan’s model and high reasoning effort, making separate candy requests on its own interval. Manual runs are also available.',
+      enableHint: 'Uses this plan’s model and reasoning effort, making separate candy requests on its own interval. Manual runs are also available.',
       interval: 'Candy test interval', intervalHint: 'Defaults to 3 minutes. The main scheduling switch controls both tests; each can still be run manually when scheduling is off.',
       scoringHint: 'The expected answer, 21, is used only for scoring and is not included in the prompt sent to the model.',
     },
@@ -92,6 +92,7 @@ export default {
     historical: 'Parameters and rates saved when this run executed', times: '{count} runs', seconds: '{count} seconds', minutes: '{count} minutes', hours: '{count} hours',
     sourceMissing: 'Source archived or unavailable', notScored: 'Compare the generated results; no automatic intelligence score is assigned.',
     form: {
+      validEffort: 'Select a supported reasoning effort.',
       modelHint: 'Select a GPT model supported by the source.', claudeModelHint: 'Select a preset or enter the full Claude model ID supported by the upstream.', useModelID: 'Use model ID', validClaudeModel: 'Enter a valid model ID starting with claude-, up to 100 characters.', validModel: 'Select a supported monitoring model.',
       name: 'Plan name', namePlaceholder: 'For example: North relay · GPT primary', source: 'Test source', selectUpstream: 'Select upstream key group', selectGroup: 'Select local group',
       endpoint: 'API endpoint', key: 'API key', keepKey: 'Leave blank to keep the saved key', protocol: 'Request API', sourceHint: 'Runs through the local group gateway with a dedicated key owned by the current administrator. Normal billing and group permissions apply.',

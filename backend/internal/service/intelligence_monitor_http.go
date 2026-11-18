@@ -26,6 +26,10 @@ func (s *IntelligenceMonitorService) generate(ctx context.Context, run *Intellig
 	if !validTest {
 		return nil, "", "unsupported intelligence test"
 	}
+	effort, err := NormalizeIntelligenceReasoningEffort(run.ReasoningEffort)
+	if err != nil {
+		return nil, "", "unsupported monitoring reasoning effort"
+	}
 	completed := false
 	if run != nil && run.SourceType == "local_group" {
 		var trace *intelligenceExecutionTrace
@@ -70,17 +74,17 @@ func (s *IntelligenceMonitorService) generate(ctx context.Context, run *Intellig
 	// Stream every generation, including loopback requests forwarded to remote
 	// accounts, so upstream proxies can receive data during long generations.
 	// The authenticated local permit preserves the monitoring deadline.
-	payload := map[string]any{"model": run.Model, "input": prompt, "reasoning": map[string]string{"effort": IntelligenceMonitorReasoning}, "stream": true, "max_output_tokens": maxOutputTokens}
+	payload := map[string]any{"model": run.Model, "input": prompt, "reasoning": map[string]string{"effort": effort}, "stream": true, "max_output_tokens": maxOutputTokens}
 	switch run.APIMode {
 	case MonitorAPIModeChatCompletions:
 		path = "/v1/chat/completions"
-		payload = map[string]any{"model": run.Model, "messages": []map[string]string{{"role": "user", "content": prompt}}, "reasoning_effort": IntelligenceMonitorReasoning, "stream": true, "max_completion_tokens": maxOutputTokens}
+		payload = map[string]any{"model": run.Model, "messages": []map[string]string{{"role": "user", "content": prompt}}, "reasoning_effort": effort, "stream": true, "max_completion_tokens": maxOutputTokens}
 	case IntelligenceMonitorAPIModeMessages:
 		path = "/v1/messages"
 		payload = map[string]any{
 			"model": run.Model, "messages": []map[string]string{{"role": "user", "content": prompt}},
 			"max_tokens": maxOutputTokens, "stream": true,
-			"thinking": map[string]string{"type": "adaptive"}, "output_config": map[string]string{"effort": IntelligenceMonitorReasoning},
+			"thinking": map[string]string{"type": "adaptive"}, "output_config": map[string]string{"effort": effort},
 		}
 		if run.TestKind != IntelligenceMonitorTestCandy {
 			payload["system"] = "Return your artwork as one complete, self-contained HTML document (inline SVG, styles and animation), or a complete animated SVG. Use inline assets only and include the closing tag."
