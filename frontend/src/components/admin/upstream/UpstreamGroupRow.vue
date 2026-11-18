@@ -9,7 +9,7 @@
         <span class="font-mono text-[10px] text-gray-400 dark:text-dark-400">{{ target.api_key_masked }}</span>
       </div>
       <div class="flex max-w-full flex-wrap items-center gap-0.5">
-        <button type="button" class="mr-1 inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium text-violet-700 transition-colors hover:bg-violet-50 hover:text-violet-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/40 disabled:cursor-not-allowed disabled:opacity-40 dark:text-violet-300 dark:hover:bg-violet-500/10 dark:hover:text-violet-200" :disabled="target.provider !== 'openai'" :title="target.provider === 'openai' ? t('intelligenceMonitor.groupMonitor.open') : t('intelligenceMonitor.groupMonitor.unsupported')" data-testid="group-intelligence" @click="emit('intelligence', target)"><Icon name="lightbulb" size="xs" />{{ t('intelligenceMonitor.groupMonitor.open') }}</button>
+        <button type="button" class="mr-1 inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium text-violet-700 transition-colors hover:bg-violet-50 hover:text-violet-800 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-400/40 disabled:cursor-not-allowed disabled:opacity-40 dark:text-violet-300 dark:hover:bg-violet-500/10 dark:hover:text-violet-200" :disabled="!supportsPelicanProtocol(target.provider)" :title="supportsPelicanProtocol(target.provider) ? t('intelligenceMonitor.groupMonitor.open') : t('intelligenceMonitor.groupMonitor.unsupported')" data-testid="group-intelligence" @click="emit('intelligence', target)"><Icon name="lightbulb" size="xs" />{{ t('intelligenceMonitor.groupMonitor.open') }}</button>
         <button v-if="isNewapiTarget(target)" type="button" class="mr-1 inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium text-primary-600 hover:bg-primary-50 disabled:cursor-not-allowed disabled:opacity-50 dark:text-primary-400 dark:hover:bg-primary-500/10" :disabled="busy || syncing" :aria-busy="!!syncing" :title="t('upstreamCenter.newapi.forceSyncHint')" data-testid="group-force-sync" @click="emit('force-sync', target)"><Icon name="refresh" size="xs" :class="syncing && 'animate-spin'" />{{ t(syncing ? 'upstreamCenter.syncing' : 'upstreamCenter.newapi.forceSync') }}</button>
         <button type="button" class="mr-1 inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-medium text-primary-600 hover:bg-primary-50 disabled:opacity-50 dark:text-primary-400 dark:hover:bg-primary-500/10" :disabled="busy || running" @click="emit('run', target)">
           <Icon :name="running ? 'refresh' : 'play'" size="xs" :class="running && 'animate-spin'" />{{ t(running ? 'upstreamCenter.running' : 'upstreamCenter.run') }}
@@ -36,7 +36,7 @@
         </div>
         <div class="monitor-measurements">
           <div class="monitor-measurement">
-            <span class="text-[10px] text-gray-500 dark:text-dark-400">{{ t('upstreamCenter.availability7d') }}</span>
+            <span class="text-[10px] text-gray-500 dark:text-dark-400" :title="t('upstreamCenter.availability7dHint')">{{ t('upstreamCenter.availability7d') }}</span>
             <strong class="text-xl font-semibold tabular-nums tracking-tight text-gray-400" :style="{ color: availabilityColor(statistics?.availability_7d) }" data-testid="upstream-availability">{{ availability(statistics?.availability_7d) }}</strong>
           </div>
           <div class="monitor-measurement">
@@ -87,6 +87,7 @@ import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import Select from '@/components/common/Select.vue'
 import Icon from '@/components/icons/Icon.vue'
+import { supportsPelicanProtocol } from '@/utils/pelicanModels'
 import type { UpstreamHistoryRecord, UpstreamTarget } from '@/api/admin/upstreamCenter'
 import UpstreamHistoryBar from './UpstreamHistoryBar.vue'
 import UpstreamStatusBadge from './UpstreamStatusBadge.vue'

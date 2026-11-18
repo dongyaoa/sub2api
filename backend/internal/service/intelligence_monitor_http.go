@@ -44,6 +44,11 @@ func (s *IntelligenceMonitorService) generate(ctx context.Context, run *Intellig
 	if err := validateIntelligenceMonitorModel(run.Model); err != nil {
 		return nil, "", "unsupported intelligence model"
 	}
+	if run.APIMode == IntelligenceMonitorAPIModeMessages || intelligenceMonitorModelProvider(run.Model) == MonitorProviderAnthropic {
+		if err := ValidateIntelligenceMonitorProtocol(run.Model, run.APIMode, run.SourceType); err != nil {
+			return nil, "", "model and generation protocol are incompatible"
+		}
+	}
 	client, endpoint := s.clientAndEndpoint(run)
 	if run.SourceType == "upstream" {
 		routeCtx, routeClient, err := s.upstreamGenerationRoute(ctx, run, key)
@@ -66,19 +71,39 @@ func (s *IntelligenceMonitorService) generate(ctx context.Context, run *Intellig
 	// accounts, so upstream proxies can receive data during long generations.
 	// The authenticated local permit preserves the monitoring deadline.
 	payload := map[string]any{"model": run.Model, "input": prompt, "reasoning": map[string]string{"effort": IntelligenceMonitorReasoning}, "stream": true, "max_output_tokens": maxOutputTokens}
-	if run.APIMode == MonitorAPIModeChatCompletions {
+	switch run.APIMode {
+	case MonitorAPIModeChatCompletions:
 		path = "/v1/chat/completions"
 		payload = map[string]any{"model": run.Model, "messages": []map[string]string{{"role": "user", "content": prompt}}, "reasoning_effort": IntelligenceMonitorReasoning, "stream": true, "max_completion_tokens": maxOutputTokens}
+	case IntelligenceMonitorAPIModeMessages:
+		path = "/v1/messages"
+		payload = map[string]any{
+			"model": run.Model, "messages": []map[string]string{{"role": "user", "content": prompt}},
+			"max_tokens": maxOutputTokens, "stream": true,
+			"thinking": map[string]string{"type": "adaptive"}, "output_config": map[string]string{"effort": IntelligenceMonitorReasoning},
+		}
+		if run.TestKind != IntelligenceMonitorTestCandy {
+			payload["system"] = "Return your artwork as one complete, self-contained HTML document (inline SVG, styles and animation), or a complete animated SVG. Use inline assets only and include the closing tag."
+		}
 	}
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return nil, "", "failed to build the generation request"
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, joinURL(endpoint, path), bytes.NewReader(body))
+	requestURL := joinURL(endpoint, path)
+	if run.APIMode == IntelligenceMonitorAPIModeMessages && strings.HasSuffix(strings.TrimRight(endpoint, "/"), path) {
+		requestURL = strings.TrimRight(endpoint, "/")
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, requestURL, bytes.NewReader(body))
 	if err != nil {
 		return nil, "", "invalid generation endpoint"
 	}
-	req.Header.Set("Authorization", "Bearer "+key)
+	if run.APIMode == IntelligenceMonitorAPIModeMessages {
+		req.Header.Set("x-api-key", key)
+		req.Header.Set("anthropic-version", monitorAnthropicAPIVersion)
+	} else {
+		req.Header.Set("Authorization", "Bearer "+key)
+	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "text/event-stream, application/json")
 	req.Header.Set("User-Agent", "Sub2API-IntelligenceMonitor/1")
@@ -135,6 +160,9 @@ func extractIntelligenceModelTextWithKey(raw []byte, mode string, stream bool, k
 	if value := gjson.GetBytes(raw, "error"); value.Exists() && value.Type != gjson.Null {
 		return "", intelligenceGenerationEventError("model generation returned an error", raw, key)
 	}
+	if mode == IntelligenceMonitorAPIModeMessages {
+		return extractIntelligenceAnthropicMessage(gjson.ParseBytes(raw))
+	}
 	if mode == MonitorAPIModeChatCompletions {
 		text := gjson.GetBytes(raw, "choices.0.message.content").String()
 		finish := gjson.GetBytes(raw, "choices.0.finish_reason").String()
@@ -159,12 +187,19 @@ func extractIntelligenceModelTextWithKey(raw []byte, mode string, stream bool, k
 
 func extractIntelligenceHTML(raw string) string {
 	text := strings.TrimSpace(raw)
-	lower := strings.ToLower(text)
+	// Match ASCII markup without changing byte offsets in Unicode artwork.
+	lowerMarkup := func(r rune) rune {
+		if r >= 'A' && r <= 'Z' {
+			return r + ('a' - 'A')
+		}
+		return r
+	}
+	lower := strings.Map(lowerMarkup, text)
 	if start := strings.Index(lower, "```html"); start >= 0 {
 		rest := text[start+7:]
 		if end := strings.Index(rest, "```"); end >= 0 {
 			text = strings.TrimSpace(rest[:end])
-			lower = strings.ToLower(text)
+			lower = strings.Map(lowerMarkup, text)
 		}
 	}
 	start := strings.Index(lower, "<!doctype html")
@@ -177,12 +212,19 @@ func extractIntelligenceHTML(raw string) string {
 		}
 		return ""
 	}
-	// Models sometimes return a complete SVG document in place of its HTML
-	// wrapper. Preserve the SVG and provide only the minimal missing wrapper.
-	if start = strings.Index(lower, "<svg"); start >= 0 {
-		if end := strings.LastIndex(lower, "</svg>"); end >= start {
-			return "<!doctype html><html><head><meta charset=\"utf-8\"></head><body>" + text[start:end+6] + "</body></html>"
+	for _, tag := range []string{"svg", "canvas"} {
+		start = strings.Index(lower, "<"+tag)
+		closing := "</" + tag + ">"
+		end := strings.LastIndex(lower, closing)
+		if start < 0 || end < start {
+			continue
 		}
+		// A fragment can place animation styles and scripts beside the drawing.
+		// For a standalone drawing surrounded by prose, keep the drawing itself.
+		if !strings.HasPrefix(text, "<") || !strings.HasSuffix(text, ">") {
+			text = text[start : end+len(closing)]
+		}
+		return "<!doctype html><html><head><meta charset=\"utf-8\"></head><body>" + text + "</body></html>"
 	}
 	return ""
 }

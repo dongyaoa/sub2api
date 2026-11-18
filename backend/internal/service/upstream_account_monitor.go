@@ -131,7 +131,7 @@ func (s *UpstreamCenterService) AccountMonitor(ctx context.Context, id int64, en
 			return nil, err
 		}
 	}
-	out := &UpstreamAccountMonitor{AccountID: id, AccountName: identity.AccountName, Provider: identity.Provider, PelicanSupported: identity.Provider == MonitorProviderOpenAI, Target: target}
+	out := &UpstreamAccountMonitor{AccountID: id, AccountName: identity.AccountName, Provider: identity.Provider, PelicanSupported: identity.Provider == MonitorProviderOpenAI || identity.Provider == MonitorProviderAnthropic, Target: target}
 	if target == nil {
 		return out, nil
 	}

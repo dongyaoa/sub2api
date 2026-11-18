@@ -45,13 +45,13 @@ func (r *storagePolicyTestRepo) CleanupStorage(_ context.Context, history, snaps
 func TestUpstreamStoragePolicyRequiresCompleteBoundedInput(t *testing.T) {
 	repo := &storagePolicyTestRepo{}
 	svc := NewUpstreamCenterService(repo, nil, nil, nil)
-	enabled, history, snapshots := true, 30, 7
+	enabled, history, snapshots := true, 3, 7
 	valid := UpstreamStoragePolicyInput{Enabled: &enabled, HistoryRetentionDays: &history, SnapshotRetentionDays: &snapshots}
 	for _, in := range []UpstreamStoragePolicyInput{{}, {Enabled: &enabled}, {HistoryRetentionDays: &history, SnapshotRetentionDays: &snapshots}} {
 		_, err := svc.SaveStoragePolicy(context.Background(), in)
 		require.ErrorIs(t, err, ErrUpstreamStoragePolicy)
 	}
-	for _, days := range []int{0, 29, 366} {
+	for _, days := range []int{0, 2, 366} {
 		in := valid
 		in.HistoryRetentionDays = &days
 		_, err := svc.SaveStoragePolicy(context.Background(), in)
@@ -84,7 +84,7 @@ func TestUpstreamStorageScheduledAndManualCleanup(t *testing.T) {
 		{"first scheduled pass", true, false, false, true, 1},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			repo := &storagePolicyTestRepo{policy: UpstreamStoragePolicy{Enabled: tc.enabled, HistoryRetentionDays: 30, SnapshotRetentionDays: 7}, result: &UpstreamStorageCleanupResult{HistoryDeleted: 10}}
+			repo := &storagePolicyTestRepo{policy: UpstreamStoragePolicy{Enabled: tc.enabled, HistoryRetentionDays: 3, SnapshotRetentionDays: 7}, result: &UpstreamStorageCleanupResult{HistoryDeleted: 10}}
 			if tc.recent {
 				repo.policy.LastCleanupAt = &now
 				repo.policy.LastResult = &UpstreamStorageCleanupResult{HasMore: tc.backlog}
@@ -94,7 +94,7 @@ func TestUpstreamStorageScheduledAndManualCleanup(t *testing.T) {
 			require.NoError(t, err)
 			require.Equal(t, tc.calls, repo.cleanupCalls)
 			if tc.calls > 0 {
-				require.Equal(t, [2]int{30, 7}, repo.args)
+				require.Equal(t, [2]int{3, 7}, repo.args)
 				require.Same(t, repo.result, repo.recorded)
 			}
 		})

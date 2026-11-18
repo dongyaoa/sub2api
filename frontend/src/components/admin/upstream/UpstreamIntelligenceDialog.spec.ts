@@ -269,7 +269,7 @@ describe('upstream group intelligence dialog', () => {
     expect(mocks.run).not.toHaveBeenCalled()
   })
 
-  it('offers a separate Sol plan for a group with Astra, and hides creation when both models exist', async () => {
+  it('offers the remaining GPT models until all four have plans', async () => {
     mocks.plans.mockResolvedValue({ items: [plan(1, { model: 'gpt-6-astra' })] })
     const view = render(); await flushPromises()
     expect(cards(view)[0]!.props('compact')).toBe(false)
@@ -281,6 +281,16 @@ describe('upstream group intelligence dialog', () => {
     editor.vm.$emit('saved', plan(2, { model: 'gpt-6.1-sol' })); await flushPromises()
     expect(cards(view)).toHaveLength(2)
     expect(cards(view).map(card => card.props('compact'))).toEqual([true, true])
+    const items = [plan(1, { model: 'gpt-6-astra' }), plan(2, { model: 'gpt-6.1-sol' })]
+    for (const model of ['gpt-6.2-astra', 'gpt-6.2-sol']) {
+      await view.get('[data-testid="group-intelligence-add-model"]').trigger('click')
+      const nextEditor = view.getComponent({ name: 'IntelligencePlanDialog' })
+      expect(nextEditor.props('initialModel')).toBe(model)
+      const nextPlan = plan(items.length + 1, { model })
+      items.push(nextPlan)
+      mocks.plans.mockResolvedValue({ items: [...items] })
+      nextEditor.vm.$emit('saved', nextPlan); await flushPromises()
+    }
     expect(view.find('[data-testid="group-intelligence-add-model"]').exists()).toBe(false)
   })
 

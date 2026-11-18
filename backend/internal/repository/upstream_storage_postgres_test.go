@@ -73,7 +73,8 @@ SELECT 1,1,'Supplier key','test','operational',$1::timestamptz+make_interval(sec
 (1,1,'Supplier key','test','operational',$1::timestamptz+INTERVAL '10 seconds',2,'reported'),
 (2,NULL,'Independent','test','error',$1::timestamptz+INTERVAL '20 seconds',NULL,'unknown'),
 (3,2,'Archived','test','operational',$1::timestamptz+INTERVAL '30 seconds',4,'reported'),
-(1,1,'Supplier key','test','operational',$2,3,'estimated')`, old, now.AddDate(0, 0, -30).Add(-time.Minute))
+(1,1,'Supplier key','test','operational',$2::timestamptz-INTERVAL '1 microsecond',3,'estimated'),
+(1,1,'Supplier key','test','operational',$2,3,'estimated')`, old, now.AddDate(0, 0, -3))
 	require.NoError(t, err)
 	_, err = db.ExecContext(ctx, `INSERT INTO upstream_finance_ledger(usage_id,created_at,target_id,target_name,supplier_id,account_id,user_id,api_key_id,model,revenue,business_cost,billing_type,total_tokens)
 VALUES(99,$1,1,'Supplier key',1,1,1,1,'test',1000,100,0,9000)`, old)
@@ -93,7 +94,7 @@ VALUES(99,$1,1,'Supplier key',1,1,1,1,'test',1000,100,0,9000)`, old)
 		before = append(before, value)
 	}
 	repo := &upstreamCenterRepository{db: db}
-	first, err := repo.CleanupStorage(ctx, 30, 7, now)
+	first, err := repo.CleanupStorage(ctx, 3, 7, now)
 	require.NoError(t, err)
 	require.Equal(t, int64(5000), first.HistoryDeleted)
 	require.True(t, first.HasMore)
@@ -102,11 +103,11 @@ VALUES(99,$1,1,'Supplier key',1,1,1,1,'test',1000,100,0,9000)`, old)
 		require.NoError(t, err)
 		require.Equal(t, before[i], value, "mixed raw and archived rows must preserve totals")
 	}
-	second, err := repo.CleanupStorage(ctx, 30, 7, now)
+	second, err := repo.CleanupStorage(ctx, 3, 7, now)
 	require.NoError(t, err)
-	require.Equal(t, int64(1004), second.HistoryDeleted)
+	require.Equal(t, int64(1005), second.HistoryDeleted)
 	require.False(t, second.HasMore)
-	third, err := repo.CleanupStorage(ctx, 30, 7, now)
+	third, err := repo.CleanupStorage(ctx, 3, 7, now)
 	require.NoError(t, err)
 	require.Zero(t, third.HistoryDeleted)
 	for i, q := range queries {
@@ -116,9 +117,12 @@ VALUES(99,$1,1,'Supplier key',1,1,1,1,'test',1000,100,0,9000)`, old)
 	}
 	var raw, samples int64
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT COUNT(*) FROM upstream_monitor_history`).Scan(&raw))
-	require.Equal(t, int64(1), raw, "retain the full cutoff hour for exact 30-day statistics")
+	require.Equal(t, int64(1), raw)
+	var retainedAt time.Time
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT checked_at FROM upstream_monitor_history`).Scan(&retainedAt))
+	require.True(t, now.AddDate(0, 0, -3).Equal(retainedAt), "retain the exact 72-hour boundary, delete even one microsecond earlier")
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT SUM(sample_count) FROM upstream_monitor_cost_rollups`).Scan(&samples))
-	require.Equal(t, int64(6004), samples)
+	require.Equal(t, int64(6005), samples)
 	require.NoError(t, db.QueryRowContext(ctx, `SELECT COUNT(*) FROM upstream_finance_ledger`).Scan(&samples))
 	require.Equal(t, int64(1), samples, "cleanup must never delete the business finance ledger")
 	for _, q := range []service.UpstreamFinanceQuery{
@@ -284,7 +288,7 @@ func TestUpstreamStorageSnapshotProtectionCurrentIdentityAndBounds(t *testing.T)
 func TestUpstreamStorageCleanupAdvisoryLockAndInvalidRetention(t *testing.T) {
 	db, ctx, otherDB := upstreamStorageTestDB(t)
 	repo := &upstreamCenterRepository{db: db}
-	for _, days := range []int{0, 29, 366} {
+	for _, days := range []int{0, 2, 366} {
 		_, err := repo.CleanupStorage(ctx, days, 7, time.Now())
 		require.ErrorIs(t, err, service.ErrUpstreamInvalid)
 	}

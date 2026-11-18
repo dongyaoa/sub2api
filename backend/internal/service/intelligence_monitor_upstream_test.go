@@ -69,6 +69,8 @@ func TestIntelligenceUpstreamPlansKeepSourceValidationAndConflict(t *testing.T) 
 	_, err := svc.SavePlan(context.Background(), 0, 1, input)
 	require.ErrorIs(t, err, ErrUpstreamNotFound, "missing or archived target must still fail source lookup")
 	require.Zero(t, repo.writeCount)
+	openAIModel := IntelligenceMonitorModel
+	input.Model = &openAIModel
 	upstreams.target = &UpstreamTarget{ID: 27, Name: name, Provider: "anthropic"}
 	_, err = svc.SavePlan(context.Background(), 0, 1, input)
 	require.ErrorIs(t, err, ErrIntelligenceInvalid)

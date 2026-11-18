@@ -21,7 +21,7 @@ func TestUpstreamStorageHandlerRejectsInvalidMutationBeforeRepository(t *testing
 	r.POST("/purge-archives", h.PurgeArchivedStorage)
 	for _, tc := range []struct{ method, path, body string }{
 		{http.MethodPut, "/storage", `{}`},
-		{http.MethodPut, "/storage", `{"enabled":true,"history_retention_days":7,"snapshot_retention_days":7}`},
+		{http.MethodPut, "/storage", `{"enabled":true,"history_retention_days":2,"snapshot_retention_days":7}`},
 		{http.MethodPut, "/storage", `{"enabled":false,"history_retention_days":30,"snapshot_retention_days":0}`},
 		{http.MethodPut, "/storage", `{"enabled":"secret-invalid"}`},
 		{http.MethodPost, "/purge", `{"kind":"supplier","id":1}`},

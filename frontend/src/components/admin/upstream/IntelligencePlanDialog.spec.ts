@@ -639,7 +639,48 @@ describe('intelligence plan choices and interval validation', () => {
     expect(mocks.create).not.toHaveBeenCalled()
   })
 
-  it.each(['anthropic', 'gemini'])('does not enable a fixed independent %s monitor for pelican testing', async provider => {
+  it.each([
+    ['Claude Opus 5.5', 'claude-opus-5-5'], ['Claude Sonnet 5.5', 'claude-sonnet-5-5'], ['Claude Fable 5.2', 'claude-fable-5-2'], ['claude-site-v2', 'claude-site-v2'],
+  ])('uses the native protocol and wire ID for %s on a bound Anthropic group', async (label, model) => {
+    const target = { ...upstreamOverview.suppliers[0].targets[0], provider: 'anthropic', models: ['claude-site-v2'] }
+    const overview = { suppliers: [{ ...upstreamOverview.suppliers[0], targets: [target] }] } as UpstreamOverview
+    const view = render({ oauthOnly: false, overview, upstreamTargetId: target.id }); await flushPromises()
+    expect(view.get('#intelligence-model').text()).toContain('Claude Opus 5.5')
+    expect(view.get('#intelligence-api-mode').text()).toContain('Anthropic Messages')
+    await selectOption(view, '#intelligence-model', label)
+    await view.get('form').trigger('submit'); await flushPromises()
+    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ source_type: 'upstream', upstream_target_id: target.id, api_mode: 'messages', model }))
+  })
+
+  it('saves custom external Claude IDs unchanged and switches back to GPT when changing protocol', async () => {
+    const plan = savedPlan({ source_type: 'external', account_id: null, endpoint: 'https://relay.example', model: 'gpt-6-astra' })
+    const view = render({ oauthOnly: false, plan }); await flushPromises()
+    await selectOption(view, '#intelligence-api-mode', 'Anthropic Messages')
+    const enterModel = async (model: string) => {
+      await view.get('#intelligence-model').trigger('click'); await flushPromises()
+      const search = document.body.querySelector<HTMLInputElement>('.select-search-input')!
+      search.value = model
+      search.dispatchEvent(new Event('input', { bubbles: true })); await flushPromises()
+      document.body.querySelector<HTMLElement>('[role="option"]')!.click(); await flushPromises()
+    }
+    await enterModel('invalid')
+    await view.get('form').trigger('submit'); await flushPromises()
+    expect(view.get('[role="alert"]').text()).toBe('intelligenceMonitor.form.validClaudeModel')
+    expect(mocks.update).not.toHaveBeenCalled()
+    await enterModel('claude-upstream-5.5')
+    await view.get('form').trigger('submit'); await flushPromises()
+    expect(mocks.update).toHaveBeenLastCalledWith(plan.id, expect.objectContaining({ api_mode: 'messages', model: 'claude-upstream-5.5' }))
+    await selectOption(view, '#intelligence-api-mode', 'Responses')
+    expect(view.get('#intelligence-model').text()).toContain('GPT-6 Astra')
+    for (const [label, model] of [['GPT-6.2 Astra', 'gpt-6.2-astra'], ['GPT-6.2 Sol', 'gpt-6.2-sol']]) {
+      await selectOption(view, '#intelligence-model', label!)
+      await view.get('form').trigger('submit'); await flushPromises()
+      expect(mocks.update).toHaveBeenLastCalledWith(plan.id, expect.objectContaining({ model, api_mode: 'responses' }))
+    }
+  })
+
+  it('does not enable a fixed independent Gemini monitor for pelican testing', async () => {
+    const provider = 'gemini'
     const overview = { suppliers: [], monitors: [{ id: 31, supplier_id: null, name: 'Unsupported API account', provider, endpoint: 'https://independent.example' }] } as unknown as UpstreamOverview
     const view = render({ oauthOnly: false, overview, upstreamTargetId: 31 }); await flushPromises()
     expect(view.get('[data-testid="intelligence-locked-upstream"]').text()).toContain('intelligenceMonitor.sourceMissing')
@@ -678,7 +719,7 @@ describe('intelligence plan choices and interval validation', () => {
     await view.get('#intelligence-name').setValue('My retained draft')
     const overview = state === 'removed'
       ? { suppliers: [] } as unknown as UpstreamOverview
-      : { suppliers: [{ ...upstreamOverview.suppliers[0], targets: [{ ...upstreamOverview.suppliers[0].targets[0], provider: 'anthropic' }] }] } as UpstreamOverview
+      : { suppliers: [{ ...upstreamOverview.suppliers[0], targets: [{ ...upstreamOverview.suppliers[0].targets[0], provider: 'gemini' }] }] } as UpstreamOverview
     await view.setProps({ overview })
     expect(view.get('[data-testid="intelligence-locked-upstream"]').text()).toContain('intelligenceMonitor.sourceMissing')
     await view.get('form').trigger('submit')
@@ -786,7 +827,7 @@ describe('intelligence plan choices and interval validation', () => {
     header.click()
     await flushPromises()
     expect(view.get('#intelligence-upstream').attributes('aria-expanded')).toBe('true')
-    expect(document.body.querySelector('[role="listbox"]')?.textContent).not.toContain('Claude Key')
+    expect(document.body.querySelector('[role="listbox"]')?.textContent).toContain('Claude Key')
     await view.get('#intelligence-upstream').trigger('click')
     await selectOption(view, '#intelligence-upstream', 'GPT Key')
     expect(view.get('#intelligence-upstream').attributes('aria-expanded')).toBe('false')

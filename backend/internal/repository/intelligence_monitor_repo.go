@@ -87,8 +87,8 @@ func (r *intelligenceMonitorRepository) SavePlan(ctx context.Context, p *service
 	if p.Model == "" {
 		p.Model = service.IntelligenceMonitorModel
 	}
-	if p.Model != service.IntelligenceMonitorModel && p.Model != service.IntelligenceMonitorSolModel {
-		return service.ErrIntelligenceInvalid
+	if err := service.ValidateIntelligenceMonitorProtocol(p.Model, p.APIMode, p.SourceType); err != nil {
+		return err
 	}
 	if p.CandyIntervalSeconds == 0 {
 		p.CandyIntervalSeconds = service.IntelligenceMonitorCandyDefaultIntervalSeconds

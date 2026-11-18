@@ -44,7 +44,7 @@ export interface IntelligencePlanInput {
   notes: string
   custom_prompt?: string
   channel_prompts?: IntelligenceChannelPrompt[]
-  api_mode: 'responses' | 'chat_completions'
+  api_mode: 'responses' | 'chat_completions' | 'messages'
   enabled: boolean
   candy_enabled?: boolean
   candy_interval_seconds?: number

@@ -63,6 +63,7 @@ func readIntelligenceEventStream(body io.Reader, mode, key string, waitForChatDo
 	final, message, eventName := "", "", ""
 	terminal := false
 	chatFinished := false
+	var anthropic intelligenceAnthropicStream
 	consume := func() {
 		value := strings.TrimSpace(data.String())
 		data.Reset()
@@ -94,6 +95,10 @@ func readIntelligenceEventStream(body io.Reader, mode, key string, waitForChatDo
 		if failure := parsed.Get("error"); failure.Exists() && failure.Type != gjson.Null {
 			terminal = true
 			message = intelligenceGenerationEventError("model generation returned an error", []byte(value), key)
+			return
+		}
+		if mode == IntelligenceMonitorAPIModeMessages {
+			terminal, message = anthropic.consume(event, parsed, &deltas)
 			return
 		}
 		switch event {

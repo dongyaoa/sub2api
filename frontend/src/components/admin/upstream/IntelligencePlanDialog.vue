@@ -3,8 +3,8 @@
     <form id="intelligence-plan-form" class="space-y-5" @submit.prevent="save">
       <div class="rounded-xl border border-gray-100 bg-gray-50 p-4 dark:border-dark-700 dark:bg-dark-900/50">
         <div class="mb-3 flex items-center justify-between gap-3"><label for="intelligence-model" class="flex items-center gap-2 text-xs font-semibold text-gray-700 dark:text-gray-200"><Icon name="lightbulb" size="sm" class="text-primary-500"/>{{ t('intelligenceMonitor.model') }}</label><span class="rounded-md border border-primary-200 bg-white px-2 py-1 text-[10px] font-medium text-primary-600 dark:border-primary-800 dark:bg-dark-800">{{ t('intelligenceMonitor.reasoning') }} · {{ PELICAN_REASONING }}</span></div>
-        <Select id="intelligence-model" v-model="form.model" :options="modelOptions" :searchable="false" :disabled="saving" :aria-label="t('intelligenceMonitor.model')" />
-        <p class="mt-2 text-xs leading-5 text-gray-500">{{ t('intelligenceMonitor.form.modelHint') }}</p>
+        <Select id="intelligence-model" v-model="form.model" :options="modelOptions" :searchable="anthropic" :creatable="anthropic" :creatable-prefix="t('intelligenceMonitor.form.useModelID')" :disabled="saving" :aria-label="t('intelligenceMonitor.model')" />
+        <p class="mt-2 text-xs leading-5 text-gray-500">{{ t(anthropic ? 'intelligenceMonitor.form.claudeModelHint' : 'intelligenceMonitor.form.modelHint') }}</p>
         <p v-if="duplicateSource" role="alert" class="mt-2 text-xs text-rose-500">{{ t(duplicateSource) }}</p>
       </div>
       <div v-if="!oauthOnly"><label for="intelligence-name" class="input-label">{{ t('intelligenceMonitor.form.name') }}</label><input id="intelligence-name" v-model="form.name" class="input" required maxlength="100" :placeholder="t('intelligenceMonitor.form.namePlaceholder')"/></div>
@@ -58,7 +58,7 @@
       </template>
       <IntelligencePromptSettings v-if="form.source_type !== 'openai_oauth'" ref="promptSettings" v-model:custom-prompt="form.custom_prompt" v-model:channel-prompts="form.channel_prompts" :group-id="form.group_id" :allow-channels="form.source_type === 'local_group'" :disabled="saving" />
       <div class="grid gap-4" :class="!oauthOnly && 'sm:grid-cols-2'">
-        <div v-if="!oauthOnly"><label for="intelligence-api-mode" class="input-label">{{ t('intelligenceMonitor.form.protocol') }}</label><Select id="intelligence-api-mode" v-model="form.api_mode" :options="protocolOptions" :searchable="false" :aria-label="t('intelligenceMonitor.form.protocol')"/></div>
+        <div v-if="!oauthOnly"><label for="intelligence-api-mode" class="input-label">{{ t('intelligenceMonitor.form.protocol') }}</label><Select id="intelligence-api-mode" v-model="form.api_mode" :options="protocolOptions" :disabled="saving || protocolOptions.length === 1" :searchable="false" :aria-label="t('intelligenceMonitor.form.protocol')"/></div>
         <fieldset><legend class="input-label">{{ t('intelligenceMonitor.form.timeout') }}</legend><div class="grid gap-2" :class="timeoutOptions.length > 3 ? 'grid-cols-2' : 'grid-cols-3'"><button v-for="seconds in timeoutOptions" :key="seconds" type="button" class="duration-choice" :class="form.timeout_seconds === seconds && 'duration-choice-selected'" :data-timeout="seconds" :aria-pressed="form.timeout_seconds === seconds" @click="form.timeout_seconds = seconds">{{ durationLabel(seconds) }}</button></div><p class="mt-2 text-xs leading-5 text-gray-500">{{ t('intelligenceMonitor.form.timeoutHint') }}</p></fieldset>
       </div>
       <div class="rounded-xl border border-gray-200 p-4 dark:border-dark-700">
@@ -84,7 +84,7 @@ import Select, { type SelectOption } from '@/components/common/Select.vue'
 import Toggle from '@/components/common/Toggle.vue'
 import Icon from '@/components/icons/Icon.vue'
 import { intelligenceMonitorAPI, PELICAN_MODEL, PELICAN_REASONING, PELICAN_PROMPT, type IntelligencePlan, type IntelligencePlanInput, type IntelligenceSource } from '@/api/admin/intelligenceMonitor'
-import { PELICAN_MODELS } from '@/utils/pelicanModels'
+import { DEFAULT_CLAUDE_PELICAN_MODEL, PELICAN_MODELS, claudePelicanOptions, isClaudePelicanModel, isOpenAIPelicanModel, supportsPelicanProtocol } from '@/utils/pelicanModels'
 import type { UpstreamOverview } from '@/api/admin/upstreamCenter'
 import { getAll } from '@/api/admin/groups'
 import type { AdminGroup, AccountListItem } from '@/types'
@@ -114,15 +114,38 @@ const timeoutOptions = computed(() => {
     ? [...presets, saved].sort((a, b) => a - b)
     : presets
 })
-const modelOptions = PELICAN_MODELS.map(option => ({ ...option }))
-const protocolOptions = [{ value: 'responses', label: 'Responses' }, { value: 'chat_completions', label: 'Chat Completions' }]
-const defaults = (): IntelligencePlanInput & { model: string; candy_enabled: boolean; candy_interval_seconds: number } => ({ name:'',model:PELICAN_MODELS.some(option => option.value === props.initialModel) ? props.initialModel! : PELICAN_MODEL,source_type:oauthOnly.value?'openai_oauth':localOnly.value?'local_group':'upstream',account_id:null,endpoint:'',api_key:'',upstream_target_id:null,group_id:null,local_api_key_id:null,supplier_note:'',group_note:'',rate_note:'',notes:'',custom_prompt:'',channel_prompts:[],api_mode:'responses',enabled:true,candy_enabled:false,candy_interval_seconds:180,interval_seconds:300,timeout_seconds:600 })
+const openAIModelOptions = PELICAN_MODELS.map(option => ({ ...option }))
+const messagesOption = { value: 'messages', label: 'Anthropic Messages' }
+const openAIProtocolOptions = [{ value: 'responses', label: 'Responses' }, { value: 'chat_completions', label: 'Chat Completions' }]
+const defaults = (): IntelligencePlanInput & { model: string; candy_enabled: boolean; candy_interval_seconds: number } => ({ name:'',model:props.initialModel || PELICAN_MODEL,source_type:oauthOnly.value?'openai_oauth':localOnly.value?'local_group':'upstream',account_id:null,endpoint:'',api_key:'',upstream_target_id:null,group_id:null,local_api_key_id:null,supplier_note:'',group_note:'',rate_note:'',notes:'',custom_prompt:'',channel_prompts:[],api_mode:'responses',enabled:true,candy_enabled:false,candy_interval_seconds:180,interval_seconds:300,timeout_seconds:600 })
 const form = reactive(defaults()), groups = ref<AdminGroup[]>([]), saving = ref(false), error = ref(''), groupError = ref(''), groupsLoading = ref(false)
 const intervalChoice = ref<number | 'custom'>(300), customInterval = ref('300'), intervalError = ref('')
-const eligibleSuppliers = computed(() => (props.overview?.suppliers || []).map(supplier => ({ ...supplier, targets: supplier.targets.filter(target => target.provider === 'openai') })).filter(supplier => supplier.targets.length))
+const eligibleSuppliers = computed(() => (props.overview?.suppliers || []).map(supplier => ({ ...supplier, targets: supplier.targets.filter(target => supportsPelicanProtocol(target.provider)) })).filter(supplier => supplier.targets.length))
 // Account monitoring can reuse an existing independent target without moving it.
-const eligibleTargets = computed(() => [...eligibleSuppliers.value.flatMap(supplier => supplier.targets), ...(props.overview?.monitors || []).filter(target => target.provider === 'openai')])
+const eligibleTargets = computed(() => [...eligibleSuppliers.value.flatMap(supplier => supplier.targets), ...(props.overview?.monitors || []).filter(target => supportsPelicanProtocol(target.provider))])
 const selectedTarget = computed(() => eligibleTargets.value.find(target => target.id === form.upstream_target_id))
+const anthropic = computed(() => {
+  if (oauthOnly.value || localOnly.value) return false
+  if (form.source_type === 'upstream' && selectedTarget.value) return selectedTarget.value.provider === 'anthropic'
+  return (form.source_type === 'external' || form.source_type === 'upstream') && form.api_mode === 'messages'
+})
+const modelOptions = computed(() => anthropic.value
+  ? claudePelicanOptions(form.source_type === 'upstream' ? selectedTarget.value?.models : undefined)
+  : openAIModelOptions)
+const protocolOptions = computed(() => {
+  if (form.source_type === 'external') return [...openAIProtocolOptions, messagesOption]
+  return anthropic.value ? [messagesOption] : openAIProtocolOptions
+})
+function syncModelProtocol() {
+  if (anthropic.value) {
+    form.api_mode = 'messages'
+    if (!isClaudePelicanModel(form.model)) form.model = DEFAULT_CLAUDE_PELICAN_MODEL
+  } else {
+    if (form.api_mode === 'messages') form.api_mode = 'responses'
+    if (!isOpenAIPelicanModel(form.model)) form.model = PELICAN_MODEL
+  }
+}
+watch([() => form.source_type, () => selectedTarget.value?.provider, () => form.api_mode], syncModelProtocol)
 const selectedSupplier = computed(() => eligibleSuppliers.value.find(supplier => supplier.targets.some(target => target.id === form.upstream_target_id)))
 function upstreamRate(id:number) { const billing = eligibleTargets.value.find(target=>target.id===id)?.balance?.billing; return intelligenceRateLabel(billing as unknown as Record<string,unknown>) || t('intelligenceMonitor.rateUnknown') }
 const upstreamOptions = computed<SelectOption[]>(() => eligibleSuppliers.value.flatMap(supplier => [
@@ -271,6 +294,7 @@ watch([() => props.show, () => props.upstreamTargetId, () => props.plan?.id, () 
     form.group_id = null
     if (!props.plan) form.name = selectedTarget.value?.name || ''
   }
+  syncModelProtocol()
   intervalChoice.value = intervals.includes(form.interval_seconds) ? form.interval_seconds : 'custom'
   customInterval.value = String(form.interval_seconds)
   error.value = ''; groupError.value = ''; accountError.value = ''; accountSelectionError.value = ''; intervalError.value = ''
@@ -285,13 +309,16 @@ watch([() => props.show, () => props.upstreamTargetId, () => props.plan?.id, () 
 async function save() {
   if (saving.value) return
   error.value = ''
-  if (!PELICAN_MODELS.some(option => option.value === form.model)) { error.value = t('intelligenceMonitor.form.validModel'); return }
   if (duplicateSource.value) return
   intervalError.value = ''
   if (lockedUpstream.value) {
     form.source_type = 'upstream'
     form.upstream_target_id = props.upstreamTargetId
     if (!selectedTarget.value) { error.value = t('intelligenceMonitor.sourceMissing'); return }
+  }
+  if (anthropic.value ? !isClaudePelicanModel(form.model) : !isOpenAIPelicanModel(form.model)) {
+    error.value = t(anthropic.value ? 'intelligenceMonitor.form.validClaudeModel' : 'intelligenceMonitor.form.validModel')
+    return
   }
   if (oauthOnly.value && (accountsLoading.value || !accountsReady.value)) return
   if (lockedOAuth.value) {

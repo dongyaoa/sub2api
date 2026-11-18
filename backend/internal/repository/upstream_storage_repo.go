@@ -47,7 +47,7 @@ func rollupUpstreamMonitorHistory(ctx context.Context, tx *sql.Tx, where string,
 }
 
 func (r *upstreamCenterRepository) CleanupStorage(ctx context.Context, historyDays, snapshotDays int, now time.Time) (*service.UpstreamStorageCleanupResult, error) {
-	if historyDays < 30 || historyDays > 365 || snapshotDays < 1 || snapshotDays > 90 {
+	if historyDays < service.MinUpstreamHistoryRetentionDays || historyDays > 365 || snapshotDays < 1 || snapshotDays > 90 {
 		return nil, service.ErrUpstreamInvalid
 	}
 	ctx, cancel := context.WithTimeout(ctx, 30*time.Second)
@@ -68,9 +68,7 @@ func (r *upstreamCenterRepository) CleanupStorage(ctx context.Context, historyDa
 	if !locked {
 		return nil, service.ErrUpstreamStorageCleanupBusy
 	}
-	// Keep the entire cutoff hour raw; any partially retained hour must remain
-	// exactly queryable while it still contributes to the last 30 days.
-	historyCutoff := now.UTC().AddDate(0, 0, -historyDays).Truncate(time.Hour)
+	historyCutoff := now.UTC().AddDate(0, 0, -historyDays)
 	result.HistoryDeleted, err = rollupUpstreamMonitorHistory(ctx, tx,
 		`id IN (SELECT id FROM upstream_monitor_history WHERE checked_at < $1 ORDER BY checked_at,id LIMIT $2 FOR UPDATE)`, historyCutoff, upstreamStorageBatchSize)
 	if err != nil {

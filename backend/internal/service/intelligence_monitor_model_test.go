@@ -16,7 +16,7 @@ import (
 )
 
 func TestIntelligenceModelsSaveDefaultsValidationAndSnapshot(t *testing.T) {
-	for _, model := range []string{"", IntelligenceMonitorModel, IntelligenceMonitorSolModel, "arbitrary-model"} {
+	for _, model := range []string{"", IntelligenceMonitorModel, IntelligenceMonitorSolModel, IntelligenceMonitorAstra62Model, IntelligenceMonitorSol62Model, "arbitrary-model"} {
 		t.Run(model, func(t *testing.T) {
 			repo := &intelligenceTestRepository{}
 			svc := NewIntelligenceMonitorService(repo, upstreamTestEncryptor{}, nil, nil, nil, nil, nil)
@@ -51,40 +51,43 @@ func TestIntelligenceModelsSaveDefaultsValidationAndSnapshot(t *testing.T) {
 }
 
 func TestIntelligenceModelsHTTPUsesSnapshotForPelicanCandyAndLocal(t *testing.T) {
-	for _, source := range []string{"external", "local_group"} {
-		for _, mode := range []string{MonitorAPIModeResponses, MonitorAPIModeChatCompletions} {
-			for _, kind := range []string{IntelligenceMonitorTestPelican, IntelligenceMonitorTestCandy} {
-				t.Run(source+"/"+mode+"/"+kind, func(t *testing.T) {
-					svc := NewIntelligenceMonitorService(nil, nil, nil, nil, nil, nil, nil)
-					called := false
-					client := &http.Client{Transport: upstreamModelsTransport(func(req *http.Request) (*http.Response, error) {
-						called = true
-						var payload map[string]any
-						require.NoError(t, json.NewDecoder(req.Body).Decode(&payload))
-						require.Equal(t, IntelligenceMonitorSolModel, payload["model"])
-						if mode == MonitorAPIModeResponses {
-							require.Equal(t, "high", payload["reasoning"].(map[string]any)["effort"])
-						} else {
-							require.Equal(t, "high", payload["reasoning_effort"])
-						}
-						body := `{"output_text":"21","status":"completed"}`
-						if mode == MonitorAPIModeChatCompletions {
-							body = `{"choices":[{"message":{"content":"21"},"finish_reason":"stop"}]}`
-						}
-						return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
-					})}
-					svc.externalClient, svc.localClient = client, client
-					ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
-					defer cancel()
-					run := &IntelligenceMonitorRun{Model: IntelligenceMonitorSolModel, SourceType: source, SourceEndpoint: "https://8.8.8.8", APIMode: mode, TestKind: kind, SourceSnapshot: map[string]any{"local_api_key_id": int64(8)}}
-					status, _, message := svc.generate(ctx, run, "private-test-key")
-					require.True(t, called)
-					require.Equal(t, 200, *status)
-					require.Empty(t, message)
-				})
+	for _, model := range []string{IntelligenceMonitorAstra62Model, IntelligenceMonitorSol62Model, IntelligenceMonitorSolModel} {
+		for _, source := range []string{"external", "local_group"} {
+			for _, mode := range []string{MonitorAPIModeResponses, MonitorAPIModeChatCompletions} {
+				for _, kind := range []string{IntelligenceMonitorTestPelican, IntelligenceMonitorTestCandy} {
+					t.Run(model+"/"+source+"/"+mode+"/"+kind, func(t *testing.T) {
+						svc := NewIntelligenceMonitorService(nil, nil, nil, nil, nil, nil, nil)
+						called := false
+						client := &http.Client{Transport: upstreamModelsTransport(func(req *http.Request) (*http.Response, error) {
+							called = true
+							var payload map[string]any
+							require.NoError(t, json.NewDecoder(req.Body).Decode(&payload))
+							require.Equal(t, model, payload["model"])
+							if mode == MonitorAPIModeResponses {
+								require.Equal(t, "high", payload["reasoning"].(map[string]any)["effort"])
+							} else {
+								require.Equal(t, "high", payload["reasoning_effort"])
+							}
+							body := `{"output_text":"21","status":"completed"}`
+							if mode == MonitorAPIModeChatCompletions {
+								body = `{"choices":[{"message":{"content":"21"},"finish_reason":"stop"}]}`
+							}
+							return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(body)), Header: make(http.Header)}, nil
+						})}
+						svc.externalClient, svc.localClient = client, client
+						ctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+						defer cancel()
+						run := &IntelligenceMonitorRun{Model: model, SourceType: source, SourceEndpoint: "https://8.8.8.8", APIMode: mode, TestKind: kind, SourceSnapshot: map[string]any{"local_api_key_id": int64(8)}}
+						status, _, message := svc.generate(ctx, run, "private-test-key")
+						require.True(t, called)
+						require.Equal(t, 200, *status)
+						require.Empty(t, message)
+					})
+				}
 			}
 		}
 	}
+
 }
 
 func TestIntelligenceModelsOAuthChecksSelectedModelAndForwardsIt(t *testing.T) {

@@ -60,7 +60,7 @@ export default {
       emptyTitle: '为这个 API Key 接入监控',
       emptyHint: '直接使用账号已保存的地址与 Key，自动复用匹配分组。未找到时创建上游分组，再选择状态监控或鹈鹕测试；接入本身不会发起检测。',
       connect: '接入上游监控',
-      pelicanUnsupported: '此账号已接入分组状态监控。鹈鹕测试使用 OpenAI 兼容接口，暂不支持此账号的协议。',
+      pelicanUnsupported: '此账号已接入分组状态监控。鹈鹕监测支持 OpenAI 和 Anthropic 协议，此账号使用其他协议。',
       ambiguous: '找到多个匹配的监控分组，请先在上游中心为目标分组明确绑定当前账号，再刷新。',
     },
     accountMonitor: {
@@ -69,13 +69,13 @@ export default {
       sharedHint: '与上游中心「OAuth 监控」共用计划、定时设置和作品记录。',
     },
     groupMonitor: {
-      open: '智商监控', unsupported: '仅支持 OpenAI 兼容分组', title: '{name} · 智商监控',
+      open: '智商监控', unsupported: '请选择 OpenAI 或 Anthropic 协议分组', title: '{name} · 智商监控',
       emptyTitle: '为这个分组创建鹈鹕测试', emptyHint: '自动使用当前分组的 Key 与倍率。新计划默认开启定时检测，每 5 分钟一次，保存后开始执行；也可关闭定时，改为手动测试。',
       create: '创建监测计划', sharedHint: '计划与作品同步显示在智商监控中。',
       alreadyExists: '该上游分组已添加此模型的监控，请选择其他模型或编辑已有计划。',
     },
     group: '分组', recentWorks: '最近作品', newestFirst: '左新右旧', latest: '最新', retention: '每个计划仅保留最近 20 次作品，旧作品自动清理。',
-    oauth: { groups: '账号所属分组', ungrouped: '未分组', groupsUnknown: '分组待更新', accountStatus: '账号状态', accountStates: { normal: '正常', weekly_limited: '周限额冷却', unavailable: '不可用', unknown: '状态待更新' }, monitoringPaused: '监测已暂停', cooldownHint: '周额度冷却中，恢复后自动继续定时监测。', unavailableHint: '账号不可用，监测已暂停，请检查账号管理。', resetAt: '预计恢复', alreadyAdded: '此账号已添加当前模型的监控，请选择其他模型或账号。', title: 'OAuth 监控', add: '添加 OAuth 监控', account: 'OAuth 账号', select: '选择 OpenAI OAuth 账号', search: '搜索账号名称…', nameHint: '计划名称与账号管理中的名称保持一致', emptyTitle: '观察每个 OAuth 账号的作品表现', emptyHint: '选择本站 OpenAI OAuth 账号，使用相同的鹈鹕测试，保存最近 20 次作品。', noAccounts: '暂无可添加当前模型监控的正常 OpenAI OAuth 账号', loading: '正在读取全部可用 OAuth 账号…', loadFailed: '无法加载 OAuth 账号，请刷新重试', unavailable: '所选账号已停用或暂不可调度，请刷新后重新选择。', hint: '仅显示当前模型尚未添加监控、已启用且正常的可调度账号。相同账号可分别监测两个模型；暂停中的计划仍占用对应模型。', more: '下一页', previous: '上一页', fixedModelRequired: '该账号当前模型配置不支持直接使用 {model}，请先检查账号管理中的模型白名单或映射。' },
+    oauth: { groups: '账号所属分组', ungrouped: '未分组', groupsUnknown: '分组待更新', accountStatus: '账号状态', accountStates: { normal: '正常', weekly_limited: '周限额冷却', unavailable: '不可用', unknown: '状态待更新' }, monitoringPaused: '监测已暂停', cooldownHint: '周额度冷却中，恢复后自动继续定时监测。', unavailableHint: '账号不可用，监测已暂停，请检查账号管理。', resetAt: '预计恢复', alreadyAdded: '此账号已添加当前模型的监控，请选择其他模型或账号。', title: 'OAuth 监控', add: '添加 OAuth 监控', account: 'OAuth 账号', select: '选择 OpenAI OAuth 账号', search: '搜索账号名称…', nameHint: '计划名称与账号管理中的名称保持一致', emptyTitle: '观察每个 OAuth 账号的作品表现', emptyHint: '选择本站 OpenAI OAuth 账号，使用相同的鹈鹕测试，保存最近 20 次作品。', noAccounts: '暂无可添加当前模型监控的正常 OpenAI OAuth 账号', loading: '正在读取全部可用 OAuth 账号…', loadFailed: '无法加载 OAuth 账号，请刷新重试', unavailable: '所选账号已停用或暂不可调度，请刷新后重新选择。', hint: '仅显示当前模型尚未添加监控、已启用且正常的可调度账号。同一账号可分别监测多个 GPT 模型；暂停中的计划仍占用对应模型。', more: '下一页', previous: '上一页', fixedModelRequired: '该账号当前模型配置不支持直接使用 {model}，请先检查账号管理中的模型白名单或映射。' },
     title: '智商监控', add: '新建监测计划', edit: '编辑监测计划', search: '搜索计划、上游或分组', allSources: '全部来源', allSites: '全部站点', quickSwitch: '快速切换监测站点',
     source: { external: '外部地址', upstream: '上游 Key', local_group: '本站分组', openai_oauth: 'OpenAI OAuth' },
     status: { pending: '排队中', running: '绘制中', succeeded: '已完成', failed: '失败', idle: '尚未执行' },
@@ -92,7 +92,7 @@ export default {
     historical: '展示这次执行时保存的参数与倍率', times: '{count} 次记录', seconds: '{count} 秒', minutes: '{count} 分钟', hours: '{count} 小时',
     sourceMissing: '来源已归档或暂不可用', notScored: '通过作品对比观察表现，不生成自动智商评分。',
     form: {
-      modelHint: '默认 GPT-6 Astra，也可选择 GPT-6.1 Sol。思考强度固定为 high。', validModel: '请选择有效的监测模型。',
+      modelHint: '请选择上游支持的 GPT 模型。', claudeModelHint: '选择预设模型，或输入上游支持的完整 Claude 模型 ID。', useModelID: '使用模型 ID', validClaudeModel: '请输入以 claude- 开头的有效模型 ID，最长 100 个字符。', validModel: '请选择有效的监测模型。',
       name: '计划名称', namePlaceholder: '例如：北岸 · GPT 主力组', source: '检测来源', selectUpstream: '选择上游 Key 分组', selectGroup: '选择本站分组',
       endpoint: 'API 地址', key: 'API Key', keepKey: '留空保留已保存的 Key', protocol: '请求接口', sourceHint: '通过本站分组真实路由执行，使用当前管理员的专用监控 Key，并遵循正常计费与分组权限。',
       supplierNote: '上游备注', supplierPlaceholder: '哪一家中转', groupNote: '分组备注', groupPlaceholder: '哪个分组或线路', rateNote: '倍率备注', ratePlaceholder: '例如：标称 0.8×，活动价',

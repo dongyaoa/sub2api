@@ -312,8 +312,31 @@ func (s *IntelligenceMonitorService) SavePlan(ctx context.Context, id, actorID i
 	if p.Name == "" || utf8.RuneCountInString(p.Name) > 100 || len(p.Endpoint) > 500 || len(p.SupplierNote) > 500 || len(p.GroupNote) > 500 || len(p.RateNote) > 500 || len(p.Notes) > 4000 {
 		return nil, ErrIntelligenceInvalid
 	}
-	if p.APIMode != MonitorAPIModeResponses && p.APIMode != MonitorAPIModeChatCompletions {
-		return nil, ErrIntelligenceInvalid
+	var target *UpstreamTarget
+	if p.SourceType == "upstream" {
+		if p.UpstreamTargetID == nil || *p.UpstreamTargetID <= 0 || s.upstreams == nil {
+			return nil, ErrIntelligenceInvalid
+		}
+		var err error
+		target, err = s.upstreams.GetTarget(ctx, *p.UpstreamTargetID)
+		if err != nil {
+			return nil, err
+		}
+	}
+	if old == nil && (in.Model == nil || strings.TrimSpace(*in.Model) == "") &&
+		(p.APIMode == IntelligenceMonitorAPIModeMessages || target != nil && target.Provider == MonitorProviderAnthropic) {
+		p.Model = IntelligenceMonitorClaudeDefault
+	}
+	provider := intelligenceMonitorModelProvider(p.Model)
+	if in.APIMode == nil {
+		if provider == MonitorProviderAnthropic {
+			p.APIMode = IntelligenceMonitorAPIModeMessages
+		} else if p.APIMode == IntelligenceMonitorAPIModeMessages {
+			p.APIMode = MonitorAPIModeResponses
+		}
+	}
+	if err := ValidateIntelligenceMonitorProtocol(p.Model, p.APIMode, p.SourceType); err != nil {
+		return nil, err
 	}
 	var createdKey *APIKey
 	switch p.SourceType {
@@ -353,15 +376,8 @@ func (s *IntelligenceMonitorService) SavePlan(ctx context.Context, id, actorID i
 		}
 	case "upstream":
 		p.AccountID = nil
-		if p.UpstreamTargetID == nil || *p.UpstreamTargetID <= 0 {
-			return nil, ErrIntelligenceInvalid
-		}
-		target, err := s.upstreams.GetTarget(ctx, *p.UpstreamTargetID)
-		if err != nil {
-			return nil, err
-		}
-		if target.Provider != MonitorProviderOpenAI {
-			return nil, ErrIntelligenceInvalid.WithMetadata(map[string]string{"detail": "the selected model requires an OpenAI-compatible upstream target"})
+		if target.Provider != provider {
+			return nil, ErrIntelligenceInvalid.WithMetadata(map[string]string{"field": "model", "detail": "choose a monitoring model for the upstream target's protocol"})
 		}
 		p.Endpoint = ""
 		p.APIKeyEncrypted = ""
@@ -472,7 +488,10 @@ func (s *IntelligenceMonitorService) enqueueTest(ctx context.Context, id int64, 
 		return nil, ErrIntelligenceNotFound
 	}
 	p.Model = intelligenceMonitorModel(p.Model)
-	if err := validateIntelligenceMonitorModel(p.Model); err != nil {
+	if p.APIMode == "" {
+		p.APIMode = MonitorAPIModeResponses
+	}
+	if err := ValidateIntelligenceMonitorProtocol(p.Model, p.APIMode, p.SourceType); err != nil {
 		return nil, err
 	}
 	run := &IntelligenceMonitorRun{PlanID: id, PlanName: p.Name, Trigger: "manual", Model: p.Model, ReasoningEffort: IntelligenceMonitorReasoning, Prompt: IntelligenceMonitorPrompt, SourceType: p.SourceType, SourceName: p.Name, SourceEndpoint: p.Endpoint, APIMode: p.APIMode, TimeoutSeconds: p.TimeoutSeconds, NotesSnapshot: map[string]string{"supplier_note": p.SupplierNote, "group_note": p.GroupNote, "rate_note": p.RateNote, "notes": p.Notes}, SourceSnapshot: map[string]any{"created_by": p.CreatedBy}, PlanUpdatedAt: p.UpdatedAt}

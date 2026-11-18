@@ -47,6 +47,9 @@ func (s *IntelligenceMonitorService) intelligenceOAuthAccount(ctx context.Contex
 		return invalid("choose an existing OpenAI OAuth account; shadow and synthetic accounts are not supported")
 	}
 	model = intelligenceMonitorModel(model)
+	if err := ValidateIntelligenceMonitorProtocol(model, MonitorAPIModeResponses, "openai_oauth"); err != nil {
+		return nil, err
+	}
 	if !account.IsModelSupported(model) || account.GetMappedModel(model) != model {
 		_, err := invalid("the selected account must support the selected monitoring model without remapping")
 		return account, err
@@ -72,7 +75,7 @@ func (s *IntelligenceMonitorService) generateOpenAIOAuth(ctx context.Context, ru
 		return nil, "", "unsupported intelligence test"
 	}
 	run.Model = intelligenceMonitorModel(run.Model)
-	if err := validateIntelligenceMonitorModel(run.Model); err != nil {
+	if err := ValidateIntelligenceMonitorProtocol(run.Model, MonitorAPIModeResponses, "openai_oauth"); err != nil {
 		return nil, "", "unsupported intelligence model"
 	}
 	if msg, _ := run.SourceSnapshot["resolution_error"].(string); msg != "" {

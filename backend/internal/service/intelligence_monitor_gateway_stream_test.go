@@ -87,11 +87,18 @@ func TestIntelligenceLocalStreamingGatewayGuards(t *testing.T) {
 				}
 				if !trusted {
 					require.Error(t, err)
-					if mode == "responses_first_output" {
+					switch mode {
+					case "responses_first_output":
 						var failover *UpstreamFailoverError
 						require.ErrorAs(t, err, &failover)
 						require.Contains(t, string(failover.ResponseBody), "first_output_timeout")
-					} else {
+					case "responses_idle":
+						var failover *UpstreamFailoverError
+						require.ErrorAs(t, err, &failover)
+						require.Equal(t, http.StatusBadGateway, failover.StatusCode)
+						require.Contains(t, string(failover.ResponseBody), "idle timeout before model output")
+						require.Empty(t, recorder.Body.String())
+					case "chat_idle":
 						require.ErrorContains(t, err, "stream data interval timeout")
 					}
 					return

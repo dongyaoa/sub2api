@@ -17,7 +17,7 @@ func (s *UpstreamCenterService) StoragePolicy(ctx context.Context) (*UpstreamSto
 
 func (s *UpstreamCenterService) SaveStoragePolicy(ctx context.Context, in UpstreamStoragePolicyInput) (*UpstreamStoragePolicy, error) {
 	if in.Enabled == nil || in.HistoryRetentionDays == nil || in.SnapshotRetentionDays == nil ||
-		*in.HistoryRetentionDays < 30 || *in.HistoryRetentionDays > 365 ||
+		*in.HistoryRetentionDays < MinUpstreamHistoryRetentionDays || *in.HistoryRetentionDays > 365 ||
 		*in.SnapshotRetentionDays < 1 || *in.SnapshotRetentionDays > 90 {
 		return nil, ErrUpstreamStoragePolicy
 	}

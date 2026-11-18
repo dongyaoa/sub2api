@@ -62,6 +62,18 @@ describe('read-only user pelican page', () => {
     expect(view.get('[data-testid="pelican-plan-model"]').text()).toContain('GPT-6.1 Sol')
   })
 
+  it('shows the 6.2 models in a consistent order and accepts raw IDs in searches', async () => {
+    state.list.mockResolvedValue(snapshot([
+      { ...group, model: 'gpt-6.2-sol', latest_run: { ...run, model: 'gpt-6.2-sol' } },
+      { ...group, id: 3, model: 'gpt-6.2-astra', latest_run: { ...run, id: 9, model: 'gpt-6.2-astra' } },
+    ]))
+    const view = render(); await flushPromises()
+    expect(view.get('[data-testid="pelican-models"]').text()).toBe('GPT-6.2 Astra · GPT-6.2 Sol')
+    await view.get('input').setValue('gpt-6.2-sol')
+    expect(view.findAll('[data-testid="pelican-group"]')).toHaveLength(1)
+    expect(view.get('[data-testid="pelican-plan-model"]').text()).toContain('GPT-6.2 Sol')
+  })
+
   it('removes a deleted or hidden artwork on the next live update and closes its enlarged view', async () => {
     const view = render(); await flushPromises()
     await view.get('[data-testid="artwork"]').trigger('click'); await flushPromises()

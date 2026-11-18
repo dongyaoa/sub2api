@@ -177,7 +177,7 @@ describe('upstream center manual ordering', () => {
   it('closes a group gallery on tab changes and refuses unsupported providers', async () => {
     const view = render(); await flushPromises()
     const card = view.findAllComponents(supplierCard)[0]
-    card.vm.$emit('intelligence', { ...supplier(1, 'Alpha').targets[0], provider: 'anthropic' }); await flushPromises()
+    card.vm.$emit('intelligence', { ...supplier(1, 'Alpha').targets[0], provider: 'gemini' }); await flushPromises()
     expect(view.findComponent({ name: 'UpstreamIntelligenceDialog' }).exists()).toBe(false)
     card.vm.$emit('intelligence', supplier(1, 'Alpha').targets[0]); await flushPromises()
     expect(view.findComponent({ name: 'UpstreamIntelligenceDialog' }).exists()).toBe(true)

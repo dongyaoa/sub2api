@@ -19,7 +19,11 @@ func (s *IntelligenceMonitorService) upstreamGenerationRoute(ctx context.Context
 		return ctx, nil, ErrUpstreamProxyUnavailable
 	}
 	currentKey, err := s.encryptor.Decrypt(target.APIKeyEncrypted)
-	if err != nil || currentKey != key || target.Endpoint != run.SourceEndpoint || target.Provider != MonitorProviderOpenAI {
+	expectedProvider := MonitorProviderOpenAI
+	if run.APIMode == IntelligenceMonitorAPIModeMessages {
+		expectedProvider = MonitorProviderAnthropic
+	}
+	if err != nil || currentKey != key || target.Endpoint != run.SourceEndpoint || target.Provider != expectedProvider {
 		return ctx, nil, ErrUpstreamProxyAccountMismatch
 	}
 	accounts := s.accounts

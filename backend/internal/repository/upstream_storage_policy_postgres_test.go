@@ -13,20 +13,35 @@ import (
 // All DDL and mutations are scoped to the random schema owned by this test.
 func TestUpstreamStoragePolicyPostgres(t *testing.T) {
 	db, ctx, _ := upstreamStorageTestDB(t)
-	migration, err := migrations.FS.ReadFile("255_upstream_storage_policy.sql")
+	initial, err := migrations.FS.ReadFile("255_upstream_storage_policy.sql")
 	require.NoError(t, err)
+	migration, err := migrations.FS.ReadFile("278_upstream_monitor_retention.sql")
+	require.NoError(t, err)
+	// Mirror the migration runner: the initial singleton and its migration
+	// marker receive the same transaction timestamp.
+	tx, err := db.BeginTx(ctx, nil)
+	require.NoError(t, err)
+	_, err = tx.ExecContext(ctx, string(initial))
+	require.NoError(t, err)
+	_, err = tx.ExecContext(ctx, `CREATE TABLE schema_migrations(filename TEXT PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW());
+ INSERT INTO schema_migrations(filename) VALUES('255_upstream_storage_policy.sql')`)
+	require.NoError(t, err)
+	require.NoError(t, tx.Commit())
 	_, err = db.ExecContext(ctx, string(migration))
 	require.NoError(t, err)
 	repo := &upstreamCenterRepository{db: db}
 
 	policy, err := repo.GetStoragePolicy(ctx)
 	require.NoError(t, err)
-	require.Equal(t, &service.UpstreamStoragePolicy{Enabled: true, HistoryRetentionDays: 30, SnapshotRetentionDays: 7}, policy)
+	require.Equal(t, &service.UpstreamStoragePolicy{Enabled: true, HistoryRetentionDays: 3, SnapshotRetentionDays: 7}, policy)
+	var defaultHistory int
+	require.NoError(t, db.QueryRowContext(ctx, `UPDATE upstream_storage_policy SET history_retention_days=DEFAULT WHERE id=1 RETURNING history_retention_days`).Scan(&defaultHistory))
+	require.Equal(t, 3, defaultHistory)
 
 	for _, values := range []struct {
 		enabled           bool
 		history, snapshot int
-	}{{true, 30, 1}, {false, 365, 90}, {false, 90, 14}} {
+	}{{true, 3, 1}, {false, 365, 90}, {false, 30, 14}} {
 		input := service.UpstreamStoragePolicyInput{Enabled: &values.enabled, HistoryRetentionDays: &values.history, SnapshotRetentionDays: &values.snapshot}
 		saved, err := repo.SaveStoragePolicy(ctx, input)
 		require.NoError(t, err)
@@ -63,7 +78,7 @@ func TestUpstreamStoragePolicyPostgres(t *testing.T) {
 
 	for _, statement := range []string{
 		`INSERT INTO upstream_storage_policy(id) VALUES(2)`,
-		`UPDATE upstream_storage_policy SET history_retention_days=29 WHERE id=1`,
+		`UPDATE upstream_storage_policy SET history_retention_days=2 WHERE id=1`,
 		`UPDATE upstream_storage_policy SET history_retention_days=366 WHERE id=1`,
 		`UPDATE upstream_storage_policy SET snapshot_retention_days=0 WHERE id=1`,
 		`UPDATE upstream_storage_policy SET snapshot_retention_days=91 WHERE id=1`,

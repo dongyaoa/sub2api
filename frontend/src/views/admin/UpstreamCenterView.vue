@@ -60,6 +60,7 @@ import { computed, defineAsyncComponent, nextTick, onBeforeUnmount, ref, watch }
 import { useI18n } from 'vue-i18n'
 import AppLayout from '@/components/layout/AppLayout.vue'
 import Icon from '@/components/icons/Icon.vue'
+import { supportsPelicanProtocol } from '@/utils/pelicanModels'
 import EmptyState from '@/components/common/EmptyState.vue'
 import UpstreamDeleteDialog from '@/components/admin/upstream/UpstreamDeleteDialog.vue'
 import UpstreamStorageDialog from '@/components/admin/upstream/UpstreamStorageDialog.vue'
@@ -132,10 +133,10 @@ function storageChanged() { storageRevision.value++; void reload() }
 const busyIds = ref(new Set<number>()), runningIds = ref(new Set<number>()), forceSyncingIds = ref(new Set<number>())
 const allGroups = computed(() => overview.value?.suppliers.flatMap(supplier => supplier.targets) || [])
 const intelligenceTargetId = ref<number | null>(null)
-const intelligenceTarget = computed(() => tab.value === 'suppliers' ? allGroups.value.find(target => target.id === intelligenceTargetId.value && target.provider === 'openai') || null : null)
-function openGroupIntelligence(target: UpstreamTarget) { if (target.provider === 'openai') intelligenceTargetId.value = target.id }
+const intelligenceTarget = computed(() => tab.value === 'suppliers' ? allGroups.value.find(target => target.id === intelligenceTargetId.value && supportsPelicanProtocol(target.provider)) || null : null)
+function openGroupIntelligence(target: UpstreamTarget) { if (supportsPelicanProtocol(target.provider)) intelligenceTargetId.value = target.id }
 watch([tab, allGroups], () => {
-  if (tab.value !== 'suppliers' || !allGroups.value.some(target => target.id === intelligenceTargetId.value && target.provider === 'openai')) intelligenceTargetId.value = null
+  if (tab.value !== 'suppliers' || !allGroups.value.some(target => target.id === intelligenceTargetId.value && supportsPelicanProtocol(target.provider))) intelligenceTargetId.value = null
 })
 const allTargets = computed(() => [...allGroups.value, ...(overview.value?.monitors || [])])
 const match = (value: string) => value.toLowerCase().includes(search.value.toLowerCase().trim())

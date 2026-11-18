@@ -7,8 +7,10 @@ import (
 	infraerrors "github.com/Wei-Shaw/sub2api/internal/pkg/errors"
 )
 
+const MinUpstreamHistoryRetentionDays = 3
+
 var (
-	ErrUpstreamStoragePolicy        = infraerrors.BadRequest("UPSTREAM_STORAGE_POLICY_INVALID", "history retention must be 30–365 days and snapshot retention 1–90 days")
+	ErrUpstreamStoragePolicy        = infraerrors.BadRequest("UPSTREAM_STORAGE_POLICY_INVALID", "history retention must be 3–365 days and snapshot retention 1–90 days")
 	ErrUpstreamStorageUnavailable   = infraerrors.ServiceUnavailable("UPSTREAM_STORAGE_UNAVAILABLE", "upstream storage management is unavailable")
 	ErrUpstreamStorageCleanupBusy   = infraerrors.Conflict("UPSTREAM_STORAGE_CLEANUP_BUSY", "storage cleanup is already running; retry later")
 	ErrUpstreamFinanceArchivedRange = infraerrors.BadRequest("UPSTREAM_FINANCE_ARCHIVED_RANGE", "older monitoring costs are hourly summaries; select complete hours or dates")

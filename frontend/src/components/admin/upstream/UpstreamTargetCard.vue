@@ -28,7 +28,7 @@
 
     <dl class="mt-2.5 grid grid-cols-2 gap-3">
       <div class="min-w-0">
-        <dt class="text-[10px] leading-4 text-gray-500 dark:text-dark-400">{{ t('upstreamCenter.availability7d') }}</dt>
+        <dt class="text-[10px] leading-4 text-gray-500 dark:text-dark-400" :title="t('upstreamCenter.availability7dHint')">{{ t('upstreamCenter.availability7d') }}</dt>
         <dd class="mt-0.5"><strong class="text-base font-semibold leading-5 tabular-nums text-gray-400" :style="{ color: availabilityColor(statistics?.availability_7d) }" data-testid="upstream-availability">{{ availability(statistics?.availability_7d) }}</strong></dd>
       </div>
       <div class="min-w-0 border-l border-gray-100 pl-3 dark:border-dark-700">

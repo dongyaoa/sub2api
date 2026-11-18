@@ -9,7 +9,7 @@
         <h4 v-else class="inline-flex items-center gap-2 text-sm font-semibold text-gray-800 dark:text-gray-100"><Icon name="lightbulb" size="sm" class="text-primary-600 dark:text-primary-400" />{{ t('intelligenceMonitor.local.pelican') }}</h4>
         <div class="flex shrink-0 items-center gap-3">
           <span class="hidden text-[11px] text-gray-400 sm:inline">{{ contextModels }} · {{ PELICAN_REASONING }}</span>
-          <button v-if="plans.length && availableModel" type="button" class="btn btn-secondary btn-sm" :disabled="loading || !!error" data-testid="group-intelligence-add-model" @click="openEditor()"><Icon name="plus" size="sm" class="mr-1" />{{ t('intelligenceMonitor.addModel') }}</button>
+          <button v-if="plans.length && canAddModel" type="button" class="btn btn-secondary btn-sm" :disabled="loading || !!error" data-testid="group-intelligence-add-model" @click="openEditor()"><Icon name="plus" size="sm" class="mr-1" />{{ t('intelligenceMonitor.addModel') }}</button>
           <button v-if="!embedded" type="button" class="inline-flex items-center gap-1.5 rounded-lg px-2 py-2 text-xs font-medium text-gray-500 hover:bg-white hover:text-primary-600 dark:hover:bg-dark-700 dark:hover:text-primary-400" :aria-busy="loading" data-testid="group-intelligence-refresh" @click="manualRefresh"><Icon name="refresh" size="sm" :class="loading && 'animate-spin'" />{{ t('intelligenceMonitor.refresh') }}</button>
         </div>
       </div>
@@ -54,7 +54,7 @@ import IntelligenceCandyDetailDialog from './IntelligenceCandyDetailDialog.vue'
 import { intelligenceRefreshInterval, isIntelligenceRunActive } from './intelligenceCandy'
 import UpstreamDeleteDialog from './UpstreamDeleteDialog.vue'
 import IntelligencePermanentDeleteDialog from './IntelligencePermanentDeleteDialog.vue'
-import { PELICAN_MODELS, pelicanModelLabel } from '@/utils/pelicanModels'
+import { PELICAN_MODELS, DEFAULT_CLAUDE_PELICAN_MODEL, claudePelicanOptions, pelicanModelLabel } from '@/utils/pelicanModels'
 import { intelligencePanelActiveKey, intelligencePreviewRefreshKey } from './intelligenceMonitorContext'
 import { reconcileMonitorData } from './monitorReconcile'
 
@@ -68,8 +68,12 @@ const fitTwoPlans = computed(() => !props.embedded && !props.account && plans.va
 const contextMessages = computed(() => props.account ? 'intelligenceMonitor.accountMonitor' : 'intelligenceMonitor.groupMonitor')
 const contextName = computed(() => props.account ? plans.value[0]?.source_name || props.account.name : props.target?.name || '')
 const contextHint = computed(() => props.account ? t('intelligenceMonitor.source.openai_oauth') : props.target?.endpoint || '')
-const availableModel = computed(() => PELICAN_MODELS.find(model => !plans.value.some(plan => (plan.model || PELICAN_MODEL) === model.value))?.value)
-const contextModels = computed(() => [...new Set(plans.value.map(plan => pelicanModelLabel(plan.model)))].join(' / ') || pelicanModelLabel(PELICAN_MODEL))
+const anthropic = computed(() => props.target?.provider === 'anthropic' && !props.account)
+const catalog = computed(() => anthropic.value ? claudePelicanOptions(props.target?.models) : PELICAN_MODELS)
+const availableModel = computed(() => catalog.value.find(model => !plans.value.some(plan => (plan.model || PELICAN_MODEL) === model.value))?.value)
+const canAddModel = computed(() => anthropic.value || !!availableModel.value)
+const defaultModel = computed(() => anthropic.value ? DEFAULT_CLAUDE_PELICAN_MODEL : PELICAN_MODEL)
+const contextModels = computed(() => [...new Set(plans.value.map(plan => pelicanModelLabel(plan.model)))].join(' · ') || pelicanModelLabel(defaultModel.value))
 const creatingModel = ref<string>(PELICAN_MODEL)
 const busy = ref(new Set<number>()), closed = ref(false), previewRefresh = ref(0)
 const editor = ref(false), editing = ref<IntelligencePlan | null>(null)
@@ -119,8 +123,8 @@ function manualRefresh() {
   void refresh()
 }
 function openEditor(plan: IntelligencePlan | null = null) {
-  if (!live() || !props.active || childOpen.value || (!plan && (!loaded.value || loading.value || error.value || !availableModel.value))) return
-  creatingModel.value = plan?.model || availableModel.value || PELICAN_MODEL
+  if (!live() || !props.active || childOpen.value || (!plan && (!loaded.value || loading.value || error.value || !canAddModel.value))) return
+  creatingModel.value = plan?.model || availableModel.value || defaultModel.value
   editing.value = plan
   editor.value = true
 }

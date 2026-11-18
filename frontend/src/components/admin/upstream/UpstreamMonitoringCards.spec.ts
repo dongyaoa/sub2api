@@ -45,7 +45,11 @@ describe('upstream card headline measurements', () => {
     await wrapper.get('[data-testid="group-intelligence"]').trigger('click')
     expect(wrapper.emitted('intelligence')).toEqual([[item]])
     expect(wrapper.emitted('run')).toBeUndefined()
-    await wrapper.setProps({ target: { ...item, provider: 'anthropic' } })
+    const claude = { ...item, provider: 'anthropic' as const }
+    await wrapper.setProps({ target: claude })
+    await wrapper.get('[data-testid="group-intelligence"]').trigger('click')
+    expect(wrapper.emitted('intelligence')?.at(-1)).toEqual([claude])
+    await wrapper.setProps({ target: { ...item, provider: 'gemini' } })
     expect(wrapper.get('[data-testid="group-intelligence"]').attributes('disabled')).toBeDefined()
     expect(wrapper.get('[data-testid="group-intelligence"]').attributes('title')).toBe('intelligenceMonitor.groupMonitor.unsupported')
     wrapper.unmount()

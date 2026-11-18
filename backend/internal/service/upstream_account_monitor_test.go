@@ -241,7 +241,7 @@ func TestUpstreamAccountMonitorIndependentAndOtherProviders(t *testing.T) {
 	svc := NewUpstreamCenterService(repo, upstreamTestEncryptor{}, upstreamTestAccounts{account: account}, nil)
 	view, err := svc.AccountMonitor(context.Background(), 6, true)
 	require.NoError(t, err)
-	require.False(t, view.PelicanSupported)
+	require.True(t, view.PelicanSupported)
 	require.Nil(t, view.Supplier)
 	require.Equal(t, int64(7), view.Target.ID)
 	require.True(t, view.Target.Enabled, "reuse never resets an existing monitor's schedule")
@@ -251,7 +251,7 @@ func TestUpstreamAccountMonitorIndependentAndOtherProviders(t *testing.T) {
 		repo.target = nil
 		view, err = svc.AccountMonitor(context.Background(), 6, true)
 		require.NoError(t, err)
-		require.False(t, view.PelicanSupported)
+		require.Equal(t, provider == MonitorProviderAnthropic, view.PelicanSupported)
 		require.False(t, view.Target.Enabled)
 		require.Equal(t, []string{model}, view.Target.Models)
 	}

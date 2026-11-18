@@ -54,7 +54,7 @@
           <dd :class="profit == null ? 'text-amber-600 dark:text-amber-400' : profit < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-primary-700 dark:text-primary-400'" :title="profit == null ? t(profitPendingKey(target.finance)) : `${t('upstreamCenter.finance.note')} ${money(profit, target.finance.currency)}`" data-testid="account-status-profit">{{ amount(profit) }}</dd>
         </div>
         <div>
-          <dt>{{ t('upstreamCenter.availability7d') }}</dt>
+          <dt :title="t('upstreamCenter.availability7dHint')">{{ t('upstreamCenter.availability7d') }}</dt>
           <dd class="text-gray-400" :style="{ color: availabilityColor(statistics?.availability_7d) }" data-testid="account-status-availability">{{ availability(statistics?.availability_7d) }}</dd>
         </div>
         <div>
