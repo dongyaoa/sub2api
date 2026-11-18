@@ -29,27 +29,32 @@ func TestUpstreamCustomUpgradePostgresPreservesCustomData(t *testing.T) {
 			return name[:3] < "242"
 		})
 	})
+	v0222Custom1 := func(name string) bool {
+		return name != "252_channel_pricing_ultrafast_multiplier.sql"
+	}
+	v0221Custom1 := func(name string) bool {
+		switch name {
+		case "251_group_force_openai_ultrafast.sql", "251_group_usage_rollup_nonblocking_build.sql":
+			return false
+		default:
+			return v0222Custom1(name)
+		}
+	}
 	t.Run("v0219_custom7", func(t *testing.T) {
 		testUpstreamCustomUpgradePostgresPreservesCustomData(t, func(name string) bool {
 			switch name {
 			case "249_add_usage_logs_api_key_cost_index_notx.sql", "249_mcp_oauth.sql", "250_openai_cache_write_ttl.sql":
 				return false
-			case "251_group_force_openai_ultrafast.sql", "251_group_usage_rollup_nonblocking_build.sql":
-				return false
 			default:
-				return true
+				return v0221Custom1(name)
 			}
 		})
 	})
 	t.Run("v0221_custom1", func(t *testing.T) {
-		testUpstreamCustomUpgradePostgresPreservesCustomData(t, func(name string) bool {
-			switch name {
-			case "251_group_force_openai_ultrafast.sql", "251_group_usage_rollup_nonblocking_build.sql":
-				return false
-			default:
-				return true
-			}
-		})
+		testUpstreamCustomUpgradePostgresPreservesCustomData(t, v0221Custom1)
+	})
+	t.Run("v0222_custom1", func(t *testing.T) {
+		testUpstreamCustomUpgradePostgresPreservesCustomData(t, v0222Custom1)
 	})
 }
 
@@ -127,6 +132,7 @@ func testUpstreamCustomUpgradePostgresPreservesCustomData(t *testing.T, inBaseli
 	}
 	before := readStamps()
 	require.Len(t, before, len(baseline))
+	require.NotContains(t, before, "252_channel_pricing_ultrafast_multiplier.sql")
 	const promotionSnapshot = `{"promotion_id":"custom-launch","paid_amount":25,"bonus_amount":5,"credited_amount":30}`
 	_, err = db.ExecContext(ctx, `
 INSERT INTO users(id,email,password_hash,balance,frozen_balance) VALUES(93001,'custom-upgrade@example.test','fixture',30,2);
@@ -137,6 +143,8 @@ INSERT INTO groups(id,name,platform,rate_multiplier,model_pricing) VALUES
  (93001,'Preserved model square group','openai',1.5,'[{"models":["fixture-model"],"input_price_per_million":2.5}]');
 INSERT INTO api_keys(id,user_id,key,name,group_id) VALUES(93001,93001,'sk-custom-upgrade-fixture','Preserved key',93001);
 INSERT INTO account_groups(account_id,group_id) VALUES(93001,93001);
+INSERT INTO channels(id,name) VALUES(93001,'Preserved custom channel');
+INSERT INTO channel_model_pricing(id,channel_id,models,fast_multiplier) VALUES(93001,93001,'["gpt-6-astra"]',2.5);
 INSERT INTO batch_image_jobs(batch_id,user_id,provider,model,item_count,status,hold_amount) VALUES
  ('custom-upgrade-batch',93001,'gemini','fixture-image-model',1,'created',2);
 INSERT INTO settings(key,value) VALUES('recharge_promotion_enabled','true')
@@ -153,6 +161,7 @@ VALUES(93001,93001,30,25,'COMPLETED',NOW(),'CUSTOM-UPGRADE',$1::jsonb)`, promoti
 		require.Equal(t, stamp, after[name], "existing migration checksum and application time must remain unchanged: %s", name)
 	}
 	for _, name := range []string{
+		"252_channel_pricing_ultrafast_multiplier.sql",
 		"251_group_force_openai_ultrafast.sql", "251_group_usage_rollup_nonblocking_build.sql",
 		"249_add_usage_logs_api_key_cost_index_notx.sql", "249_mcp_oauth.sql", "250_openai_cache_write_ttl.sql",
 		"242_upstream_center.sql", "243_upstream_finance.sql", "244_upstream_remote_billing.sql",
@@ -169,17 +178,28 @@ VALUES(93001,93001,30,25,'COMPLETED',NOW(),'CUSTOM-UPGRADE',$1::jsonb)`, promoti
 		require.Contains(t, after, name, "all upstream-center migrations must be recorded")
 	}
 
+	// Existing cards keep their Fast override and inherit the model's Ultra Fast
+	// multiplier until an administrator sets a channel-specific value.
+	var fast float64
+	var ultrafast sql.NullFloat64
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT fast_multiplier, ultrafast_multiplier FROM channel_model_pricing WHERE id=93001`).Scan(&fast, &ultrafast))
+	require.Equal(t, 2.5, fast)
+	require.False(t, ultrafast.Valid)
+	_, err = db.ExecContext(ctx, `UPDATE channel_model_pricing SET ultrafast_multiplier=1.25 WHERE id=93001`)
+	require.NoError(t, err)
+
 	assertCustomData := func() {
 		t.Helper()
 		for table, condition := range map[string]string{
-			"users":            "id=93001 AND balance=30 AND frozen_balance=2",
-			"accounts":         "id=93001 AND proxy_id=93001 AND extra->>'custom_marker'='preserved'",
-			"groups":           "id=93001 AND rate_multiplier=1.5 AND model_pricing->0->'models'->>0='fixture-model'",
-			"api_keys":         "id=93001 AND group_id=93001 AND name='Preserved key'",
-			"account_groups":   "account_id=93001 AND group_id=93001",
-			"batch_image_jobs": "batch_id='custom-upgrade-batch' AND status='created' AND hold_amount=2",
-			"settings":         "key='recharge_promotion_enabled' AND value='true'",
-			"payment_orders":   "id=93001 AND amount=30 AND pay_amount=25 AND status='COMPLETED' AND recharge_code='CUSTOM-UPGRADE'",
+			"users":                 "id=93001 AND balance=30 AND frozen_balance=2",
+			"accounts":              "id=93001 AND proxy_id=93001 AND extra->>'custom_marker'='preserved'",
+			"groups":                "id=93001 AND rate_multiplier=1.5 AND model_pricing->0->'models'->>0='fixture-model'",
+			"api_keys":              "id=93001 AND group_id=93001 AND name='Preserved key'",
+			"account_groups":        "account_id=93001 AND group_id=93001",
+			"channel_model_pricing": "id=93001 AND channel_id=93001 AND fast_multiplier=2.5 AND ultrafast_multiplier=1.25",
+			"batch_image_jobs":      "batch_id='custom-upgrade-batch' AND status='created' AND hold_amount=2",
+			"settings":              "key='recharge_promotion_enabled' AND value='true'",
+			"payment_orders":        "id=93001 AND amount=30 AND pay_amount=25 AND status='COMPLETED' AND recharge_code='CUSTOM-UPGRADE'",
 		} {
 			var count int
 			require.NoError(t, db.QueryRowContext(ctx, `SELECT COUNT(*) FROM `+pq.QuoteIdentifier(table)+` WHERE `+condition).Scan(&count))
