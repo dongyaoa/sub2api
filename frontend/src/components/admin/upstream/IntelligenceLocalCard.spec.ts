@@ -34,11 +34,11 @@ describe('local monitor horizontal row', () => {
     expect(wrapper.find('[data-testid="local-featured-frame"]').exists()).toBe(false)
     expect(wrapper.find('[data-testid="local-artwork-empty"]').exists()).toBe(true)
   })
-  it('keeps up to twenty artworks plus an active request in one strip and opens exact records', async () => {
+  it('keeps up to ten artworks plus an active request in one strip and opens exact records', async () => {
     const history = Array.from({ length: 23 }, (_, index) => run(30 - index))
     const wrapper = render(plan({ latest_run: run(31, 'running'), recent_runs: history }))
-    expect(wrapper.findAllComponents(preview).map(item => item.props('run').id)).toEqual([31, ...history.slice(0, 20).map(item => item.id)])
-    expect(wrapper.text()).toContain('20/20')
+    expect(wrapper.findAllComponents(preview).map(item => item.props('run').id)).toEqual([31, ...history.slice(0, 10).map(item => item.id)])
+    expect(wrapper.text()).toContain('10/10')
     await wrapper.findAllComponents(preview)[3]!.trigger('click')
     expect(wrapper.emitted('history')).toEqual([[28]])
     expect(wrapper.get('[data-testid="local-pelican-run"]').attributes('disabled')).toBeDefined()

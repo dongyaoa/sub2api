@@ -246,7 +246,7 @@ func TestIntelligenceMonitorPostgresCustomSecondIntervals(t *testing.T) {
 	}
 }
 
-func TestIntelligenceMonitorPostgresRetainsOnlyTwentyTerminalRuns(t *testing.T) {
+func TestIntelligenceMonitorPostgresRetainsOnlyTenTerminalRuns(t *testing.T) {
 	db, ctx := intelligenceMonitorTestDB(t)
 	repo := &intelligenceMonitorRepository{db: db}
 	first := &service.IntelligenceMonitorPlan{Name: "first", SourceType: "external", APIMode: "responses", IntervalSeconds: 3600, TimeoutSeconds: 300, CreatedBy: 1}
@@ -288,8 +288,8 @@ func TestIntelligenceMonitorPostgresRetainsOnlyTwentyTerminalRuns(t *testing.T) 
 		require.Len(t, ids, terminalCount)
 		return ids
 	}
-	require.Equal(t, int64(6), assertIDs(first.ID, 20, 21)[19])
-	require.Equal(t, int64(28), assertIDs(second.ID, 20, 21)[19])
+	require.Equal(t, int64(16), assertIDs(first.ID, 10, 11)[9])
+	require.Equal(t, int64(38), assertIDs(second.ID, 10, 11)[9])
 	for _, id := range []int64{firstActive.ID, secondActive.ID} {
 		_, err = repo.GetRun(ctx, id)
 		require.NoError(t, err)
@@ -301,7 +301,7 @@ func TestIntelligenceMonitorPostgresRetainsOnlyTwentyTerminalRuns(t *testing.T) 
 	require.NoError(t, err)
 	claimed.Status, claimed.HTML = "succeeded", "<html>new</html>"
 	require.NoError(t, repo.CompleteRun(ctx, claimed))
-	require.Equal(t, claimed.ID, assertIDs(first.ID, 20, 20)[0])
+	require.Equal(t, claimed.ID, assertIDs(first.ID, 10, 10)[0])
 	// Expiration also creates a terminal artifact and must apply retention.
 	claimed, err = repo.ClaimNext(ctx, "expired-worker")
 	require.NoError(t, err)
@@ -309,11 +309,11 @@ func TestIntelligenceMonitorPostgresRetainsOnlyTwentyTerminalRuns(t *testing.T) 
 	_, err = db.ExecContext(ctx, `UPDATE intelligence_monitor_runs SET created_at=NOW(),lease_until=NOW()-INTERVAL '1 minute' WHERE id=$1`, claimed.ID)
 	require.NoError(t, err)
 	require.NoError(t, repo.ExpireRuns(ctx))
-	require.Equal(t, claimed.ID, assertIDs(second.ID, 20, 20)[0])
+	require.Equal(t, claimed.ID, assertIDs(second.ID, 10, 10)[0])
 	require.NoError(t, repo.ArchivePlan(ctx, second.ID))
 	seed(second.ID, 3)
 	require.NoError(t, repo.PruneRuns(ctx))
-	assertIDs(second.ID, 20, 20)
+	assertIDs(second.ID, 10, 10)
 }
 
 func pqQuoteIdentifier(value string) string { return `"` + strings.ReplaceAll(value, `"`, `""`) + `"` }

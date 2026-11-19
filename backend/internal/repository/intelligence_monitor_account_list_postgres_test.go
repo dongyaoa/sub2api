@@ -59,7 +59,7 @@ UPDATE intelligence_monitor_runs SET rate_snapshot='"unrelated malformed billing
 		require.Equal(t, int64(901), *plan.AccountID)
 		require.Equal(t, "Current OAuth name", plan.Name)
 		require.False(t, plan.Enabled, "paused account monitors still reuse their saved history")
-		require.Len(t, plan.RecentRuns, 20)
+		require.Len(t, plan.RecentRuns, 10)
 		require.Equal(t, "weekly_limited", plan.OAuthAccountStatus.Status)
 		require.Equal(t, []service.IntelligenceOAuthAccountGroup{{ID: 51, Name: "Current group"}}, plan.OAuthAccountStatus.Groups)
 		for _, run := range append(plan.RecentRuns, plan.LatestRun) {

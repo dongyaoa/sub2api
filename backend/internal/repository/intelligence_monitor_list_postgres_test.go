@@ -31,7 +31,7 @@ VALUES (502,'External gallery','running','scheduled','gpt-6-astra','high','draw'
 	require.Equal(t, "OAuth renamed", data.SourceNames[501], "OAuth cards use current account name")
 	require.Len(t, data.Runs[501], 1)
 	require.Equal(t, "running", data.Runs[501][0].Status)
-	require.Len(t, data.Runs[502], 21, "one live run plus the twenty newest terminal works")
+	require.Len(t, data.Runs[502], 11, "one live run plus the ten newest terminal works")
 	require.Equal(t, "running", data.Runs[502][0].Status)
 	for _, run := range data.Runs[502][1:] {
 		require.Equal(t, "succeeded", run.Status)

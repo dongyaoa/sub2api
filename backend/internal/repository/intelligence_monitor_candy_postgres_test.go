@@ -328,7 +328,7 @@ SELECT $1,'history',CASE WHEN i%2=0 THEN 'failed' ELSE 'succeeded' END,'manual',
 	require.NoError(t, err)
 	require.NoError(t, repo.PruneRuns(ctx))
 	for _, kind := range []string{"pelican", "candy"} {
-		expected := 21
+		expected := 11
 		if kind == "candy" {
 			expected = 61
 		}
@@ -351,7 +351,7 @@ SELECT $1,'history',CASE WHEN i%2=0 THEN 'failed' ELSE 'succeeded' END,'manual',
 	}
 	data, err := repo.LoadPlanListData(ctx, []int64{plan.ID, hidden.ID, plan.ID, 0})
 	require.NoError(t, err)
-	require.Len(t, data.Runs[plan.ID], 21)
+	require.Len(t, data.Runs[plan.ID], 11)
 	require.Len(t, data.CandyRuns[plan.ID], 61)
 	require.Equal(t, "pending", data.CandyRuns[plan.ID][0].Status)
 	require.Equal(t, "candy", data.CandyRuns[plan.ID][0].TestKind)
@@ -394,7 +394,7 @@ SELECT $1,'history',CASE WHEN i%2=0 THEN 'failed' ELSE 'succeeded' END,'manual',
 	require.NoError(t, repo.ExpireRuns(ctx))
 	page, err := repo.ListRuns(ctx, service.IntelligenceMonitorRunQuery{PlanID: &plan.ID, Page: 1, PageSize: 100})
 	require.NoError(t, err)
-	require.Equal(t, int64(20), page.Total)
+	require.Equal(t, int64(10), page.Total)
 	companion, err = repo.ClaimNext(ctx, "retention-candy")
 	require.NoError(t, err)
 	require.NotNil(t, companion)

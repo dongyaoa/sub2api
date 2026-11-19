@@ -1,11 +1,12 @@
 import { flushPromises, mount, type VueWrapper } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { ref } from 'vue'
+import { defineComponent, h, nextTick, ref } from 'vue'
 import type { IntelligenceRun } from '@/api/admin/intelligenceMonitor'
 import IntelligenceArtifactPreview from './IntelligenceArtifactPreview.vue'
 import PelicanLoadingScene from './PelicanLoadingScene.vue'
 import { intelligencePanelActiveKey, intelligencePreviewRefreshKey } from './intelligenceMonitorContext'
 import { clearIntelligenceArtworkCache } from './intelligenceArtworkLoader'
+import { provideIntelligenceThumbnailQueue } from './intelligenceThumbnailQueue'
 
 const detail = vi.hoisted(() => vi.fn())
 vi.mock('@/api/admin/intelligenceMonitor', () => ({ intelligenceMonitorAPI: { detail } }))
@@ -104,6 +105,75 @@ describe('intelligence artifact preview states', () => {
     await flushPromises()
     expect(view.get('iframe').element).toBe(frame)
     expect(detail).toHaveBeenCalledTimes(3)
+  })
+
+  it('defers thumbnail work during scrolling, releases persistent offscreen frames and reuses cached HTML on return', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] })
+    const watched: Element[] = []
+    let notify!: IntersectionObserverCallback
+    vi.stubGlobal('IntersectionObserver', class {
+      constructor(callback: IntersectionObserverCallback) { notify = callback }
+      observe(element: Element) { watched.push(element) }
+      unobserve() {}
+      disconnect() {}
+    })
+    const animation = new Map<number, FrameRequestCallback>()
+    let serial = 0
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => { animation.set(++serial, callback); return serial })
+    vi.stubGlobal('cancelAnimationFrame', (key: number) => animation.delete(key))
+    const nextFrame = async () => {
+      const batch = [...animation.values()]
+      animation.clear()
+      batch.forEach(callback => callback(0))
+      await flushPromises()
+    }
+    detail.mockImplementation(async (id: number) => run(id, 'succeeded', { html: `<svg><title>${id}</title></svg>` }))
+    const opened = vi.fn()
+    const list = [run(201, 'succeeded'), run(202, 'succeeded')]
+    const dialog = defineComponent({
+      setup() {
+        const queue = provideIntelligenceThumbnailQueue()
+        return () => h('div', { onScrollCapture: queue.onScroll }, list.map(item => h(IntelligenceArtifactPreview, {
+          key: item.id, run: item, onOpen: () => opened(item.id)
+        })))
+      }
+    })
+    const view = mount(dialog, { attachTo: document.body, global: { stubs: { Icon: true } } })
+    const intersect = async (index: number, visible: boolean) => {
+      notify([{ target: watched[index], isIntersecting: visible, intersectionRatio: visible ? 1 : 0 } as IntersectionObserverEntry], {} as IntersectionObserver)
+      await nextTick()
+    }
+    try {
+      await view.trigger('scroll')
+      await intersect(0, true)
+      await intersect(1, true)
+      await nextFrame()
+      expect(detail).not.toHaveBeenCalled()
+      await view.findAllComponents(IntelligenceArtifactPreview)[1]!.get('[aria-label="intelligenceMonitor.open"]').trigger('click')
+      expect(opened).toHaveBeenCalledWith(202)
+
+      await vi.advanceTimersByTimeAsync(200)
+      await nextFrame()
+      expect(view.findAll('iframe')).toHaveLength(1)
+      await nextFrame()
+      expect(view.findAll('iframe')).toHaveLength(2)
+      const first = view.get('iframe').element
+      await intersect(0, false)
+      await vi.advanceTimersByTimeAsync(50)
+      await intersect(0, true)
+      expect(view.get('iframe').element).toBe(first)
+      await intersect(0, false)
+      await vi.advanceTimersByTimeAsync(500)
+      expect(view.findAll('iframe')).toHaveLength(1)
+      await intersect(0, true)
+      await nextFrame()
+      expect(view.findAll('iframe')).toHaveLength(2)
+      expect(view.get('iframe').element).not.toBe(first)
+      expect(detail).toHaveBeenCalledTimes(2)
+    } finally {
+      view.unmount()
+      vi.useRealTimers()
+    }
   })
 
   it('allows a manual refresh to retry missing HTML while completed artwork stays intact', async () => {

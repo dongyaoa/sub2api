@@ -1,15 +1,9 @@
+import { retainedPelicanArtworks } from '@/utils/pelicanArtworks'
 import type { PelicanMonitorGroup, PelicanRun } from '@/api/pelicanMonitor'
 export const pelicanActive = (run?: PelicanRun | null) => run?.status === 'running' || run?.status === 'pending'
 export function pelicanWorks(group: PelicanMonitorGroup) {
-  const records = [...(group.recent_runs || [])]
   const latest = group.latest_run
-  if (latest) {
-    const index = records.findIndex(run => run.id === latest.id)
-    if (index >= 0) records[index] = latest
-    else records.unshift(latest)
-  }
-  const seen = new Set<number>()
-  const completed = records.filter(run => { if (pelicanActive(run) || seen.has(run.id)) return false; seen.add(run.id); return true }).slice(0, 20)
+  const completed = retainedPelicanArtworks(group)
   return latest && pelicanActive(latest) ? [latest, ...completed] : completed
 }
 export function pelicanInterval(seconds: number): { minutes?: number; seconds?: number } { return seconds % 60 === 0 ? { minutes: seconds / 60 } : { seconds } }

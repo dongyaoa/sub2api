@@ -53,8 +53,8 @@
     </aside>
     <section class="plan-works flex min-w-0 flex-col px-3 py-2.5">
       <IntelligenceCandyBar v-if="plan.candy_enabled" class="plan-candy" :plan="plan" :busy="busy" :compact="compact" @run="emit('candyRun')" @select="run => emit('candySelect', run)" />
-      <div class="plan-works-heading mb-2 flex shrink-0 flex-wrap items-center justify-between gap-2"><div class="flex items-center gap-2"><span class="text-xs font-medium text-gray-700 dark:text-gray-200">{{ t('intelligenceMonitor.recentWorks') }}</span><span class="text-[10px] text-gray-400">{{ t('intelligenceMonitor.newestFirst') }}</span></div><button type="button" class="text-[11px] text-primary-600 dark:text-primary-400" @click="emit('history')">{{ t('intelligenceMonitor.history') }}<span class="ml-1 text-gray-400">{{ completedWorks.length }}/20</span></button></div>
-      <div v-if="works.length" ref="worksScroller" class="plan-works-scroller flex min-h-0 flex-1 snap-x items-stretch gap-3 overflow-x-auto" :aria-label="t('intelligenceMonitor.recentWorks')">
+      <div class="plan-works-heading mb-2 flex shrink-0 flex-wrap items-center justify-between gap-2"><div class="flex items-center gap-2"><span class="text-xs font-medium text-gray-700 dark:text-gray-200">{{ t('intelligenceMonitor.recentWorks') }}</span><span class="text-[10px] text-gray-400">{{ t('intelligenceMonitor.newestFirst') }}</span></div><button type="button" class="text-[11px] text-primary-600 dark:text-primary-400" @click="emit('history')">{{ t('intelligenceMonitor.history') }}<span class="ml-1 text-gray-400">{{ completedWorks.length }}/{{ PELICAN_ARTWORK_LIMIT }}</span></button></div>
+      <div v-if="works.length" ref="worksScroller" v-memo="[works, locale]" class="plan-works-scroller flex min-h-0 flex-1 snap-x items-stretch gap-3 overflow-x-auto" :aria-label="t('intelligenceMonitor.recentWorks')">
         <div v-for="(work, index) in works" :key="work.id" class="flex w-48 max-w-full shrink-0 snap-start flex-col overflow-hidden rounded-xl border sm:w-[12.5rem]" :class="index === 0 ? 'border-primary-200 dark:border-primary-600/40' : 'border-gray-100 dark:border-dark-700'">
           <IntelligenceArtifactPreview class="plan-preview" :run="work" @open="emit('history', work.id)" />
           <button type="button" class="plan-work-caption w-full shrink-0 p-2 text-left hover:bg-gray-50 dark:hover:bg-dark-700/50" @click="emit('history', work.id)">
@@ -74,6 +74,7 @@
 <script setup lang="ts">
 import { computed, inject, nextTick, onBeforeUnmount, provide, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { PELICAN_ARTWORK_LIMIT, retainedPelicanArtworks } from '@/utils/pelicanArtworks'
 import IntelligenceModelInfo from './IntelligenceModelInfo.vue'
 import Icon from '@/components/icons/Icon.vue'
 import type { IntelligencePlan, IntelligenceRate, IntelligenceRun } from '@/api/admin/intelligenceMonitor'
@@ -87,7 +88,7 @@ import { intelligencePanelActiveKey } from './intelligenceMonitorContext'
 import { dateTime } from './format'
 const props = withDefaults(defineProps<{ plan: IntelligencePlan; overview: UpstreamOverview | null; busy: boolean; visible?: boolean; compact?: boolean }>(), { visible: true, compact: false })
 const emit = defineEmits<{ run: []; candyRun: []; candySelect: [run: IntelligenceRun]; toggle: []; edit: []; archive: []; history: [runID?: number] }>()
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const panelActive = inject(intelligencePanelActiveKey, ref(true))
 const cardActive = computed(() => panelActive.value && props.visible)
 // Filtered cards retain their artwork DOM; hidden cards must pause playback.
@@ -145,22 +146,7 @@ watch([() => props.plan.enabled, active, nextRunTime, cardActive, monitoringPaus
   }, 1000)
 }, { immediate: true })
 onBeforeUnmount(stopCountdown)
-const completedWorks = computed(() => {
-  const recent = props.plan.recent_runs || []
-  const latest = props.plan.latest_run
-  const candidates = [...recent]
-  if (latest && !isActive(latest)) {
-    const existing = candidates.findIndex(run => run.id === latest.id)
-    if (existing >= 0) candidates[existing] = latest
-    else candidates.unshift(latest)
-  }
-  const seen = new Set<number>()
-  return candidates.filter(run => {
-    if (isActive(run) || seen.has(run.id) || (active.value && run.id === latest?.id)) return false
-    seen.add(run.id)
-    return true
-  }).slice(0, 20)
-})
+const completedWorks = computed(() => retainedPelicanArtworks(props.plan))
 const works = computed(() => active.value && props.plan.latest_run ? [props.plan.latest_run, ...completedWorks.value] : completedWorks.value)
 watch(() => props.plan.latest_run?.id, async () => {
   if (!active.value) return

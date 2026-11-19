@@ -49,7 +49,7 @@
       <IntelligenceCandyBar v-if="plan.candy_enabled" :plan="plan" :busy="busy" @run="emit('candyRun')" @select="emit('candySelect', $event)" />
       <div class="mb-2.5 flex min-h-6 flex-wrap items-center justify-between gap-2">
         <div class="flex items-center gap-2"><span class="text-xs font-semibold text-gray-700 dark:text-gray-200">{{ t('intelligenceMonitor.recentWorks') }}</span><span class="text-[10px] text-gray-400">{{ t('intelligenceMonitor.newestFirst') }}</span></div>
-        <button type="button" class="inline-flex items-center gap-1 text-[11px] text-gray-500 transition-colors hover:text-primary-600 dark:text-dark-300 dark:hover:text-primary-300" @click="emit('history')">{{ t('intelligenceMonitor.history') }}<span class="ml-0.5 tabular-nums text-gray-400">{{ completed.length }}/20</span><Icon name="chevronRight" size="xs" /></button>
+        <button type="button" class="inline-flex items-center gap-1 text-[11px] text-gray-500 transition-colors hover:text-primary-600 dark:text-dark-300 dark:hover:text-primary-300" @click="emit('history')">{{ t('intelligenceMonitor.history') }}<span class="ml-0.5 tabular-nums text-gray-400">{{ completed.length }}/{{ PELICAN_ARTWORK_LIMIT }}</span><Icon name="chevronRight" size="xs" /></button>
       </div>
       <div v-if="works.length" ref="worksScroller" class="local-artwork-strip" :aria-label="t('intelligenceMonitor.recentWorks')" data-testid="local-artwork-strip">
         <div v-for="(work, index) in works" :key="work.id" class="local-artwork" :class="index === 0 && 'local-artwork-latest'" :data-run-id="work.id">
@@ -74,6 +74,7 @@
 <script setup lang="ts">
 import { computed, inject, nextTick, provide, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { PELICAN_ARTWORK_LIMIT, retainedPelicanArtworks } from '@/utils/pelicanArtworks'
 import IntelligenceModelInfo from './IntelligenceModelInfo.vue'
 import Icon from '@/components/icons/Icon.vue'
 import type { IntelligencePlan, IntelligenceRun } from '@/api/admin/intelligenceMonitor'
@@ -100,21 +101,7 @@ const intervalLabel = computed(() => !props.plan.enabled ? t('intelligenceMonito
 const { remaining, label: countdown } = useIntelligenceCountdown(() => props.plan.next_run_at, () => visible.value && props.plan.enabled && !pelicanActive.value)
 const timeFormatter = computed(() => new Intl.DateTimeFormat(locale?.value || 'zh-CN', { month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', hour12: false }))
 function compactTime(value: string) { const date = new Date(value); return Number.isFinite(date.getTime()) ? timeFormatter.value.format(date) : '—' }
-const completed = computed(() => {
-  const records = [...(props.plan.recent_runs || [])]
-  const latest = props.plan.latest_run
-  if (latest && !isIntelligenceRunActive(latest) && latest.test_kind !== 'candy') {
-    const index = records.findIndex(run => run.id === latest.id)
-    if (index >= 0) records[index] = latest
-    else records.unshift(latest)
-  }
-  const seen = new Set<number>()
-  return records.filter(run => {
-    if (run.test_kind === 'candy' || isIntelligenceRunActive(run) || seen.has(run.id) || (pelicanActive.value && run.id === latest?.id)) return false
-    seen.add(run.id)
-    return true
-  }).slice(0, 20)
-})
+const completed = computed(() => retainedPelicanArtworks(props.plan))
 const works = computed(() => pelicanActive.value && props.plan.latest_run ? [props.plan.latest_run, ...completed.value] : completed.value)
 const worksScroller = ref<HTMLElement | null>(null)
 watch(() => props.plan.latest_run?.id, async () => {

@@ -11,7 +11,7 @@ const IntelligenceMonitorModel = "gpt-6-astra"
 const IntelligenceMonitorSolModel = "gpt-6.1-sol"
 const IntelligenceMonitorReasoning = "high"
 const IntelligenceMonitorPrompt = "创建一个 HTML，内容是用 SVG 绘制一个鹈鹕骑自行车的 2D 动画。你不需要任何测试。"
-const IntelligenceMonitorRetainedRuns = 20
+const IntelligenceMonitorRetainedRuns = 10
 const IntelligenceMonitorTestPelican = "pelican"
 const IntelligenceMonitorTestCandy = "candy"
 const IntelligenceMonitorCandyRetainedRuns = 60
@@ -169,7 +169,7 @@ type IntelligenceMonitorRunPage struct {
 
 // Optional batched read capability for the frequently refreshed plan gallery.
 // SourceNames contains only existing, non-deleted source records. Runs contains
-// at most twenty terminal runs and one active run per requested plan.
+// at most ten terminal artwork runs and one active run per requested plan.
 type IntelligenceMonitorPlanListData struct {
 	Runs        map[int64][]*IntelligenceMonitorRun
 	CandyRuns   map[int64][]*IntelligenceMonitorRun

@@ -67,7 +67,7 @@ func (r *intelligenceGalleryRepository) ListRuns(_ context.Context, q Intelligen
 	}
 	return &IntelligenceMonitorRunPage{Items: runs}, nil
 }
-func TestIntelligenceGalleryKeepsTwentyTerminalRunsAlongsideLiveStatus(t *testing.T) {
+func TestIntelligenceGalleryKeepsTenTerminalRunsAlongsideLiveStatus(t *testing.T) {
 	repo := &intelligenceGalleryRepository{intelligenceTestRepository: intelligenceTestRepository{plan: &IntelligenceMonitorPlan{ID: 3, Name: "gallery", SourceType: "external"}}}
 	repo.runs = append(repo.runs, &IntelligenceMonitorRun{ID: 22, Status: "running"})
 	for id := int64(21); id >= 1; id-- {
@@ -81,9 +81,9 @@ func TestIntelligenceGalleryKeepsTwentyTerminalRunsAlongsideLiveStatus(t *testin
 	plans, err := svc.ListPlans(context.Background())
 	require.NoError(t, err)
 	require.Equal(t, "running", plans[0].LatestRun.Status)
-	require.Len(t, plans[0].RecentRuns, 20)
+	require.Len(t, plans[0].RecentRuns, 10)
 	require.Equal(t, int64(21), plans[0].RecentRuns[0].ID)
-	require.Equal(t, int64(2), plans[0].RecentRuns[19].ID)
+	require.Equal(t, int64(12), plans[0].RecentRuns[9].ID)
 	repo.runs = nil
 	plans, err = svc.ListPlans(context.Background())
 	require.NoError(t, err)

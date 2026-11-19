@@ -174,7 +174,7 @@ describe('intelligence plan card result selection', () => {
     const latest = { ...run(91), html: '<svg>completed</svg>' }
     const view = render(plan({ latest_run: latest, recent_runs: [run(91, 'pending'), run(90)] }))
     expect(view.findAllComponents(preview).map(child => child.props('run'))).toEqual([latest, run(90)])
-    expect(view.text()).toContain('2/20')
+    expect(view.text()).toContain('2/10')
     view.unmount()
   })
 
@@ -267,11 +267,11 @@ describe('intelligence plan card result selection', () => {
     view.unmount()
   })
 
-  it('shows at most twenty results in server order and opens the specifically selected result', async () => {
+  it('shows at most ten results in server order and opens the specifically selected result', async () => {
     const ids = [91, 105, 82, ...Array.from({ length: 19 }, (_, i) => 70 - i)]
     const view = render(plan({ recent_runs: ids.map(id => run(id)), latest_run: run(91) }))
-    expect(view.findAllComponents(preview).map(child => child.props('run').id)).toEqual(ids.slice(0, 20))
-    expect(view.text()).toContain('20/20')
+    expect(view.findAllComponents(preview).map(child => child.props('run').id)).toEqual(ids.slice(0, 10))
+    expect(view.text()).toContain('10/10')
     await view.findAll('.test-preview')[0].trigger('click')
     const secondCaption = view.findAll('button').find(button => button.text().includes('#105'))!
     await secondCaption.trigger('click')
@@ -307,7 +307,7 @@ describe('intelligence plan card result selection', () => {
   it('retains previous results while a run is active and prevents duplicate runs or edits', async () => {
     const view = render(plan({ latest_run: run(12, 'running'), recent_runs: [run(11, 'failed')] }))
     expect(view.findAllComponents(preview).map(child => child.props('run').id)).toEqual([12, 11])
-    expect(view.text()).toContain('1/20')
+    expect(view.text()).toContain('1/10')
     const runButton = view.get('aside').findAll('button').find(button => button.text() === 'intelligenceMonitor.status.running')!
     expect(runButton.attributes('disabled')).toBeDefined()
     expect(view.get('[aria-label="intelligenceMonitor.edit"]').attributes('disabled')).toBeDefined()
@@ -319,12 +319,12 @@ describe('intelligence plan card result selection', () => {
     view.unmount()
   })
 
-  it.each(['pending', 'running'] as const)('shows the %s preview in addition to all twenty stored results', status => {
+  it.each(['pending', 'running'] as const)('shows the %s preview in addition to all ten stored results', status => {
     const previous = Array.from({ length: 20 }, (_, index) => run(50 - index))
     const view = render(plan({ latest_run: run(51, status), recent_runs: previous }))
-    expect(view.findAllComponents(preview).map(child => child.props('run').id)).toEqual([51, ...previous.map(item => item.id)])
-    expect(view.text()).toContain('20/20')
-    expect(view.text()).not.toContain('21/20')
+    expect(view.findAllComponents(preview).map(child => child.props('run').id)).toEqual([51, ...previous.slice(0, 10).map(item => item.id)])
+    expect(view.text()).toContain('10/10')
+    expect(view.text()).not.toContain('11/10')
     expect(view.text()).toContain(`intelligenceMonitor.status.${status}`)
     view.unmount()
   })
@@ -332,7 +332,7 @@ describe('intelligence plan card result selection', () => {
   it('shows a first active run as a preview while the completed result count remains zero', () => {
     const view = render(plan({ latest_run: run(1, 'pending'), recent_runs: [] }))
     expect(view.findAllComponents(preview).map(child => child.props('run').id)).toEqual([1])
-    expect(view.text()).toContain('0/20')
+    expect(view.text()).toContain('0/10')
     expect(view.text()).not.toContain('intelligenceMonitor.waiting')
     view.unmount()
   })
@@ -347,14 +347,14 @@ describe('intelligence plan card result selection', () => {
     expect(view.findAllComponents(preview)[1]!.vm).toBe(previousPreview)
 
     await view.setProps({ plan: plan({ latest_run: run(51), recent_runs: previous }) })
-    expect(view.findAllComponents(preview).map(child => child.props('run').id)).toEqual([51, ...previous.slice(0, 19).map(item => item.id)])
+    expect(view.findAllComponents(preview).map(child => child.props('run').id)).toEqual([51, ...previous.slice(0, 9).map(item => item.id)])
     expect(view.findAllComponents(preview)[0]!.vm).toBe(activePreview)
     expect(view.findAllComponents(preview)[1]!.vm).toBe(previousPreview)
-    expect(view.text()).toContain('20/20')
+    expect(view.text()).toContain('10/10')
 
-    await view.setProps({ plan: plan({ latest_run: run(51), recent_runs: [run(51), ...previous.slice(0, 19)] }) })
+    await view.setProps({ plan: plan({ latest_run: run(51), recent_runs: [run(51), ...previous.slice(0, 9)] }) })
     expect(view.findAllComponents(preview)[0]!.vm).toBe(activePreview)
-    expect(view.findAllComponents(preview)).toHaveLength(20)
+    expect(view.findAllComponents(preview)).toHaveLength(10)
     view.unmount()
   })
 })

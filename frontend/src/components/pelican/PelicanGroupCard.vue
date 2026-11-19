@@ -27,7 +27,7 @@
       </div>
     </aside>
     <section v-memo="[works, locale]" class="min-w-0 flex-1 p-3.5 lg:p-4">
-      <div class="mb-2 flex flex-wrap items-center justify-between gap-2"><div class="flex items-center gap-2"><h3 class="text-xs font-semibold text-gray-800 dark:text-gray-100">{{ t('pelicanMonitor.recentWorks') }}</h3><span class="text-[10px] text-gray-400">{{ t('pelicanMonitor.newestFirst') }}</span></div><span class="text-[10px] tabular-nums text-gray-400">{{ works.filter(run => !pelicanActive(run)).length }}/20</span></div>
+      <div class="mb-2 flex flex-wrap items-center justify-between gap-2"><div class="flex items-center gap-2"><h3 class="text-xs font-semibold text-gray-800 dark:text-gray-100">{{ t('pelicanMonitor.recentWorks') }}</h3><span class="text-[10px] text-gray-400">{{ t('pelicanMonitor.newestFirst') }}</span></div><span class="text-[10px] tabular-nums text-gray-400">{{ works.filter(run => !pelicanActive(run)).length }}/{{ PELICAN_ARTWORK_LIMIT }}</span></div>
       <div v-if="works.length" ref="gallery" class="pelican-gallery" data-testid="pelican-gallery">
         <div v-for="(run, index) in works" :key="run.id" class="pelican-work" :class="index === 0 && 'pelican-work-latest'" :data-run-id="run.id">
           <PelicanArtworkPreview :run="run" :autoplay="autoplayWorks.has(run.id)" class="!min-h-0 !flex-none h-[148px]" @open="emit('open', run)" />
@@ -51,6 +51,7 @@
 <script setup lang="ts">
 import { computed, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { PELICAN_ARTWORK_LIMIT } from '@/utils/pelicanArtworks'
 import type { PelicanMonitorGroup, PelicanRun } from '@/api/pelicanMonitor'
 import Icon from '@/components/icons/Icon.vue'
 import PelicanArtworkPreview from './PelicanArtworkPreview.vue'

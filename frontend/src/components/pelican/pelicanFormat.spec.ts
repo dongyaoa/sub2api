@@ -3,13 +3,13 @@ import type { PelicanMonitorGroup, PelicanRun } from '@/api/pelicanMonitor'
 import { pelicanCountdown, pelicanDuration, pelicanInterval, pelicanWorks } from './pelicanFormat'
 const run = (id: number, status: PelicanRun['status'] = 'succeeded') => ({ id, status }) as PelicanRun
 describe('user pelican presentation', () => {
-  it('retains twenty completed runs and shows the active run separately', () => {
+  it('retains ten completed runs and shows the active run separately', () => {
     const recent = Array.from({ length: 25 }, (_, index) => run(30 - index))
     const works = pelicanWorks({ latest_run: run(31, 'running'), recent_runs: [run(31, 'pending'), ...recent] } as PelicanMonitorGroup)
-    expect(works).toHaveLength(21)
+    expect(works).toHaveLength(11)
     expect(works[0]?.status).toBe('running')
-    expect(works.at(-1)?.id).toBe(11)
-    expect(new Set(works.map(item => item.id)).size).toBe(21)
+    expect(works.at(-1)?.id).toBe(21)
+    expect(new Set(works.map(item => item.id)).size).toBe(11)
   })
   it('updates a completed latest record without keeping stale running metadata', () => {
     expect(pelicanWorks({ latest_run: run(31), recent_runs: [run(31, 'running'), run(30)] } as PelicanMonitorGroup)).toEqual([run(31), run(30)])

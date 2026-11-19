@@ -92,7 +92,7 @@ func TestIntelligencePublicPelicanPostgresFilteredBoundedAndRedacted(t *testing.
 	require.Equal(t, "Public group", plan.GroupName)
 	require.Equal(t, 1.5, *plan.GroupRateMultiplier, "publish the group's base rate, never an administrator's private effective discount")
 	require.Equal(t, activeID, plan.LatestRun.ID, "an older active run must not disappear behind recent terminal history")
-	require.Len(t, plan.RecentRuns, 20)
+	require.Len(t, plan.RecentRuns, 10)
 	require.Equal(t, failedID, plan.RecentRuns[0].ID)
 	require.NotEmpty(t, plan.RecentRuns[0].Error)
 	require.WithinDuration(t, time.Now(), page.ServerTime, 5*time.Second)

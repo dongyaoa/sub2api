@@ -39,10 +39,10 @@ VALUES(301,'Legacy first','running','manual','m','high','draw','upstream','Histo
 	require.Len(t, plans, 2)
 	require.Equal(t, int64(302), plans[0].ID)
 	require.Equal(t, int64(301), plans[1].ID)
-	require.Equal(t, "running", plans[1].LatestRun.Status, "the older active run remains visible alongside twenty works")
+	require.Equal(t, "running", plans[1].LatestRun.Status, "the older active run remains visible alongside ten works")
 	for _, plan := range plans {
 		require.Equal(t, "upstream", plan.SourceType)
-		require.Len(t, plan.RecentRuns, 20)
+		require.Len(t, plan.RecentRuns, 10)
 		for _, run := range append(plan.RecentRuns, plan.LatestRun) {
 			require.Equal(t, plan.ID, run.PlanID)
 			require.Empty(t, run.HTML)

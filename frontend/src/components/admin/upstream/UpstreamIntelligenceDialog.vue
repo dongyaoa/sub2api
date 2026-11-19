@@ -13,7 +13,7 @@
           <button v-if="!embedded" type="button" class="inline-flex items-center gap-1.5 rounded-lg px-2 py-2 text-xs font-medium text-gray-500 hover:bg-white hover:text-primary-600 dark:hover:bg-dark-700 dark:hover:text-primary-400" :aria-busy="loading" data-testid="group-intelligence-refresh" @click="manualRefresh"><Icon name="refresh" size="sm" :class="loading && 'animate-spin'" />{{ t('intelligenceMonitor.refresh') }}</button>
         </div>
       </div>
-      <div class="group-intelligence-viewport min-h-0" :class="embedded ? '' : 'overflow-y-auto overscroll-contain'" data-testid="group-intelligence-viewport" :aria-busy="loading && !loaded">
+      <div class="group-intelligence-viewport min-h-0" :class="embedded ? '' : 'overflow-y-auto overscroll-contain'" data-testid="group-intelligence-viewport" @scroll.capture.passive="thumbnailQueue.onScroll" :aria-busy="loading && !loaded">
         <p v-if="error" role="alert" class="mb-3 rounded-xl bg-rose-50 px-4 py-3 text-sm text-rose-600 dark:bg-rose-500/10 dark:text-rose-400">{{ error }}</p>
         <div v-if="!loaded && !error" class="min-h-[220px] animate-pulse rounded-2xl border border-gray-100 bg-gray-50 motion-reduce:animate-none dark:border-dark-700 dark:bg-dark-800" data-testid="group-intelligence-loading" />
         <div v-if="plans.length" class="group-intelligence-plans grid min-w-0 grid-cols-1 gap-2">
@@ -57,12 +57,14 @@ import IntelligencePermanentDeleteDialog from './IntelligencePermanentDeleteDial
 import { PELICAN_MODELS, DEFAULT_CLAUDE_PELICAN_MODEL, claudePelicanOptions, pelicanModelLabel } from '@/utils/pelicanModels'
 import { intelligencePanelActiveKey, intelligencePreviewRefreshKey } from './intelligenceMonitorContext'
 import { reconcileMonitorData } from './monitorReconcile'
+import { provideIntelligenceThumbnailQueue } from './intelligenceThumbnailQueue'
 
 // Both entry points operate on the original plan, including its schedule and history.
 const props = withDefaults(defineProps<{ target?: UpstreamTarget; account?: Pick<Account, 'id' | 'name'>; overview: UpstreamOverview | null; embedded?: boolean; active?: boolean }>(), { embedded: false, active: true })
 const emit = defineEmits<{ close: []; changed: []; refreshOverview: []; childOpen: [open: boolean] }>()
 const { t } = useI18n()
 const app = useAppStore()
+const thumbnailQueue = provideIntelligenceThumbnailQueue()
 const plans = ref<IntelligencePlan[]>([]), loaded = ref(false), error = ref('')
 const compactCards = computed(() => !props.embedded && plans.value.length >= 2)
 const manyPlans = computed(() => !props.embedded && plans.value.length >= 3)

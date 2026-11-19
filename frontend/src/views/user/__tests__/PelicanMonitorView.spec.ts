@@ -39,7 +39,7 @@ describe('read-only user pelican page', () => {
     state.list.mockResolvedValue(snapshot([{ ...group, latest_run: { ...run, id: 41, status: 'running' }, recent_runs: recent }]))
     state.artwork.mockImplementation(async (item: PelicanRun) => `<svg>Artwork ${item.id}</svg>`)
     const view = renderWithRealArtwork(); await flushPromises()
-    expect(view.findAll('.pelican-work')).toHaveLength(21)
+    expect(view.findAll('.pelican-work')).toHaveLength(11)
     expect(state.artwork.mock.calls.map(([item]) => item.id)).toEqual(recent.slice(0, 8).map(item => item.id))
     expect(view.findAll('.pelican-work iframe')).toHaveLength(8)
     const older = view.get('[data-run-id="32"]')
@@ -73,13 +73,15 @@ describe('read-only user pelican page', () => {
     expect(view.get('.pelican-artwork-dialog .model-effort').text()).toBe('XHigh')
   })
 
-  it('shows the 6.2 models in a consistent order and accepts raw IDs in searches', async () => {
+  it('shows the drawing prompt beside search and still accepts raw model IDs', async () => {
     state.list.mockResolvedValue(snapshot([
       { ...group, model: 'gpt-6.2-sol', latest_run: { ...run, model: 'gpt-6.2-sol' } },
       { ...group, id: 3, model: 'gpt-6.2-astra', latest_run: { ...run, id: 9, model: 'gpt-6.2-astra' } },
     ]))
     const view = render(); await flushPromises()
-    expect(view.get('[data-testid="pelican-models"]').text()).toBe('GPT-6.2 Astra · GPT-6.2 Sol')
+    const toolbar = view.get('[role="search"]')
+    expect(toolbar.text()).toContain('pelicanMonitor.drawingPrompt')
+    expect(toolbar.text()).not.toContain('GPT-6.2')
     await view.get('input').setValue('gpt-6.2-sol')
     expect(view.findAll('[data-testid="pelican-group"]')).toHaveLength(1)
     expect(view.get('[data-testid="pelican-plan-model"]').text()).toContain('GPT-6.2 Sol')

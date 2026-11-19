@@ -10,8 +10,17 @@
       <div v-if="!loaded && loading" class="space-y-3" role="status"><div v-for="n in 2" :key="n" class="h-[272px] animate-pulse rounded-2xl border border-gray-100 bg-white dark:border-dark-700 dark:bg-dark-800" /><span class="sr-only">{{ t('common.loading') }}</span></div>
       <div v-else-if="loaded && !settings.enabled" class="flex min-h-[360px] flex-col items-center justify-center rounded-2xl border border-dashed border-gray-200 bg-white p-8 text-center dark:border-dark-700 dark:bg-dark-800" data-testid="pelican-disabled"><Icon name="lightbulb" size="xl" class="mb-4 text-gray-300 dark:text-gray-500" /><h2 class="text-lg font-semibold text-gray-700 dark:text-gray-200">{{ t('pelicanMonitor.disabled') }}</h2><p class="mt-2 text-sm text-gray-400">{{ t('pelicanMonitor.disabledHint') }}</p></div>
       <template v-else-if="loaded && settings.enabled">
-        <div class="flex flex-wrap items-center justify-between gap-3"><div class="relative w-full sm:max-w-xs"><Icon name="search" size="sm" class="pointer-events-none absolute left-3 top-2.5 text-gray-400" /><input v-model="search" class="input !py-2 !pl-9 text-xs" :placeholder="t('pelicanMonitor.search')" :aria-label="t('pelicanMonitor.search')" /></div><div class="flex items-center gap-2 text-[11px] text-gray-400"><span class="h-1.5 w-1.5 rounded-full bg-emerald-400" /><span>{{ t('pelicanMonitor.groupCount', { count: groups.length }) }}</span><span class="mx-1 text-gray-200 dark:text-gray-600">/</span><span>{{ t('pelicanMonitor.updated', { seconds: updatedSeconds }) }}</span></div></div>
-        <p v-if="visibleModels" class="text-xs text-gray-500 dark:text-dark-300" data-testid="pelican-models">{{ visibleModels }}</p>
+        <div role="search" class="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <p class="min-w-0 basis-full border-l-2 border-primary-300 pl-3 text-xs leading-5 text-gray-600 dark:border-primary-600 dark:text-gray-300 sm:flex-[1_1_16rem]">{{ t('pelicanMonitor.drawingPrompt') }}</p>
+          <div class="relative w-full sm:w-56 xl:w-64">
+            <Icon name="search" size="sm" class="pointer-events-none absolute left-3 top-2.5 text-gray-400" />
+            <input v-model="search" class="input !py-2 !pl-9 text-xs" :placeholder="t('pelicanMonitor.search')" :aria-label="t('pelicanMonitor.search')" />
+          </div>
+          <div class="flex items-center gap-2 whitespace-nowrap text-[11px] text-gray-400 sm:ml-auto">
+            <span class="h-1.5 w-1.5 rounded-full bg-emerald-400" /><span>{{ t('pelicanMonitor.groupCount', { count: groups.length }) }}</span>
+            <span aria-hidden="true" class="mx-1 text-gray-200 dark:text-gray-600">/</span><span>{{ t('pelicanMonitor.updated', { seconds: updatedSeconds }) }}</span>
+          </div>
+        </div>
         <div v-if="visibleGroups.length" class="space-y-3"><PelicanGroupCard v-for="group in visibleGroups" :key="group.id" :group="group" :now="now + clockOffset" @open="openArtwork(group, $event)" /></div>
         <div v-else class="flex min-h-[300px] flex-col items-center justify-center gap-3 rounded-2xl border border-dashed border-gray-200 bg-white text-sm text-gray-400 dark:border-dark-700 dark:bg-dark-800"><Icon name="lightbulb" size="lg" />{{ t(search ? 'pelicanMonitor.noMatches' : 'pelicanMonitor.empty') }}</div>
         <p class="text-[11px] text-gray-400">{{ t('pelicanMonitor.retention') }}</p>
@@ -32,7 +41,7 @@ import { useMonitorRefresh } from '@/composables/useMonitorRefresh'
 import PelicanGroupCard from '@/components/pelican/PelicanGroupCard.vue'
 import PelicanArtworkDialog from '@/components/pelican/PelicanArtworkDialog.vue'
 import { pelicanDialogOpenKey, pelicanPageActiveKey, pelicanPreviewRefreshKey } from '@/components/pelican/pelicanContext'
-import { DEFAULT_PELICAN_MODEL, PELICAN_MODELS, pelicanModelLabel } from '@/utils/pelicanModels'
+import { pelicanModelLabel } from '@/utils/pelicanModels'
 import { pelicanWorks } from '@/components/pelican/pelicanFormat'
 import { resetPelicanArtworkAccess, retainPelicanArtworks } from '@/components/pelican/pelicanArtworkLoader'
 import { reconcileMonitorData } from '@/components/admin/upstream/monitorReconcile'
@@ -45,11 +54,6 @@ const pageVisible = ref(!document.hidden)
 const selectedGroup = computed(() => groups.value.find(group => group.id === selected.value?.groupID))
 const selectedRun = computed(() => selectedGroup.value ? pelicanWorks(selectedGroup.value).find(run => run.id === selected.value?.runID) : undefined)
 const visibleGroups = computed(() => groups.value.filter(group => `${group.group_name} ${group.model} ${pelicanModelLabel(group.model)}`.toLocaleLowerCase().includes(search.value.trim().toLocaleLowerCase())))
-const visibleModels = computed(() => {
-  const ids = new Set(groups.value.map(group => group.model || DEFAULT_PELICAN_MODEL))
-  const ordered = PELICAN_MODELS.filter(model => ids.delete(model.value)).map(model => model.label)
-  return [...ordered, ...Array.from(ids, pelicanModelLabel)].join(' · ')
-})
 const updatedSeconds = computed(() => Math.max(0, Math.floor((now.value - updatedAt.value) / 1000)))
 provide(pelicanPageActiveKey, computed(() => auth.isAuthenticated && settings.enabled && pageVisible.value))
 provide(pelicanPreviewRefreshKey, previewRevision)
