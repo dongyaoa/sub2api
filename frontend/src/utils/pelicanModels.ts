@@ -37,7 +37,14 @@ export function claudePelicanOptions(models: readonly string[] = []) {
 
 export function pelicanModelLabel(model?: string): string {
   const value = model || DEFAULT_PELICAN_MODEL
-  return PELICAN_MODELS.find(option => option.value === value)?.label || CLAUDE_PELICAN_MODELS.find(option => option.value === value)?.label || value
+  const preset = PELICAN_MODELS.find(option => option.value === value) || CLAUDE_PELICAN_MODELS.find(option => option.value === value)
+  if (preset) return preset.label
+  const versionFirst = /^claude-(\d+(?:\.\d+)*)-(opus|sonnet|haiku|fable)$/.exec(value)
+  if (versionFirst) {
+    const family = versionFirst[2]
+    return `Claude-${versionFirst[1]} ${family.charAt(0).toUpperCase()}${family.slice(1)}`
+  }
+  return value
 }
 
 export function pelicanModelClass(model?: string): string {

@@ -22,7 +22,7 @@ vi.mock('./IntelligencePlanCard.vue', () => ({ default: {
   template: '<div data-testid="plan-card" :data-id="plan.id">{{ plan.name }}</div>',
 } }))
 vi.mock('./IntelligenceLocalCard.vue', () => ({ default: { name: 'IntelligenceLocalCard', props: ['plan', 'busy', 'visible'], template: '<div data-testid="plan-card" :data-id="plan.id">{{ plan.name }}</div>' } }))
-vi.mock('./IntelligencePlanDialog.vue', () => ({ default: { name: 'IntelligencePlanDialog', props: ['monitoredPlans'], template: '<div />' } }))
+vi.mock('./IntelligencePlanDialog.vue', () => ({ default: { name: 'IntelligencePlanDialog', props: ['monitoredPlans', 'initialLocalGroupId'], template: '<div />' } }))
 vi.mock('./IntelligenceHistoryDialog.vue', () => ({ default: { name: 'IntelligenceHistoryDialog', template: '<div />' } }))
 vi.mock('./IntelligencePublicDisplayDialog.vue', () => ({ default: { name: 'IntelligencePublicDisplayDialog', props: ['show'], emits: ['close', 'saved'], template: '<div v-if="show" data-testid="public-display-dialog" />' } }))
 vi.mock('./IntelligenceCandyDetailDialog.vue', () => ({ default: { name: 'IntelligenceCandyDetailDialog', props: ['run'], emits: ['close'], template: '<div data-testid="candy-detail" />' } }))
@@ -136,6 +136,26 @@ describe('intelligence monitoring site tabs', () => {
     expect(mocks.run).toHaveBeenCalledWith(8)
     await view.findAll('button').find(button => button.text() === 'intelligenceMonitor.local.add')!.trigger('click')
     expect(view.getComponent({ name: 'IntelligencePlanDialog' }).attributes('local-only')).toBe('true')
+  })
+  it('groups by identity, routes actions to the chosen model and preselects its group for additions', async () => {
+    const a = { ...plan(31, 'Shared name', 'local_group'), group_id: 5, model: 'gpt-6.2-astra' }
+    const b = { ...a, id: 32, model: 'gpt-6.2-sol' }
+    const other = { ...a, id: 40, group_id: 6 }
+    mocks.plans.mockResolvedValue({ items: [a, other, b] })
+    const view = render(false, true); await flushPromises()
+    expect(cardIDs(view)).toEqual([31, 40])
+    const first = view.findAllComponents({ name: 'IntelligenceLocalCard' })[0]!
+    first.vm.$emit('chooseModel', b.id); await flushPromises()
+    expect(cardIDs(view)).toEqual([32, 40])
+    await refreshButton(view).trigger('click'); await flushPromises()
+    first.vm.$emit('run'); await flushPromises()
+    expect(mocks.run).toHaveBeenCalledWith(32)
+    await view.get('input').setValue('GPT-6.2 Astra')
+    expect(cardIDs(view)).toEqual([31, 40])
+    await view.get('input').setValue('')
+    expect(cardIDs(view)).toEqual([32, 40])
+    first.vm.$emit('addModel'); await flushPromises()
+    expect(view.getComponent({ name: 'IntelligencePlanDialog' }).props('initialLocalGroupId')).toBe(5)
   })
   const items = () => [
     { ...plan(1, 'Alpha premium', 'upstream'), upstream_target_id: 11 },

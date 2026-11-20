@@ -17,6 +17,7 @@ export interface PelicanRun {
 }
 export interface PelicanMonitorGroup {
   id: number
+  group_id?: number
   group_name: string
   group_rate_multiplier: number | null
   enabled: boolean

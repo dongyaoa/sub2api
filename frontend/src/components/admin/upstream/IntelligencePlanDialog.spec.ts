@@ -17,7 +17,7 @@ const oauthAccount = (id: number, name: string, fields: Record<string, unknown> 
 const page = (items: unknown[], number = 1, pages = 1) => ({ items, total: pages === 1 ? items.length : pages * 100, page: number, page_size: 100, pages })
 const savedPlan = (fields: Partial<IntelligencePlan> = {}) => ({ id: 3, name: 'OAuth Seven', source_type: 'openai_oauth', account_id: 7, api_mode: 'responses', enabled: true, interval_seconds: 3600, timeout_seconds: 900, supplier_note: '', group_note: '', rate_note: '', notes: '', ...fields }) as IntelligencePlan
 let wrapper: VueWrapper | undefined
-function render(props: Partial<{ show: boolean; plan: IntelligencePlan | null; overview: UpstreamOverview | null; oauthOnly: boolean; oauthAccountId: number; localOnly: boolean; upstreamTargetId: number; monitoredAccountIds: number[]; monitoredPlans: IntelligencePlan[]; initialModel: string }> = {}) {
+function render(props: Partial<{ show: boolean; plan: IntelligencePlan | null; overview: UpstreamOverview | null; oauthOnly: boolean; oauthAccountId: number; localOnly: boolean; initialLocalGroupId: number; upstreamTargetId: number; monitoredAccountIds: number[]; monitoredPlans: IntelligencePlan[]; initialModel: string }> = {}) {
   wrapper = mount(IntelligencePlanDialog, { attachTo: document.body, props: { show: true, plan: null, overview: null, oauthOnly: true, ...props }, global: { stubs: { BaseDialog: dialog, Icon: true, transition: true } } })
   return wrapper
 }
@@ -877,18 +877,40 @@ describe('intelligence plan choices and interval validation', () => {
     expect(view.text()).not.toContain('private constraint name')
   })
 
-  it('allows two local model plans with the same group and prevents a third same-model plan', async () => {
+  it('preselects the group on add-model and saves multiple unoccupied models with the same settings', async () => {
     mocks.groups.mockResolvedValue([{ id: 5, name: 'Local GPT', platform: 'openai', rate_multiplier: 1.2 }])
     const astra = savedPlan({ source_type: 'local_group', account_id: null, group_id: 5, model: 'gpt-6-astra' })
-    const view = render({ oauthOnly: false, localOnly: true, monitoredPlans: [astra] }); await flushPromises()
-    await selectOption(view, '#intelligence-group', 'Local GPT')
-    expect(view.get('button[type="submit"]').attributes('disabled')).toBeDefined()
-    await selectOption(view, '#intelligence-model', 'GPT-6.1 Sol')
+    const view = render({ oauthOnly: false, localOnly: true, initialLocalGroupId: 5, monitoredPlans: [astra] }); await flushPromises()
+    expect(view.get('#intelligence-group').attributes('disabled')).toBeDefined()
+    expect(view.get<HTMLInputElement>('#intelligence-name').element.value).toBe('Local GPT')
+    expect(view.get('[data-local-model="gpt-6-astra"]').attributes('disabled')).toBeDefined()
+    expect(view.get<HTMLInputElement>('[data-local-model="gpt-6.1-sol"]').element.checked).toBe(true)
+    await view.get('[data-local-model="gpt-6.2-astra"]').setValue(true)
+    await selectOption(view, '#intelligence-effort', 'xhigh')
     await view.get('form').trigger('submit'); await flushPromises()
-    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ source_type: 'local_group', group_id: 5, model: 'gpt-6.1-sol' }))
-    await view.setProps({ monitoredPlans: [astra, { ...astra, id: 4, model: 'gpt-6.1-sol' }] })
-    expect(view.get('button[type="submit"]').attributes('disabled')).toBeDefined()
-    expect(view.get('[role="alert"]').text()).toBe('intelligenceMonitor.local.alreadyAdded')
+    expect(mocks.create.mock.calls.map(([input]) => [input.group_id, input.model, input.reasoning_effort])).toEqual([
+      [5, 'gpt-6.1-sol', 'xhigh'], [5, 'gpt-6.2-astra', 'xhigh'],
+    ])
+    expect(view.emitted('saved')).toHaveLength(1)
+    expect(view.emitted('close')).toHaveLength(1)
+  })
+
+  it('keeps successful models in a partial batch and retries only the failed model', async () => {
+    mocks.groups.mockResolvedValue([{ id: 5, name: 'Local GPT', platform: 'openai', rate_multiplier: 1.2 }])
+    mocks.create.mockResolvedValueOnce(savedPlan({ group_id: 5, model: 'gpt-6-astra' }))
+      .mockRejectedValueOnce(new Error('Model unavailable'))
+    const view = render({ oauthOnly: false, localOnly: true }); await flushPromises()
+    await selectOption(view, '#intelligence-group', 'Local GPT')
+    await view.get('[data-local-model="gpt-6.2-sol"]').setValue(true)
+    await view.get('form').trigger('submit'); await flushPromises()
+    expect(view.emitted('close')).toBeUndefined()
+    expect(view.emitted('batchProgress')).toHaveLength(1)
+    expect(view.get('[role="alert"]').text()).toContain('GPT-6.2 Sol')
+    expect(view.get('[data-local-model="gpt-6-astra"]').attributes('disabled')).toBeDefined()
+    expect(view.get<HTMLInputElement>('[data-local-model="gpt-6.2-sol"]').element.checked).toBe(true)
+    await view.get('form').trigger('submit'); await flushPromises()
+    expect(mocks.create.mock.calls.map(([input]) => input.model)).toEqual(['gpt-6-astra', 'gpt-6.2-sol', 'gpt-6.2-sol'])
+    expect(view.emitted('close')).toHaveLength(1)
   })
 
   it.each(['openai_oauth', 'local_group', 'upstream'] as const)('keeps legacy duplicate %s plans editable when their source and model are unchanged', async source_type => {

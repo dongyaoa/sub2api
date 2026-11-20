@@ -13,7 +13,7 @@ let wrapper: VueWrapper | undefined
 let host: HTMLElement | undefined
 beforeEach(() => { vi.resetAllMocks(); resetPelicanArtworkAccess(); localStorage.setItem('auth_token', 'user-session'); vi.stubGlobal('IntersectionObserver', undefined) })
 afterEach(() => { wrapper?.unmount(); wrapper = undefined; host?.remove(); host = undefined; vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
-function render(active = ref(true), props: { autoplay?: boolean; large?: boolean } = {}) { host = document.createElement('div'); document.body.append(host); wrapper = mount(PelicanArtworkPreview, { attachTo: host, props: { run: run(), ...props }, global: { stubs: { Icon: true }, provide: { [pelicanPageActiveKey as symbol]: active } } }); return wrapper }
+function render(active = ref(true), props: { autoplay?: boolean; large?: boolean; presentationOnly?: boolean } = {}) { host = document.createElement('div'); document.body.append(host); wrapper = mount(PelicanArtworkPreview, { attachTo: host, props: { run: run(), ...props }, global: { stubs: { Icon: true }, provide: { [pelicanPageActiveKey as symbol]: active } } }); return wrapper }
 function observeVisibility() {
   let update!: (visible: boolean) => void
   vi.stubGlobal('IntersectionObserver', class {
@@ -26,6 +26,45 @@ function observeVisibility() {
   return (visible: boolean) => update(visible)
 }
 describe('safe user artwork previews', () => {
+  it('fits the whole sandbox inside a differently proportioned thumbnail and waits for the matching acknowledgement', async () => {
+    vi.stubGlobal('ResizeObserver', class {
+      constructor(private callback: ResizeObserverCallback) {}
+      observe(target: Element) {
+        this.callback([{ target, contentRect: { width: 212, height: 140 } } as ResizeObserverEntry], this as unknown as ResizeObserver)
+      }
+      disconnect() {}
+    })
+    detail.mockResolvedValue(run({ html: '<svg viewBox="0 0 240 168"><circle r="12"/></svg>' }))
+    const view = render(ref(true), { presentationOnly: true }); await flushPromises()
+    const frame = view.get<HTMLIFrameElement>('iframe').element
+    const acknowledge = (height: number) => window.dispatchEvent(new MessageEvent('message', {
+      source: frame.contentWindow, data: { type: 'intelligence-preview-fitted', width: 960, height },
+    }))
+    expect(frame.style.transform).toBe('scale(0.2)')
+    expect(frame.style.left).toBe('10px')
+    expect(frame.style.top).toBe('0px')
+    acknowledge(672); await flushPromises()
+    expect(frame.style.opacity).toBe('0')
+    acknowledge(700); await flushPromises()
+    expect(frame.style.opacity).toBe('1')
+  })
+
+  it('reveals a 240:168 modal canvas only after its own sandbox confirms the matching viewport', async () => {
+    detail.mockResolvedValue(run({ html: '<svg viewBox="0 0 240 168"><circle r="12"/></svg>' }))
+    const view = render(ref(true), { large: true, presentationOnly: true }); await flushPromises()
+    const frame = view.get<HTMLIFrameElement>('iframe').element
+    const acknowledge = (height: number) => window.dispatchEvent(new MessageEvent('message', {
+      source: frame.contentWindow, data: { type: 'intelligence-preview-fitted', width: 960, height },
+    }))
+    expect(frame.style.height).toBe('672px')
+    expect(frame.style.opacity).toBe('0')
+    acknowledge(600); await flushPromises()
+    expect(frame.style.opacity).toBe('0')
+    acknowledge(672); await flushPromises()
+    expect(frame.style.opacity).toBe('1')
+    expect(view.find('[role="status"]').exists()).toBe(false)
+  })
+
   it('transfers an in-flight thumbnail download to the opened dialog without aborting or restarting it', async () => {
     let finish!: (value: PelicanRun) => void
     detail.mockImplementation(() => new Promise<PelicanRun>(resolve => { finish = resolve }))

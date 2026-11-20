@@ -1,5 +1,21 @@
 import { retainedPelicanArtworks } from '@/utils/pelicanArtworks'
 import type { PelicanMonitorGroup, PelicanRun } from '@/api/pelicanMonitor'
+export type PelicanViewMode = 'single' | 'paired' | 'stacked'
+export interface PelicanGalleryModel {
+  plan: PelicanMonitorGroup
+  name: string
+  badge: string
+  dot: string
+  works: PelicanRun[]
+  auto: Set<number>
+  completed: number
+}
+const modelDots = ['var(--pelican-model-primary)', '#0ea5e9', '#8b5cf6', '#f59e0b']
+export const pelicanModelDot = (index: number) => modelDots[index % modelDots.length] ?? modelDots[0]
+export function pelicanEffortLabel(effort?: string) {
+  if (!effort) return '—'
+  return effort === 'xhigh' ? 'XHigh' : effort.charAt(0).toUpperCase() + effort.slice(1)
+}
 export const pelicanActive = (run?: PelicanRun | null) => run?.status === 'running' || run?.status === 'pending'
 export function pelicanWorks(group: PelicanMonitorGroup) {
   const latest = group.latest_run
@@ -32,4 +48,9 @@ export function pelicanCountdown(value: string | null, now: number) {
   if (!Number.isFinite(remaining) || remaining <= 0) return null
   const minutes = Math.floor(remaining / 60), seconds = remaining % 60
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`
+}
+export function pelicanTime(stamp: string) {
+  const date = new Date(stamp)
+  if (!Number.isFinite(date.getTime())) return '—'
+  return [date.getHours(), date.getMinutes(), date.getSeconds()].map(value => String(value).padStart(2, '0')).join(':')
 }

@@ -15,12 +15,25 @@
     <div v-if="loading&&!loaded" class="space-y-3"><div v-for="n in 3" :key="n" class="card h-56 animate-pulse bg-gray-50 dark:bg-dark-800"/></div>
     <div :id="!oauthOnly && !localOnly ? 'intelligence-site-results' : undefined" :role="!oauthOnly && !localOnly && scopePlans.length ? 'tabpanel' : undefined" :aria-labelledby="!oauthOnly && !localOnly && scopePlans.length ? siteTabID(selectedSite) : undefined">
       <div v-show="visiblePlans.length" class="space-y-3" :data-testid="localOnly ? 'local-group-workbench' : undefined">
-        <component :is="localOnly ? IntelligenceLocalCard : IntelligencePlanCard" v-for="plan in scopePlans" v-show="visiblePlanIDs.has(plan.id)" :key="plan.id" :hidden="!visiblePlanIDs.has(plan.id)" :visible="visiblePlanIDs.has(plan.id) && !selectedCandy && !history" :plan="plan" :overview="overview" :busy="busy.has(plan.id)" @run="run(plan)" @candy-run="runCandy(plan)" @candy-select="selectedCandy = $event" @toggle="toggle(plan)" @edit="openEditor(plan)" @archive="archiving=plan" @history="runID => openHistory(plan, runID)" />
+        <template v-if="localOnly">
+          <IntelligenceLocalCard
+            v-for="group in localCards" v-show="group.visible" :key="group.key" :hidden="!group.visible"
+            :plan="group.plan" :models="group.matches" :can-add-model="group.canAdd"
+            :visible="group.visible && !selectedCandy && !history" :overview="overview" :busy="busy.has(group.plan.id)"
+            @choose-model="localSelections[group.key] = $event" @add-model="openEditor(null, group.groupId)"
+            @run="run(group.plan)" @candy-run="runCandy(group.plan)" @candy-select="selectedCandy = $event"
+            @toggle="toggle(group.plan)" @edit="openEditor(group.plan)" @archive="archiving = group.plan"
+            @history="runID => openHistory(group.plan, runID)"
+          />
+        </template>
+        <template v-else>
+          <IntelligencePlanCard v-for="plan in scopePlans" v-show="visiblePlanIDs.has(plan.id)" :key="plan.id" :hidden="!visiblePlanIDs.has(plan.id)" :visible="visiblePlanIDs.has(plan.id) && !selectedCandy && !history" :plan="plan" :overview="overview" :busy="busy.has(plan.id)" @run="run(plan)" @candy-run="runCandy(plan)" @candy-select="selectedCandy = $event" @toggle="toggle(plan)" @edit="openEditor(plan)" @archive="archiving=plan" @history="runID => openHistory(plan, runID)" />
+        </template>
       </div>
       <div v-if="(!loading || loaded) && !visiblePlans.length" class="flex min-h-[330px] flex-col items-center justify-center rounded-2xl border border-dashed border-gray-200 bg-white px-6 text-center dark:border-dark-700 dark:bg-dark-800/30"><div class="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary-50 text-primary-500 dark:bg-primary-500/10"><Icon name="lightbulb" size="xl"/></div><h3 class="text-base font-semibold text-gray-800 dark:text-gray-200">{{ t(search||sourceFilter||selectedSite!=='all'?'intelligenceMonitor.noMatches':oauthOnly?'intelligenceMonitor.oauth.emptyTitle':localOnly?'intelligenceMonitor.local.emptyTitle':'intelligenceMonitor.emptyTitle') }}</h3><p v-if="!search&&!sourceFilter&&selectedSite==='all'" class="mt-2 max-w-lg text-xs leading-6 text-gray-500">{{ t(oauthOnly ? 'intelligenceMonitor.oauth.emptyHint' : localOnly ? 'intelligenceMonitor.local.emptyHint' : 'intelligenceMonitor.emptyHint') }}</p><button v-if="!search&&!sourceFilter&&selectedSite==='all'" class="btn btn-primary btn-sm mt-5" @click="openEditor()"><Icon name="plus" size="sm" class="mr-1.5"/>{{ t(addLabel) }}</button></div>
     </div>
     <p class="text-[10px] text-gray-400 dark:text-dark-500">{{ t('intelligenceMonitor.retention') }}</p>
-    <IntelligencePlanDialog :show="editor" :plan="editing" :overview="overview" :oauth-only="oauthOnly" :local-only="localOnly" :managed-key-ids="managedKeyIDs" :monitored-plans="plans" @close="editor=false" @saved="saved"/>
+    <IntelligencePlanDialog :show="editor" :plan="editing" :overview="overview" :oauth-only="oauthOnly" :local-only="localOnly" :managed-key-ids="managedKeyIDs" :monitored-plans="plans" :initial-local-group-id="initialLocalGroupId" @close="editor=false" @saved="saved" @batch-progress="load"/>
     <IntelligenceHistoryDialog :show="history" :plan="selectedPlan" :initial-run-id="selectedRunID" @close="history=false" @deleted="load"/>
     <IntelligenceCandyDetailDialog v-if="selectedCandyRun" :run="selectedCandyRun" @close="selectedCandy = null" />
     <UpstreamOrderDialog :show="orderDialog" :scope="oauthOnly ? 'oauth' : 'intelligence'" :intelligence-filter="localOnly ? 'local' : 'external'" @close="orderDialog=false" @saved="savedOrder"/>
@@ -54,7 +67,8 @@ import { intelligencePanelActiveKey, intelligencePreviewRefreshKey } from './int
 import { useMonitorRefresh } from '@/composables/useMonitorRefresh'
 import { reconcileMonitorData } from './monitorReconcile'
 import { safeWebsite } from './safeWebsite'
-import { PELICAN_MODELS, pelicanModelLabel } from '@/utils/pelicanModels'
+import { DEFAULT_PELICAN_MODEL, PELICAN_MODELS, pelicanModelLabel } from '@/utils/pelicanModels'
+import { groupPelicanPlans } from '@/utils/pelicanGroups'
 const props=withDefaults(defineProps<{overview:UpstreamOverview|null;oauthOnly?:boolean;localOnly?:boolean;active?:boolean;refreshKey?:number}>(),{oauthOnly:false,localOnly:false,active:true,refreshKey:0})
 const emit=defineEmits<{ refreshOverview: [] }>()
 provide(intelligencePanelActiveKey, computed(() => props.active))
@@ -123,6 +137,19 @@ function navigateSiteTabs(event: KeyboardEvent) {
 }
 const visiblePlans=computed(()=>scopePlans.value.filter(plan=>(selectedSite.value==='all'||planSites.value.get(plan.id)?.key===selectedSite.value)&&(!sourceFilter.value||plan.source_type===sourceFilter.value)&&[plan.name,plan.model,pelicanModelLabel(plan.model),plan.source_name,plan.local_group_name,plan.local_api_key_name,plan.supplier_note,plan.group_note,plan.notes,planSites.value.get(plan.id)?.name].join(' ').toLowerCase().includes(search.value.trim().toLowerCase())))
 const visiblePlanIDs = computed(() => new Set(visiblePlans.value.map(plan => plan.id)))
+const initialLocalGroupId = ref<number | null>(null)
+const localSelections = ref<Record<string, number>>({})
+const localCards = computed(() => {
+  if (!props.localOnly) return []
+  return groupPelicanPlans(scopePlans.value).map(group => {
+    const matches = group.plans.filter(plan => visiblePlanIDs.value.has(plan.id))
+    const choices = matches.length ? matches : group.plans
+    const plan = choices.find(item => item.id === localSelections.value[group.key]) ?? choices[0]!
+    const occupied = new Set(group.plans.map(item => item.model || DEFAULT_PELICAN_MODEL))
+    return { ...group, matches, plan, visible: matches.length > 0,
+      canAdd: group.groupId !== null && PELICAN_MODELS.some(model => !occupied.has(model.value)) }
+  })
+})
 let disposed=false
 const {loading,refresh:refreshPlans}=useMonitorRefresh({
   active:()=>props.active,
@@ -138,7 +165,11 @@ function bulkChanged(enabled: boolean) {
   plans.value = plans.value.map(plan => ({ ...plan, enabled, ...(!enabled ? { next_run_at: null, candy_next_run_at: null } : {}) }))
   void load()
 }
-function openEditor(plan:IntelligencePlan|null=null){editing.value=plan;editor.value=true}
+function openEditor(plan: IntelligencePlan | null = null, groupId: number | null = null) {
+  initialLocalGroupId.value = groupId
+  editing.value = plan
+  editor.value = true
+}
 function openHistory(plan:IntelligencePlan,runID?:number){selectedID.value=plan.id;selectedRunID.value=runID||null;history.value=true}
 function saved(){app.showSuccess(t('intelligenceMonitor.saved'));void load()}
 function savedOrder(){orderDialog.value=false;void load()}

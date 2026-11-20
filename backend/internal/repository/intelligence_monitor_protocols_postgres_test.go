@@ -44,12 +44,28 @@ func TestIntelligenceModelsPostgresNewProtocolAndPublicArtwork(t *testing.T) {
 	require.NoError(t, err)
 	require.Len(t, page.Items, len(runs))
 	for _, plan := range page.Items {
+		require.Equal(t, groupID, plan.GroupID)
 		require.Equal(t, runs[plan.Model], plan.LatestRun.ID)
 		detail, err := repo.GetPublicPelicanRun(ctx, plan.LatestRun.ID, []int64{groupID})
 		require.NoError(t, err)
 		require.Equal(t, plan.Model, detail.Model)
 		require.Contains(t, detail.HTML, "<svg>")
 		_, err = repo.GetPublicPelicanRun(ctx, plan.LatestRun.ID, []int64{2})
+		require.ErrorIs(t, err, service.ErrIntelligenceNotFound)
+	}
+
+	// Keep just the original plan published. Its two sibling models still
+	// belong to the same authorized group, but their artwork is now private.
+	cfg.PlanIDs = []int64{101}
+	require.NoError(t, repo.SavePublicDisplay(ctx, cfg))
+	page, err = repo.ListPublicPelican(ctx, []int64{groupID})
+	require.NoError(t, err)
+	require.Len(t, page.Items, 1)
+	require.Equal(t, int64(101), page.Items[0].ID)
+	require.Equal(t, groupID, page.Items[0].GroupID)
+	require.Equal(t, legacy, page.Items[0].LatestRun.ID)
+	for _, model := range []string{service.IntelligenceMonitorAstra62Model, service.IntelligenceMonitorSol62Model} {
+		_, err = repo.GetPublicPelicanRun(ctx, runs[model], []int64{groupID})
 		require.ErrorIs(t, err, service.ErrIntelligenceNotFound)
 	}
 }

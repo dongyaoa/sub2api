@@ -70,6 +70,7 @@
 <script setup lang="ts">
 import { computed, onUnmounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { pelicanModelLabel } from '@/utils/pelicanModels'
 import { VueDraggable } from 'vue-draggable-plus'
 import { upstreamCenterAPI } from '@/api/admin/upstreamCenter'
 import { intelligenceMonitorAPI } from '@/api/admin/intelligenceMonitor'
@@ -132,7 +133,9 @@ async function loadOrder() {
       fullOrder = scoped.map(plan => plan.id)
       result = scoped.filter(plan => scope !== 'intelligence' || !props.intelligenceFilter || (plan.source_type === 'local_group') === (props.intelligenceFilter === 'local')).map(plan => ({
         id: plan.id, name: plan.name, paused: !plan.enabled,
-        description: [t(`intelligenceMonitor.source.${plan.source_type}`), plan.endpoint || plan.source_name].filter(Boolean).join(' · '),
+        description: plan.source_type === 'local_group'
+          ? [pelicanModelLabel(plan.model), plan.local_group_name || plan.source_name].filter(Boolean).join(' · ')
+          : [t(`intelligenceMonitor.source.${plan.source_type}`), plan.endpoint || plan.source_name].filter(Boolean).join(' · '),
       }))
     } else {
       const overview = await upstreamCenterAPI.overview('24h', current.signal)

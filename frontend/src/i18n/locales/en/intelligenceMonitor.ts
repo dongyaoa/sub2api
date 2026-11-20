@@ -1,6 +1,7 @@
 export default {
   intelligenceMonitor: {
     publicDisplay: {
+      toggleGroup: 'Select or clear all models in {name}',
       hideFailed: 'Hide failed artwork', hideFailedHint: 'Only in-progress and completed artwork appears for users. Failed records remain available to administrators.',
       open: 'User display', title: 'Pelican monitoring · User display', enabled: 'Enable pelican monitoring for users', enabledHint: 'Users can view selected group artworks on the Pelican monitoring page when enabled.',
       copy: 'Page content', pageTitle: 'Page title', titlePlaceholder: 'Pelican monitoring', description: 'Page introduction', descriptionPlaceholder: 'Describe the monitored groups and their artworks', notice: 'Page notice', noticePlaceholder: 'Optional updates or information for users',
@@ -42,8 +43,10 @@ export default {
       configured: 'Custom prompts configured', actual: 'Prompt used for this run',
     },
     local: {
+      monitorModels: 'Monitored models', modelExists: 'Already added', multiHint: 'Select one or more models to use these settings. You can later edit the schedule and reasoning effort for each model.',
+      saveModels: 'Add {count} model | Add {count} models', modelsSaved: 'Added {models}. You can retry the remaining models.',
       alreadyAdded: 'This local group already has a plan for this model. Choose another model or edit the existing plan.',
-      groupRate: 'Group multiplier', search: 'Search groups, plans or keys',
+      groupRate: 'Group multiplier', search: 'Search groups, models, plans or keys',
       title: 'Local monitoring', add: 'Add monitor', order: 'Reorder local monitors', emptyTitle: 'Add a local group to start monitoring',
       emptyHint: 'Use an existing key owned by the current administrator or create a dedicated monitor key. Pelican results and candy records follow separate schedules.',
       key: 'Monitoring key', keyHint: 'Only available keys owned by the current administrator are listed. An existing key selects its bound group automatically; its binding cannot be changed here.',

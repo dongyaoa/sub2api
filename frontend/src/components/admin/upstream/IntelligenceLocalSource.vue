@@ -1,5 +1,6 @@
 <template>
   <div class="space-y-3" data-testid="local-source">
+    <div><label for="intelligence-group" class="input-label">{{ t('intelligenceMonitor.form.selectGroup') }}</label><Select id="intelligence-group" :model-value="groupId" :options="groupOptions" :searchable="false" :loading="groupsLoading" :disabled="groupsLoading || Boolean(localKeyId) || Boolean(fixedGroupId)" :placeholder="t(groupsLoading ? 'common.loading' : 'intelligenceMonitor.form.selectGroup')" :empty-text="t('intelligenceMonitor.form.noGroups')" :aria-label="t('intelligenceMonitor.form.selectGroup')" @update:model-value="selectGroup"/><p class="mt-2 text-xs leading-5 text-gray-500">{{ t(localKeyId ? 'intelligenceMonitor.local.existingHint' : 'intelligenceMonitor.form.sourceHint') }}</p></div>
     <div class="rounded-xl border border-primary-100 bg-primary-50/40 p-4 dark:border-primary-900/40 dark:bg-primary-500/5">
       <label for="intelligence-local-key" class="input-label">{{ t('intelligenceMonitor.local.key') }}</label>
       <div class="flex gap-2"><Select id="intelligence-local-key" :model-value="localKeyId ?? null" :options="keyOptions" :searchable="false" :loading="loading" :disabled="loading" :error="Boolean(error)" class="min-w-0 flex-1" :aria-label="t('intelligenceMonitor.local.key')" @update:model-value="selectKey"/><button type="button" class="btn btn-secondary btn-sm" :disabled="loading" :aria-label="t('intelligenceMonitor.refresh')" @click="load"><Icon name="refresh" size="sm" :class="loading && 'animate-spin'"/></button></div>
@@ -7,7 +8,6 @@
       <p v-if="selected" class="mt-2 flex flex-wrap items-center gap-2 text-[11px]"><span class="rounded-md bg-emerald-50 px-2 py-1 font-medium text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300">{{ selected.name }}</span><span class="font-mono text-gray-500">{{ selected.masked }}</span><span class="text-gray-400">{{ t('intelligenceMonitor.local.bindingFixed') }}</span></p>
       <p v-if="error" role="alert" class="mt-2 text-xs text-rose-500">{{ error }}</p>
     </div>
-    <div><label for="intelligence-group" class="input-label">{{ t('intelligenceMonitor.form.selectGroup') }}</label><Select id="intelligence-group" :model-value="groupId" :options="groupOptions" :searchable="false" :loading="groupsLoading" :disabled="groupsLoading || Boolean(localKeyId)" :placeholder="t(groupsLoading ? 'common.loading' : 'intelligenceMonitor.form.selectGroup')" :empty-text="t('intelligenceMonitor.form.noGroups')" :aria-label="t('intelligenceMonitor.form.selectGroup')" @update:model-value="selectGroup"/><p class="mt-2 text-xs leading-5 text-gray-500">{{ t(localKeyId ? 'intelligenceMonitor.local.existingHint' : 'intelligenceMonitor.form.sourceHint') }}</p></div>
   </div>
 </template>
 <script setup lang="ts">
@@ -18,14 +18,15 @@ import Icon from '@/components/icons/Icon.vue'
 import { list as listKeys } from '@/api/keys'
 import type { AdminGroup, ApiKey } from '@/types'
 import { extractApiErrorMessage } from '@/utils/apiError'
-const props = defineProps<{ groups: AdminGroup[]; groupsLoading: boolean; groupId?: number | null; localKeyId?: number | null; savedKeyName?: string; savedKeyMask?: string; managedKeyIds?: number[] }>()
+const props = defineProps<{ groups: AdminGroup[]; groupsLoading: boolean; fixedGroupId?: number | null; groupKeysOnly?: boolean; groupId?: number | null; localKeyId?: number | null; savedKeyName?: string; savedKeyMask?: string; managedKeyIds?: number[] }>()
 const emit = defineEmits<{ select: [value: { groupId: number | null; keyId: number | null; name?: string }] }>()
 const { t } = useI18n()
 type KeyChoice = { id: number; name: string; masked: string; groupId: number }
 const keys = ref<KeyChoice[]>([]), loading = ref(false), error = ref(''), ready = ref(false)
 let controller: AbortController | undefined
 const selected = computed(() => keys.value.find(key => key.id === props.localKeyId))
-const eligible = computed(() => keys.value.filter(key => !props.managedKeyIds?.includes(key.id) && props.groups.some(group => group.id === key.groupId)))
+const keyGroupID = computed(() => props.fixedGroupId || (props.groupKeysOnly ? props.groupId : null))
+const eligible = computed(() => keys.value.filter(key => (!keyGroupID.value || keyGroupID.value === key.groupId) && !props.managedKeyIds?.includes(key.id) && props.groups.some(group => group.id === key.groupId)))
 const groupOptions = computed(() => props.groups.map(group => ({ value: group.id, label: `${group.name} · ${group.rate_multiplier}×` })))
 const keyOptions = computed(() => {
   const options = [{ value: null as number | null, label: t('intelligenceMonitor.local.managedKey') }, ...eligible.value.map(key => ({ value: key.id, label: `${key.name} · ${props.groups.find(group => group.id === key.groupId)?.name || ''} · ${key.masked}` }))]
@@ -62,7 +63,7 @@ function selectKey(value: string | number | boolean | null) {
 }
 function selectGroup(value: string | number | boolean | null) {
   const group = props.groups.find(item => item.id === value)
-  if (props.localKeyId || !group) return
+  if (props.fixedGroupId || props.localKeyId || !group) return
   emit('select', { groupId: group.id, keyId: null, name: group.name })
 }
 function validate() {

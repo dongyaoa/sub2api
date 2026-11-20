@@ -1,6 +1,6 @@
 import type { IntelligenceRate } from '@/api/admin/intelligenceMonitor'
 import DOMPurify from 'dompurify'
-import { intelligencePreviewRuntime } from './intelligencePreviewRuntime'
+import { intelligencePreviewRuntime, type PreviewCanvasHeight } from './intelligencePreviewRuntime'
 
 // The generated document lives in a second opaque-origin sandbox. Its trusted
 // parent shell's frame-src blocks self-navigation out to another URL as well as
@@ -14,7 +14,8 @@ const LOCAL_SVG_REFERENCES = new Set(['use', 'textpath', 'mpath', 'pattern', 'li
 const ANIMATION_TAGS = new Set(['animate', 'animatemotion', 'animatetransform', 'set'])
 const ACTIVE_ATTRIBUTES = /^(?:on|href$|xlink:href$|src$|srcset$|action$|formaction$|target$)/i
 
-export function intelligencePreviewContent(html: string, options: { autoplay?: boolean; fit?: 'contain' | 'cover' } = {}): { document: string; scriptsDisabled: boolean } {
+export function intelligencePreviewContent(html: string, options: { autoplay?: boolean; fit?: 'contain' | 'cover'; canvasHeight?: PreviewCanvasHeight } = {}): { document: string; scriptsDisabled: boolean } {
+  const canvasHeight = options.canvasHeight ?? 600
   const nonce = document.querySelector<HTMLScriptElement>('script[nonce]')?.nonce || ''
   // Template content is inert even during parsing. Never insert remote markup
   // into the administrator's live document or let a parser load remote assets.
@@ -76,7 +77,7 @@ export function intelligencePreviewContent(html: string, options: { autoplay?: b
   doc.head.append(initialStyle)
   const runtime = doc.createElement('script')
   if (nonce) runtime.setAttribute('nonce', nonce)
-  runtime.textContent = intelligencePreviewRuntime(options.autoplay ?? false, options.fit ?? 'contain')
+  runtime.textContent = intelligencePreviewRuntime(options.autoplay ?? false, options.fit ?? 'contain', canvasHeight)
   doc.head.append(runtime)
   const style = doc.createElement('style')
   style.textContent = 'html{color-scheme:light}body{margin:0}*{box-sizing:border-box}'
@@ -126,14 +127,14 @@ export function intelligencePreviewContent(html: string, options: { autoplay?: b
         playing = event.data.playing; sync();
       } else if (event.source === parent && event.data?.type === 'intelligence-preview-viewport') {
         const {width, height} = event.data;
-        if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0 || width > 960 || height > 600) return;
+        if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0 || width > 960 || height > ${canvasHeight}) return;
         viewport = {type:'intelligence-preview-viewport',width,height}; sync();
       } else if (event.source === frame.contentWindow && event.data?.type === 'intelligence-preview-ready' && !readySynced) {
         readySynced = true; sync();
       }
       else if (event.source === frame.contentWindow && event.data?.type === 'intelligence-preview-fitted') {
         const {width, height} = event.data;
-        if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0 || width > 960 || height > 600) return;
+        if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0 || width > 960 || height > ${canvasHeight}) return;
         parent.postMessage({type:'intelligence-preview-fitted',width,height}, '*');
       }
     });

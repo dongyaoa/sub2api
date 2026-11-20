@@ -1,6 +1,7 @@
 export default {
   intelligenceMonitor: {
     publicDisplay: {
+      toggleGroup: '选择或取消「{name}」分组的所有模型',
       hideFailed: '隐藏生成失败的作品', hideFailedHint: '用户端只展示生成中和已完成的作品；后台仍保留失败记录，便于排查。',
       open: '用户展示', title: '鹈鹕监测 · 用户展示', enabled: '向用户开放鹈鹕监测', enabledHint: '开启后，用户可在「鹈鹕监测」查看已选分组的作品。',
       copy: '页面文案', pageTitle: '页面标题', titlePlaceholder: '鹈鹕监测', description: '页面简介', descriptionPlaceholder: '介绍这些分组的监测方式与作品内容', notice: '页面公告', noticePlaceholder: '可填写更新说明或需要告知用户的内容（选填）',
@@ -42,8 +43,10 @@ export default {
       configured: '已设置自定义提示词', actual: '本次实际提示词',
     },
     local: {
+      monitorModels: '监测模型', modelExists: '已添加', multiHint: '可以选择多个模型，共用本次设置。保存后可分别调整检测周期和思考强度。',
+      saveModels: '添加 {count} 个模型', modelsSaved: '已添加 {models}。可以重试其余模型。',
       alreadyAdded: '该站内分组已添加此模型的监测计划，请选择其他模型或编辑已有计划。',
-      groupRate: '分组倍率', search: '搜索分组、计划或 Key',
+      groupRate: '分组倍率', search: '搜索分组、模型、计划或 Key',
       title: '站内监控', add: '添加监控', order: '站内监控排序', emptyTitle: '添加一个站内分组，开始监控',
       emptyHint: '使用当前管理员已有的 Key，或创建专用监控 Key。鹈鹕作品与糖果记录分别保留，按各自周期持续检测。',
       key: '监控使用的 Key', keyHint: '只读取当前登录管理员的可用 Key。选择已有 Key 后自动使用其绑定分组，不能修改该 Key 的绑定。',

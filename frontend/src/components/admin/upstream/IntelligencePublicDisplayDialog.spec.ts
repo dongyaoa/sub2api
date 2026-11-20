@@ -34,6 +34,20 @@ beforeEach(() => {
 afterEach(() => { wrapper?.unmount(); wrapper = undefined })
 
 describe('intelligence public display settings', () => {
+  it('toggles both models of a group without publishing a different group of the same name', async () => {
+    api.plans.mockResolvedValue({ items: [plan(1), { ...plan(2), group_id: 1, model: 'gpt-6.2-sol' }, { ...plan(3), local_group_name: 'Visible group 1' }] })
+    const view = render(); await flushPromises()
+    expect(view.findAll('[data-public-group]')).toHaveLength(2)
+    const bucket = view.get('[data-public-group="group:1"]')
+    const all = bucket.get('input')
+    expect((all.element as HTMLInputElement).indeterminate).toBe(true)
+    await all.setValue(true)
+    expect((view.get(checkbox(1)).element as HTMLInputElement).checked).toBe(true)
+    expect((view.get(checkbox(3)).element as HTMLInputElement).checked).toBe(false)
+    await view.get(saveButton).trigger('click'); await flushPromises()
+    expect(api.updatePublicDisplay).toHaveBeenCalledWith({ ...settings(), plan_ids: [2, 1] })
+  })
+
   it('loads and saves hide-failed independently, while preserving both model plans of one group', async () => {
     api.publicDisplay.mockResolvedValue({ ...settings(), hide_failed: true, plan_ids: [1, 2] })
     api.plans.mockResolvedValue({ items: [plan(1), { ...plan(2), group_id: 1, local_group_name: 'Visible group 1', model: 'gpt-6.1-sol' }] })
@@ -63,7 +77,7 @@ describe('intelligence public display settings', () => {
     expect(api.publicDisplay).toHaveBeenCalledTimes(1)
     expect(view.findAll('[data-public-plan]')).toHaveLength(2)
     expect(view.get('[data-public-plan="2"]').classes()).toContain('bg-primary-50/80')
-    expect(view.get('[data-public-plan="2"]').text()).toContain('0×')
+    expect(view.get('[data-public-group="group:2"]').text()).toContain('0×')
     expect((view.get(checkbox(2)).element as HTMLInputElement).checked).toBe(true)
     expect(view.text()).not.toContain('PRIVATE')
     expect((view.get(input('title')).element as HTMLInputElement).value).toBe('Public title')

@@ -1,87 +1,125 @@
 <template>
-  <article class="pelican-group" data-testid="pelican-group">
-    <aside class="pelican-identity">
-      <div class="flex items-center gap-2.5">
-        <span class="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-primary-100/80 bg-primary-50 text-primary-600 dark:border-primary-500/15 dark:bg-primary-500/10 dark:text-primary-300"><Icon name="lightbulb" size="sm" /></span>
-        <div class="min-w-0 flex-1">
-          <h2 class="line-clamp-2 break-words text-[15px] font-semibold leading-5 tracking-tight text-gray-900 dark:text-white" :title="group.group_name">{{ group.group_name }}</h2>
-          <span class="mt-1 inline-flex items-center gap-1.5 whitespace-nowrap rounded-md px-1.5 py-0.5 text-[10px] font-medium leading-4" :class="statusClass"><span class="h-1 w-1 rounded-full bg-current" :class="active && 'motion-safe:animate-pulse'" />{{ t(`pelicanMonitor.status.${group.latest_run?.status || 'idle'}`) }}</span>
+  <section v-if="primary" data-testid="pelican-group" class="flex min-w-0 flex-col overflow-hidden rounded-2xl border border-gray-200 bg-white shadow-sm lg:flex-row dark:border-dark-700 dark:bg-dark-800">
+    <aside class="flex w-full shrink-0 flex-col gap-4 border-b border-gray-100 bg-gradient-to-br from-primary-50/70 via-white to-white p-4 lg:w-[236px] lg:border-b-0 lg:border-r dark:border-dark-700 dark:from-primary-500/5 dark:via-dark-800 dark:to-dark-800">
+      <div class="space-y-3.5">
+        <div class="flex items-center gap-2.5">
+          <div class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-primary-100 bg-primary-50 text-primary-600 dark:border-primary-500/20 dark:bg-primary-500/10 dark:text-primary-300">
+            <svg aria-hidden="true" class="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0 0 18 8 6 6 0 0 0 6 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 0 1 8.91 14"/></svg>
+          </div>
+          <div class="min-w-0">
+            <h2 class="truncate text-base font-semibold leading-5 text-gray-900 dark:text-gray-100">{{ primary.plan.group_name }}</h2>
+            <span class="mt-1 inline-flex items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium leading-[14px]" :class="statusBadge">
+              <span class="h-1.5 w-1.5 rounded-full" :class="statusDot"></span>
+              {{ t('pelicanMonitor.status.' + status) }}
+            </span>
+          </div>
         </div>
-      </div>
-      <div class="mt-3 grid grid-cols-2 divide-x divide-gray-200/70 rounded-xl border border-gray-100 bg-white/80 py-2 dark:divide-dark-600 dark:border-dark-700 dark:bg-dark-900/30">
-        <div class="min-w-0 px-2">
-          <p class="text-[10px] leading-4 text-gray-400">{{ t('pelicanMonitor.rate') }}</p>
-          <p class="mt-1 break-all text-[17px] font-semibold leading-6 tracking-tight text-primary-700 dark:text-primary-300" data-testid="pelican-rate">{{ rate }}</p>
+        <div class="grid grid-cols-2 items-start gap-2 rounded-xl border border-gray-100 bg-white/80 px-3 py-2.5 dark:border-dark-700 dark:bg-dark-800/75">
+          <div><div class="text-[11px] leading-4 text-gray-500 dark:text-dark-400">{{ t('pelicanMonitor.rate') }}</div><div class="mt-1 text-base font-semibold leading-5 tabular-nums text-primary-600 dark:text-primary-300" data-testid="pelican-rate">{{ rate }}</div></div>
+          <div class="border-l border-gray-200/70 pl-3 dark:border-dark-600"><div class="text-[11px] leading-4 text-gray-500 dark:text-dark-400">{{ t('pelicanMonitor.next') }}</div><div class="mt-1 text-base font-semibold leading-5 tabular-nums text-gray-900 dark:text-gray-100">{{ countdown }}</div></div>
         </div>
-        <div class="min-w-0 px-2">
-          <p class="text-[10px] leading-4 text-gray-400">{{ t('pelicanMonitor.next') }}</p>
-          <time v-if="group.enabled && countdown && !active" class="mt-1 block font-mono text-base font-semibold leading-6 tabular-nums text-gray-800 dark:text-gray-100" :datetime="group.next_run_at || undefined">{{ countdown }}</time>
-          <p v-else class="mt-1 text-[11px] font-medium leading-6" :class="active ? 'text-violet-600 dark:text-violet-300' : 'text-gray-500 dark:text-gray-400'">{{ t(!group.enabled ? 'pelicanMonitor.paused' : active ? 'pelicanMonitor.afterCurrent' : 'pelicanMonitor.waitingSchedule') }}</p>
-        </div>
-      </div>
-      <PelicanModelInfo :model="group.model" :effort="group.reasoning_effort" class="mt-3" data-testid="pelican-plan-model" />
-      <p class="mt-2 flex items-center gap-1.5 pl-0 pr-2.5 text-[10px] leading-4 text-gray-500 dark:text-gray-400"><Icon name="clock" size="xs" class="shrink-0 text-primary-600/60 dark:text-primary-400/60" aria-hidden="true" /><span>{{ interval }}</span></p>
-      <div class="mt-auto flex flex-wrap items-center justify-between gap-x-2 gap-y-1 pt-3 text-[10px] leading-4">
-        <span class="text-gray-400">{{ t('pelicanMonitor.lastRun') }}</span>
-        <time :datetime="group.latest_run?.started_at || group.last_run_at || undefined" class="tabular-nums text-gray-500 dark:text-gray-400">{{ pelicanDate(group.latest_run?.started_at || group.last_run_at, locale) }}</time>
-      </div>
-    </aside>
-    <section v-memo="[works, locale]" class="min-w-0 flex-1 p-3.5 lg:p-4">
-      <div class="mb-2 flex flex-wrap items-center justify-between gap-2"><div class="flex items-center gap-2"><h3 class="text-xs font-semibold text-gray-800 dark:text-gray-100">{{ t('pelicanMonitor.recentWorks') }}</h3><span class="text-[10px] text-gray-400">{{ t('pelicanMonitor.newestFirst') }}</span></div><span class="text-[10px] tabular-nums text-gray-400">{{ works.filter(run => !pelicanActive(run)).length }}/{{ PELICAN_ARTWORK_LIMIT }}</span></div>
-      <div v-if="works.length" ref="gallery" class="pelican-gallery" data-testid="pelican-gallery">
-        <div v-for="(run, index) in works" :key="run.id" class="pelican-work" :class="index === 0 && 'pelican-work-latest'" :data-run-id="run.id">
-          <PelicanArtworkPreview :run="run" :autoplay="autoplayWorks.has(run.id)" class="!min-h-0 !flex-none h-[148px]" @open="emit('open', run)" />
-          <button type="button" class="block w-full space-y-1 px-2.5 py-2 text-left transition-colors enabled:cursor-zoom-in enabled:hover:bg-primary-50/50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary-500 disabled:cursor-default dark:enabled:hover:bg-primary-500/5" :disabled="run.status !== 'succeeded'" :aria-label="`${t('pelicanMonitor.open')} · ${pelicanDate(run.started_at || run.created_at, locale)}`" :aria-haspopup="run.status === 'succeeded' ? 'dialog' : undefined" @click="emit('open', run)">
-            <div class="flex items-center justify-between gap-2">
-              <span class="text-[11px] font-semibold" :class="index === 0 ? 'text-primary-600 dark:text-primary-300' : 'text-gray-400'">{{ index === 0 ? t('pelicanMonitor.latest') : `#${run.id}` }}</span>
-              <span class="flex items-center gap-1.5" :title="t(`pelicanMonitor.status.${run.status}`)">
-                <span v-if="pelicanActive(run)" class="text-[10px] font-medium text-amber-600 dark:text-amber-400">{{ t(`pelicanMonitor.status.${run.status}`) }}</span>
-                <span role="img" :aria-label="t(`pelicanMonitor.status.${run.status}`)" class="h-[7px] w-[7px] shrink-0 rounded-full" :class="run.status === 'succeeded' ? 'bg-emerald-500' : run.status === 'failed' ? 'bg-rose-500' : 'bg-amber-400 motion-safe:animate-pulse'" />
-              </span>
-            </div>
-            <time class="block text-[11px] leading-4 tabular-nums text-gray-600 dark:text-gray-300" :datetime="run.started_at || run.created_at">{{ pelicanDate(run.started_at || run.created_at, locale, true) }}</time>
-            <div class="flex items-center justify-between gap-2 text-[10px]"><PelicanModelInfo :model="run.model" :effort="run.reasoning_effort" compact /><span v-if="run.duration_ms != null && !pelicanActive(run)" class="shrink-0 font-mono tabular-nums text-gray-600 dark:text-gray-300" :title="t('pelicanMonitor.duration')">{{ pelicanDuration(run) }}</span></div>
+        <div class="space-y-1.5">
+          <button v-for="row in rows" :key="row.plan.id" type="button" class="flex w-full cursor-pointer items-center justify-between gap-1.5 rounded-xl border px-2.5 py-1.5 text-left transition" :class="isSelected(row) ? 'border-primary-200 bg-primary-50/80 text-gray-900 dark:border-primary-500/30 dark:bg-primary-500/10 dark:text-gray-100' : 'border-gray-100 bg-white/70 text-gray-500 hover:bg-gray-50 hover:text-gray-800 dark:border-dark-700 dark:bg-dark-800/80 dark:text-gray-400 dark:hover:bg-dark-700 dark:hover:text-gray-200'" :title="t(multi ? 'pelicanMonitor.card.includeModel' : 'pelicanMonitor.card.showModel', { name: row.name })" :aria-pressed="isSelected(row)" :data-testid="'choose-plan-' + row.plan.id" @click="choose(row.plan.id)">
+            <span class="flex min-w-0 items-center gap-1.5"><span class="h-2 w-2 shrink-0 rounded-full bg-gray-300 dark:bg-dark-500" :style="isSelected(row) ? { backgroundColor: row.dot } : undefined"></span><span class="truncate text-[11px] font-semibold leading-4" :data-testid="primary.plan.id === row.plan.id ? 'pelican-plan-model' : undefined">{{ row.name }}</span></span>
+            <span class="flex shrink-0 items-center gap-1"><span class="rounded-md bg-primary-500/10 px-1.5 py-0.5 text-[10px] font-medium leading-[14px] text-primary-700 dark:text-primary-300">{{ row.badge }}</span><span v-if="multi" class="text-xs font-bold" :class="isSelected(row) ? 'text-primary-600 dark:text-primary-300' : 'text-gray-400 dark:text-dark-400'">{{ isSelected(row) ? '✓' : '+' }}</span></span>
           </button>
         </div>
       </div>
-      <div v-else class="flex min-h-[202px] flex-col items-center justify-center gap-3 rounded-xl border border-dashed border-gray-200 text-center text-xs text-gray-400 dark:border-dark-700"><Icon name="lightbulb" size="lg" />{{ t('pelicanMonitor.waiting') }}</div>
-    </section>
-  </article>
+      <div class="mt-auto grid gap-2.5 border-t border-gray-100 pt-3 text-[11px] leading-4 text-gray-500 dark:border-dark-700 dark:text-dark-400">
+        <div class="flex items-center gap-2"><svg aria-hidden="true" class="h-3.5 w-3.5 shrink-0 text-primary-500/70 dark:text-primary-400/80" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg><span>{{ interval }}</span></div>
+        <div class="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1"><span>{{ t('pelicanMonitor.lastRun') }}</span><time class="whitespace-nowrap tabular-nums text-gray-600 dark:text-gray-300" :datetime="primary.plan.latest_run?.started_at || primary.plan.last_run_at || undefined">{{ pelicanDate(primary.plan.latest_run?.started_at || primary.plan.last_run_at, locale) }}</time></div>
+      </div>
+    </aside>
+    <div class="flex min-w-0 flex-1 flex-col gap-3 p-4">
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        <div class="flex flex-wrap items-center gap-2.5">
+          <div class="flex items-baseline gap-1.5"><span class="text-xs font-semibold text-gray-800 dark:text-gray-100">{{ t('pelicanMonitor.recentWorks') }}</span><span class="text-xs text-gray-500 dark:text-dark-400">{{ t('pelicanMonitor.newestFirst') }}</span></div>
+          <div class="inline-flex max-w-full flex-wrap items-center gap-0.5 rounded-xl border border-gray-200/70 bg-gray-100/80 dark:border-dark-600 dark:bg-dark-900/70 p-0.5">
+            <button v-for="row in rows" :key="row.plan.id" type="button" class="flex cursor-pointer items-center gap-1.5 rounded-lg px-2.5 py-1 text-xs font-medium transition" :class="isSelected(row) ? 'border border-primary-200/80 bg-white text-primary-700 shadow-sm dark:border-primary-500/30 dark:bg-dark-700 dark:text-primary-300' : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'" :aria-pressed="isSelected(row)" :data-testid="'quick-model-' + row.plan.id" @click="choose(row.plan.id)">
+              <span v-if="multi" class="h-1.5 w-1.5 rounded-full bg-gray-300 dark:bg-dark-500" :style="isSelected(row) ? { backgroundColor: row.dot } : undefined"></span><span>{{ row.name }}</span>
+            </button>
+          </div>
+        </div>
+        <div class="flex max-w-full flex-wrap items-center gap-2.5">
+          <div class="inline-flex items-center rounded-xl border border-gray-200/70 bg-gray-100/80 dark:border-dark-600 dark:bg-dark-900/70 p-0.5">
+            <button v-for="item in modes" :key="item" type="button" class="cursor-pointer rounded-lg px-2.5 py-1 text-xs font-medium transition" :class="mode === item ? 'bg-white text-primary-700 shadow-sm dark:bg-dark-700 dark:text-primary-300' : 'text-gray-500 hover:text-gray-800 dark:text-gray-400 dark:hover:text-gray-200'" :title="t('pelicanMonitor.card.' + item + 'Hint')" :aria-pressed="mode === item" :data-testid="'card-mode-' + item" @click="emit('mode', item)">{{ t('pelicanMonitor.card.' + item) }}</button>
+          </div>
+          <div class="flex items-center gap-1">
+            <button v-for="item in directions" :key="item.label" type="button" class="flex h-6 w-6 cursor-pointer items-center justify-center rounded-lg border border-gray-200 bg-white text-xs text-gray-500 hover:border-primary-300 hover:text-primary-600 dark:border-dark-600 dark:bg-dark-800 dark:text-gray-400 dark:hover:border-primary-500/60 dark:hover:text-primary-300" :title="t('pelicanMonitor.card.' + item.label)" :aria-label="t('pelicanMonitor.card.' + item.label)" @click="gallery?.scroll(item.delta)">{{ item.icon }}</button>
+          </div>
+          <span class="text-xs tabular-nums text-gray-500 dark:text-dark-400">{{ completedCount }}/{{ PELICAN_ARTWORK_LIMIT }}</span>
+        </div>
+      </div>
+      <PelicanModelRow ref="gallery" :primary="primary" :rows="visibleRows" :mode="mode" @open="(plan, run, compare) => emit('open', plan, run, compare)" />
+    </div>
+  </section>
 </template>
+
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue'
+import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { PELICAN_ARTWORK_LIMIT } from '@/utils/pelicanArtworks'
 import type { PelicanMonitorGroup, PelicanRun } from '@/api/pelicanMonitor'
-import Icon from '@/components/icons/Icon.vue'
-import PelicanArtworkPreview from './PelicanArtworkPreview.vue'
-import PelicanModelInfo from './PelicanModelInfo.vue'
-import { pelicanActive, pelicanCountdown, pelicanDate, pelicanDuration, pelicanInterval, pelicanWorks } from './pelicanFormat'
-const props = defineProps<{ group: PelicanMonitorGroup; now: number }>()
-const emit = defineEmits<{ open: [run: PelicanRun] }>()
+import { PELICAN_ARTWORK_LIMIT } from '@/utils/pelicanArtworks'
+import { pelicanModelLabel } from '@/utils/pelicanModels'
+import PelicanModelRow from './PelicanModelRow.vue'
+import { pelicanActive, pelicanCountdown, pelicanDate, pelicanEffortLabel, pelicanInterval, pelicanModelDot, pelicanWorks, type PelicanViewMode, type PelicanGalleryModel } from './pelicanFormat'
+
+const props = defineProps<{ plans: PelicanMonitorGroup[]; mode: PelicanViewMode; now: number; matchedPlanId?: number }>()
+const emit = defineEmits<{ mode: [mode: PelicanViewMode]; open: [plan: PelicanMonitorGroup, run: PelicanRun, compare: boolean] }>()
 const { t, locale } = useI18n()
-const gallery = ref<HTMLElement | null>(null)
-const works = computed(() => pelicanWorks(props.group))
-const autoplayWorks = computed(() => new Set(works.value.filter(run => !pelicanActive(run)).slice(0, 8).map(run => run.id)))
-watch(() => works.value[0]?.id, async (id, previous) => {
-  if (!id || !previous || id === previous) return
-  await nextTick()
-  if (gallery.value) gallery.value.scrollLeft = 0
+const modes: readonly PelicanViewMode[] = ['single', 'paired', 'stacked']
+const directions = [{ delta: -380, icon: '‹', label: 'left' }, { delta: 380, icon: '›', label: 'right' }] as const
+const gallery = ref<InstanceType<typeof PelicanModelRow>>()
+const activeId = ref<number>()
+const excluded = ref(new Set<number>())
+const rows = computed<PelicanGalleryModel[]>(() => props.plans.map((plan, index) => {
+  const works = pelicanWorks(plan)
+  const completed = works.filter(run => !pelicanActive(run))
+  const effort = pelicanEffortLabel(plan.reasoning_effort)
+  return { plan, works, completed: completed.length, auto: new Set(completed.slice(0, 8).map(run => run.id)),
+    name: pelicanModelLabel(plan.model), badge: effort === 'Fast' ? effort : effort + ' ' + t('pelicanMonitor.reasoningShort'), dot: pelicanModelDot(index) }
+}))
+const multi = computed(() => props.mode !== 'single')
+const primary = computed(() => rows.value.find(row => row.plan.id === activeId.value) ?? rows.value[0])
+const visibleRows = computed(() => {
+  if (!multi.value) return primary.value ? [primary.value] : []
+  const checked = rows.value.filter(row => !excluded.value.has(row.plan.id))
+  return checked.length ? checked : rows.value.slice(0, 1)
 })
-const active = computed(() => pelicanActive(props.group.latest_run))
-const countdown = computed(() => pelicanCountdown(props.group.next_run_at, props.now))
-const interval = computed(() => { const value = pelicanInterval(props.group.interval_seconds); return value.minutes === undefined ? t('pelicanMonitor.everySeconds', { count: value.seconds }) : t('pelicanMonitor.everyMinutes', { count: value.minutes }) })
-const rate = computed(() => typeof props.group.group_rate_multiplier === 'number' && Number.isFinite(props.group.group_rate_multiplier) ? `${new Intl.NumberFormat(locale.value, { maximumFractionDigits: 4 }).format(props.group.group_rate_multiplier)}×` : '—')
-const statusClass = computed(() => props.group.latest_run?.status === 'failed' ? 'bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-300' : active.value ? 'bg-violet-50 text-violet-600 dark:bg-violet-500/10 dark:text-violet-300' : props.group.latest_run?.status === 'succeeded' ? 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-300' : 'bg-gray-100 text-gray-500 dark:bg-dark-700 dark:text-gray-400')
+const completedCount = computed(() => Math.max(0, ...visibleRows.value.map(row => row.completed)))
+function isSelected(row: PelicanGalleryModel) {
+  return multi.value ? visibleRows.value.some(visible => visible.plan.id === row.plan.id) : primary.value?.plan.id === row.plan.id
+}
+function choose(id: number) {
+  if (!multi.value) { activeId.value = id; return }
+  const current = visibleRows.value
+  const next = new Set(rows.value.filter(row => !current.includes(row)).map(row => row.plan.id))
+  if (next.has(id)) next.delete(id)
+  else if (current.length > 1) next.add(id)
+  excluded.value = next
+}
+watch(() => props.matchedPlanId, id => {
+  if (id === undefined) return
+  activeId.value = id
+  if (excluded.value.has(id)) { const next = new Set(excluded.value); next.delete(id); excluded.value = next }
+}, { immediate: true })
+const status = computed(() => primary.value?.plan.latest_run?.status ?? 'idle')
+const statusBadge = computed(() => ({ succeeded: 'bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-300', failed: 'bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-300', pending: 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300', running: 'bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-300', idle: 'bg-gray-100 text-gray-500 dark:bg-dark-700 dark:text-gray-400' })[status.value])
+const statusDot = computed(() => ({ succeeded: 'bg-emerald-500', failed: 'bg-rose-500', pending: 'bg-amber-400', running: 'bg-amber-400', idle: 'bg-gray-400' })[status.value])
+const rate = computed(() => {
+  const value = primary.value?.plan.group_rate_multiplier
+  return typeof value === 'number' && Number.isFinite(value) ? new Intl.NumberFormat(locale.value, { maximumFractionDigits: 4 }).format(value) + 'x' : '—'
+})
+const countdown = computed(() => {
+  const plan = primary.value?.plan
+  if (!plan?.enabled) return t('pelicanMonitor.paused')
+  if (pelicanActive(plan.latest_run)) return t('pelicanMonitor.afterCurrent')
+  return pelicanCountdown(plan.next_run_at, props.now) || t('pelicanMonitor.waitingSchedule')
+})
+const interval = computed(() => {
+  const plan = primary.value?.plan
+  if (!plan?.enabled) return t('pelicanMonitor.paused')
+  const value = pelicanInterval(plan.interval_seconds)
+  return value.minutes === undefined ? t('pelicanMonitor.everySeconds', { count: value.seconds }) : t('pelicanMonitor.everyMinutes', { count: value.minutes })
+})
 </script>
-<style scoped>
-.pelican-group { display:flex; overflow:hidden; min-width:0; border:1px solid rgb(229 231 235); border-radius:16px; background:white; box-shadow:0 2px 8px rgb(15 23 42 / .025); }
-.pelican-identity { display:flex; flex-direction:column; flex:0 0 228px; min-width:0; padding:16px 18px; border-right:1px solid rgb(243 244 246); background:linear-gradient(135deg,rgb(240 253 250 / .55),white 65%); }
-.pelican-gallery { display:flex; gap:8px; overflow-x:auto; padding:1px 1px 4px; scroll-snap-type:x proximity; scrollbar-width:thin; scrollbar-color:rgb(203 213 225) transparent; }
-.pelican-work { flex:0 0 204px; overflow:hidden; border:1px solid rgb(229 231 235); border-radius:12px; scroll-snap-align:start; background:white; }
-.pelican-work-latest { border-color:rgb(94 234 212 / .6); }
-@media(max-width:767px) { .pelican-group { flex-direction:column; } .pelican-identity { flex-basis:auto; border-right:0; border-bottom:1px solid rgb(243 244 246); padding:14px; } }
-:global(.dark .pelican-group),:global(.dark .pelican-work) { background:rgb(24 31 43); border-color:rgb(55 65 81); }
-:global(.dark .pelican-identity) { background:linear-gradient(135deg,rgb(20 184 166 / .045),transparent 70%); border-color:rgb(55 65 81); }
-:global(.dark .pelican-work-latest) { border-color:rgb(20 184 166 / .35); }
-</style>

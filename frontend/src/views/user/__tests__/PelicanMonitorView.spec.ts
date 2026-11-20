@@ -24,7 +24,7 @@ beforeEach(() => {
 })
 afterEach(() => { wrapper?.unmount(); wrapper = undefined; host?.remove(); host = undefined; vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 function render() {
-  wrapper = mount(PelicanMonitorView, { global: { stubs: { AppLayout: { template: '<div><slot /></div>' }, Icon: true, PelicanArtworkPreview: { props: ['run'], emits: ['open'], template: '<button data-testid="artwork" @click="$emit(\'open\')">artwork</button>' }, BaseDialog: { props: ['show', 'title'], template: '<section><h3>{{ title }}</h3><slot /></section>' } } } })
+  wrapper = mount(PelicanMonitorView, { global: { stubs: { AppLayout: { template: '<div><slot /></div>' }, Teleport: true, Icon: true, PelicanArtworkPreview: { props: ['run'], emits: ['open'], template: '<button data-testid="artwork" @click="$emit(\'open\')">artwork</button>' }, BaseDialog: { props: ['show', 'title'], template: '<section><h3>{{ title }}</h3><slot /></section>' } } } })
   return wrapper
 }
 function renderWithRealArtwork() {
@@ -49,7 +49,7 @@ describe('read-only user pelican page', () => {
     expect(state.artwork).toHaveBeenCalledTimes(9)
   })
 
-  it('shows separate live rows for both models of a group and filters by the display model name', async () => {
+  it('keeps same-name legacy monitors separate when their group IDs are missing', async () => {
     const solRun = { ...run, id: 9, plan_id: 3, model: 'gpt-6.1-sol' }
     state.list.mockResolvedValue(snapshot([{ ...group, model: 'gpt-6-astra' }, { ...group, id: 3, model: 'gpt-6.1-sol', latest_run: solRun, recent_runs: [solRun] }]))
     const view = render(); await flushPromises()
@@ -58,17 +58,49 @@ describe('read-only user pelican page', () => {
     expect(cards[0]!.get('[data-testid="pelican-plan-model"]').text()).toContain('GPT-6 Astra')
     expect(cards[1]!.get('[data-testid="pelican-plan-model"]').text()).toContain('GPT-6.1 Sol')
     await view.get('input').setValue('GPT-6.1 Sol')
-    expect(view.findAll('[data-testid="pelican-group"]')).toHaveLength(1)
-    expect(view.get('[data-testid="pelican-plan-model"]').text()).toContain('GPT-6.1 Sol')
+    expect(view.findAll('[data-testid="pelican-group"]').filter(card => card.isVisible())).toHaveLength(1)
+    expect(view.findAll('[data-testid="pelican-group"]').find(card => card.isVisible())!.text()).toContain('GPT-6.1 Sol')
+  })
+
+  it('applies layouts to every group including filtered ones, preserving per-group controls and authorized comparisons', async () => {
+    const makePlan = (id: number, groupId: number, model: string): PelicanMonitorGroup => {
+      const work = { ...run, id: 100 + id, plan_id: id, model }
+      return { ...group, id, group_id: groupId, model, latest_run: work, recent_runs: [work] }
+    }
+    const astra = makePlan(11, 55, 'gpt-6.2-astra'), sol = makePlan(12, 55, 'gpt-6.2-sol')
+    const legacy = makePlan(13, 55, 'gpt-6-astra'), sameName = makePlan(14, 56, 'gpt-6-astra')
+    state.list.mockResolvedValue(snapshot([astra, sol, legacy, sameName]))
+    const view = render(); await flushPromises()
+    const [card, other] = view.findAll('[data-testid="pelican-group"]')
+    expect(view.get('#global-single').attributes('aria-pressed')).toBe('true')
+    for (const item of [card, other]) expect(item!.get('[data-testid="card-mode-single"]').attributes('aria-pressed')).toBe('true')
+    expect(view.get('#summaryCount').text()).toContain('2,4')
+    await view.get('#searchBox').setValue('gpt-6.2-sol')
+    expect(view.get('#summaryCount').text()).toContain('1,3')
+    expect(other!.isVisible()).toBe(false)
+    await view.get('#global-stacked').trigger('click')
+    expect(card!.findAll('[data-model-row]')).toHaveLength(3)
+    await view.get('#searchBox').setValue('')
+    expect(other!.get('[data-testid="card-mode-stacked"]').attributes('aria-pressed')).toBe('true')
+    await card!.get('[data-testid="card-mode-paired"]').trigger('click')
+    expect(other!.find('[data-model-row]').exists()).toBe(true)
+    await card!.get('[data-testid="choose-plan-13"]').trigger('click')
+    expect(card!.findAll('[data-round="0"] .pelican-work')).toHaveLength(2)
+    await card!.get('[data-testid="compare-round-0"]').trigger('click')
+    expect(view.get('#modalBody').findAll('[data-compare-plan]')).toHaveLength(3)
+    state.list.mockResolvedValue(snapshot([sol, legacy]))
+    await view.get('[data-testid="pelican-refresh"]').trigger('click'); await flushPromises()
+    expect(view.find('#previewModal').exists()).toBe(false)
+    expect(state.retain).toHaveBeenLastCalledWith(new Set([112,113]))
   })
 
   it('shows the current plan effort and preserves the effort of each earlier artwork', async () => {
     const latest = { ...run, id: 9, reasoning_effort: 'xhigh' } as PelicanRun
     state.list.mockResolvedValue(snapshot([{ ...group, reasoning_effort: 'max', latest_run: latest, recent_runs: [latest, run] }]))
     const view = render(); await flushPromises()
-    expect(view.get('[data-testid="pelican-plan-model"] .model-effort').text()).toBe('Max')
-    expect(view.get('[data-run-id="9"] .model-effort').text()).toBe('XHigh')
-    expect(view.get('[data-run-id="8"] .model-effort').text()).toBe('High')
+    expect(view.get('[data-testid="choose-plan-2"]').text()).toContain('Max')
+    expect(view.get('[data-run-id="9"]').text()).toContain('XHigh')
+    expect(view.get('[data-run-id="8"]').text()).toContain('High')
     await view.get('[data-run-id="9"] [data-testid="artwork"]').trigger('click'); await flushPromises()
     expect(view.get('.pelican-artwork-dialog .model-effort').text()).toBe('XHigh')
   })
@@ -83,7 +115,7 @@ describe('read-only user pelican page', () => {
     expect(toolbar.text()).toContain('pelicanMonitor.drawingPrompt')
     expect(toolbar.text()).not.toContain('GPT-6.2')
     await view.get('input').setValue('gpt-6.2-sol')
-    expect(view.findAll('[data-testid="pelican-group"]')).toHaveLength(1)
+    expect(view.findAll('[data-testid="pelican-group"]').filter(card => card.isVisible())).toHaveLength(1)
     expect(view.get('[data-testid="pelican-plan-model"]').text()).toContain('GPT-6.2 Sol')
   })
 
@@ -103,7 +135,7 @@ describe('read-only user pelican page', () => {
     const view = renderWithRealArtwork(); await flushPromises()
     const oldFrame = view.get<HTMLIFrameElement>('iframe').element
     const playback = vi.spyOn(oldFrame.contentWindow!, 'postMessage')
-    await view.get('.preview-open').trigger('click'); await flushPromises()
+    await view.get('button[aria-haspopup="dialog"]').trigger('click'); await flushPromises()
     oldFrame.dispatchEvent(new Event('load')); await flushPromises()
     expect(playback).toHaveBeenLastCalledWith({ type: 'intelligence-preview-playback', playing: false }, '*')
     const dialog = document.querySelector('[role="dialog"]')
@@ -184,7 +216,7 @@ describe('read-only user pelican page', () => {
     await informationOpen.trigger('click'); await flushPromises()
     const reopened = document.querySelector<HTMLElement>('[role="dialog"]')!
     expect(reopened.querySelector('iframe')!.getAttribute('srcdoc')).toContain('Animated pelican')
-    reopened.querySelector<HTMLButtonElement>('button[aria-label="Close modal"]')!.click(); await flushPromises()
+    reopened.querySelector<HTMLButtonElement>('button[aria-label="common.close"]')!.click(); await flushPromises()
     expect(document.querySelector('[role="dialog"]')).toBeNull()
     expect(document.activeElement).toBe(informationOpen.element)
   })
@@ -192,7 +224,7 @@ describe('read-only user pelican page', () => {
   it('shows group rate and artwork, with no private metadata or admin controls', async () => {
     state.list.mockResolvedValue(snapshot([{ ...group, api_key: 'PRIVATE_KEY', source_name: 'PRIVATE_UPSTREAM', latest_run: { ...run, source_endpoint: 'https://private.example' } } as PelicanMonitorGroup]))
     const view = render(); await flushPromises()
-    expect(view.text()).toContain('Visible group'); expect(view.text()).toContain('0.8×')
+    expect(view.text()).toContain('Visible group'); expect(view.text()).toContain('0.8x')
     expect(view.text()).toContain('pelicanMonitor.everyMinutes:5')
     await view.get('[data-testid="artwork"]').trigger('click'); await flushPromises()
     expect(view.text()).toContain('2m 5s')

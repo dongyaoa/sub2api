@@ -76,6 +76,7 @@ type PublicPelicanRunDetail struct {
 
 type PublicPelicanPlan struct {
 	ID                  int64               `json:"id"`
+	GroupID             int64               `json:"group_id"`
 	GroupName           string              `json:"group_name"`
 	GroupRateMultiplier *float64            `json:"group_rate_multiplier"`
 	Enabled             bool                `json:"enabled"`

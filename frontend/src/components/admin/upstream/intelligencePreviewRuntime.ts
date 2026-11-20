@@ -1,13 +1,14 @@
 /**
  * Runs inside the generated artwork's opaque-origin iframe. The containing
  * iframe supplies the security boundary; these hooks only control playback and
- * fit the document into the fixed 960 × 600 artwork viewport. Thumbnails cover
- * their visible card area; detail views contain the complete document.
+ * fit the document into a 960px-wide artwork viewport using the caller's fit mode.
  */
-export function intelligencePreviewRuntime(autoplay: boolean, fit: 'contain' | 'cover' = 'contain'): string {
+export type PreviewCanvasHeight = 600 | 672 | 700
+
+export function intelligencePreviewRuntime(autoplay: boolean, fit: 'contain' | 'cover' = 'contain', canvasHeight: PreviewCanvasHeight = 600): string {
   return `(() => {
   'use strict';
-  const WIDTH = 960, HEIGHT = 600, MAX_EXTENT = 8192;
+  const WIDTH = 960, HEIGHT = ${canvasHeight}, MAX_EXTENT = 8192;
   const cover = ${JSON.stringify(fit === 'cover')};
   let visibleWidth = WIDTH, visibleHeight = HEIGHT;
   let viewportReceived = !cover, initialized = false, fontsReady = false, fitted = false, initialFitComplete = false;

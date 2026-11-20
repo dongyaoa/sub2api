@@ -46,6 +46,21 @@
     </aside>
 
     <section class="min-w-0 p-4">
+      <div v-if="models?.length || canAddModel" class="mb-3 flex flex-wrap items-center justify-between gap-2 border-b border-gray-100 pb-3 dark:border-dark-700">
+        <div role="group" :aria-label="t('intelligenceMonitor.local.monitorModels')" class="flex min-w-0 flex-wrap items-center gap-1.5">
+          <button v-for="modelPlan in models" :key="modelPlan.id" type="button"
+            :data-plan-model="modelPlan.id" :aria-pressed="plan.id === modelPlan.id"
+            class="inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary-500"
+            :class="plan.id === modelPlan.id ? 'border-primary-200 bg-primary-50 text-primary-700 dark:border-primary-700 dark:bg-primary-500/10 dark:text-primary-300' : 'border-gray-200 text-gray-500 hover:bg-gray-50 dark:border-dark-600 dark:text-gray-400 dark:hover:bg-dark-700'"
+            :title="modelPlan.name" @click="emit('chooseModel', modelPlan.id)">
+            <span aria-hidden="true" class="h-1.5 w-1.5 shrink-0 rounded-full" :class="modelPlan.enabled ? 'bg-emerald-500' : 'bg-gray-300'" />
+            {{ pelicanModelLabel(modelPlan.model) }}
+          </button>
+        </div>
+        <button v-if="canAddModel" type="button" class="btn btn-secondary btn-sm shrink-0" data-testid="local-add-model" @click="emit('addModel')">
+          <Icon name="plus" size="xs" class="mr-1" />{{ t('intelligenceMonitor.addModel') }}
+        </button>
+      </div>
       <IntelligenceCandyBar v-if="plan.candy_enabled" :plan="plan" :busy="busy" @run="emit('candyRun')" @select="emit('candySelect', $event)" />
       <div class="mb-2.5 flex min-h-6 flex-wrap items-center justify-between gap-2">
         <div class="flex items-center gap-2"><span class="text-xs font-semibold text-gray-700 dark:text-gray-200">{{ t('intelligenceMonitor.recentWorks') }}</span><span class="text-[10px] text-gray-400">{{ t('intelligenceMonitor.newestFirst') }}</span></div>
@@ -74,6 +89,7 @@
 <script setup lang="ts">
 import { computed, inject, nextTick, provide, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { pelicanModelLabel } from '@/utils/pelicanModels'
 import { PELICAN_ARTWORK_LIMIT, retainedPelicanArtworks } from '@/utils/pelicanArtworks'
 import IntelligenceModelInfo from './IntelligenceModelInfo.vue'
 import Icon from '@/components/icons/Icon.vue'
@@ -87,8 +103,8 @@ import { intelligenceDurationLabel } from './intelligenceDuration'
 import { useIntelligenceCountdown } from './useIntelligenceCountdown'
 import { dateTime } from './format'
 
-const props = withDefaults(defineProps<{ plan: IntelligencePlan; busy: boolean; visible?: boolean; overview?: UpstreamOverview | null }>(), { visible: true })
-const emit = defineEmits<{ run: []; candyRun: []; candySelect: [run: IntelligenceRun]; edit: []; toggle: []; archive: []; history: [id?: number] }>()
+const props = withDefaults(defineProps<{ plan: IntelligencePlan; models?: IntelligencePlan[]; canAddModel?: boolean; busy: boolean; visible?: boolean; overview?: UpstreamOverview | null }>(), { visible: true })
+const emit = defineEmits<{ chooseModel: [id: number]; addModel: []; run: []; candyRun: []; candySelect: [run: IntelligenceRun]; edit: []; toggle: []; archive: []; history: [id?: number] }>()
 const { t, locale } = useI18n()
 const parentActive = inject(intelligencePanelActiveKey, ref(true))
 const visible = computed(() => parentActive.value && props.visible)
@@ -104,8 +120,8 @@ function compactTime(value: string) { const date = new Date(value); return Numbe
 const completed = computed(() => retainedPelicanArtworks(props.plan))
 const works = computed(() => pelicanActive.value && props.plan.latest_run ? [props.plan.latest_run, ...completed.value] : completed.value)
 const worksScroller = ref<HTMLElement | null>(null)
-watch(() => props.plan.latest_run?.id, async () => {
-  if (!pelicanActive.value) return
+watch([() => props.plan.id, () => props.plan.latest_run?.id], async ([planId], [previousId]) => {
+  if (planId === previousId && !pelicanActive.value) return
   await nextTick()
   if (worksScroller.value) worksScroller.value.scrollLeft = 0
 })

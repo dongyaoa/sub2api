@@ -15,7 +15,7 @@
       <AppHeader />
 
       <!-- Main Content -->
-      <main class="p-4 md:p-6 lg:p-8">
+      <main :class="!flushContent && 'p-4 md:p-6 lg:p-8'">
         <slot />
       </main>
     </div>
@@ -31,6 +31,8 @@ import { useOnboardingTour } from '@/composables/useOnboardingTour'
 import { useOnboardingStore } from '@/stores/onboarding'
 import AppSidebar from './AppSidebar.vue'
 import AppHeader from './AppHeader.vue'
+
+defineProps<{ flushContent?: boolean }>()
 
 const appStore = useAppStore()
 const authStore = useAuthStore()
