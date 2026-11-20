@@ -1306,6 +1306,8 @@ func TestPrepareGrokImageEditReferenceLimit(t *testing.T) {
 				}
 				out, _, err := prepareGrokMediaForwardBody(GrokMediaEndpointImagesEdits, body, contentType)
 				if count > 10 {
+					var validationErr *GrokMediaInputValidationError
+					require.ErrorAs(t, err, &validationErr)
 					require.ErrorContains(t, err, "maximum of 10 source images")
 					require.Nil(t, out)
 					return

@@ -529,6 +529,11 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 			return
 		}
 		if err != nil {
+			var validationErr *service.GrokMediaInputValidationError
+			if errors.As(err, &validationErr) {
+				h.errorResponse(c, http.StatusBadRequest, "invalid_request_error", validationErr.Error())
+				return
+			}
 			if endpoint.IsVideoLookupRequest() && videoRecord != nil && h.videoTasks != nil {
 				if recordErr := h.videoTasks.RecordLookupError(requestCtx, videoOwner, requestID, grokVideoLookupErrorEvidence(err)); recordErr != nil {
 					reqLog.Warn("grok_media.persist_video_lookup_error_failed", zap.String("request_id", requestID), zap.Error(recordErr))
