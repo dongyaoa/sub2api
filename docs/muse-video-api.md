@@ -44,7 +44,7 @@
 | --- | --- |
 | 文生视频 | 支持；填写 `prompt`，不提交参考图 |
 | 首帧图生视频 | 支持；一张图片，同时填写 `prompt` |
-| 时长 | 期望时长为整数 **1–60 秒**；本站 API 省略时使用 **5 秒** |
+| 时长 | 期望时长为整数 **1–10 秒**，本站 API 省略时使用 **5 秒** |
 | 画幅比例 | 支持比例提示；常用 `16:9`、`9:16`、`1:1`、`4:3`、`3:4`、`3:2`、`2:3` |
 | 分辨率 | 自动决定；不提供固定 480p、720p、1080p、2K、4K 控制 |
 | 每次数量 | 一个视频；`n` 只能为 `1` |
@@ -52,7 +52,7 @@
 | 价格 | 由本站模型广场对应价卡决定，支持按次或按请求秒数计费 |
 | 多任务 | 可以分别创建多个任务；并发数量受站点及分组限制 |
 
-**时长和画幅是生成意图，不是输出保证。** 当前上游浏览器驱动把它们加入提示词。60 秒是参数上限，不能理解成所有任务都能生成恰好 60 秒的视频。没有官方依据证明本接口能固定输出 4K；把“4K”写进提示词或传入 `size="3840x2160"` 都不能建立 4K 输出保证。
+**时长和画幅用于表达生成意图。** 当前上游浏览器驱动把它们加入提示词。本站最多可请求 10 秒，实际时长由模型决定。没有官方依据证明本接口能固定输出 4K；把“4K”写进提示词或传入 `size="3840x2160"` 都不能建立 4K 输出保证。
 
 ## 2. 完整接口清单
 
@@ -144,8 +144,8 @@ curl --fail-with-body "$SUB2API_BASE_URL/videos/pricing?model=muse-video" \
 | --- | --- | --- | --- | --- |
 | `model` | string | 是 | 不允许省略 | 使用 `muse-video`。本站识别时去除首尾空白、不区分大小写，建议固定小写 |
 | `prompt` | string | 是 | 不允许省略 | 非空提示词；去除首尾空白后仍须有内容。文生视频、图生视频都必填。无单独公开的字符上限，仍受请求体大小和上游限制 |
-| `duration` | integer | 否 | 与 `seconds` 均未提供时为 `5` | **1–60**，单位秒，表示期望时长；必须传 JSON 数字，不支持 `"10"`、`2.5`、`0`、`61` |
-| `seconds` | integer | 否 | 使用 `duration` 或默认 5 秒 | `duration` 的兼容别名，范围同为 1–60；同时提供时 `duration` 优先 |
+| `duration` | integer | 否 | 与 `seconds` 均未提供时为 `5` | **1–10**，单位秒，表示期望时长。必须传 JSON 数字，不支持 `"10"`、`2.5`、`0`、`11` |
+| `seconds` | integer | 否 | 使用 `duration` 或默认 5 秒 | `duration` 的兼容别名，范围同为 1–10，同时提供时 `duration` 优先 |
 | `aspect_ratio` | string | 否 | 不发送画幅提示，由上游决定 | 本站统一字段；推荐七种常用比例。最终采用的画幅字符串最多 16 个 Unicode 字符 |
 | `size` | string | 否 | 回退 `aspect_ratio` | 上游原生画幅提示字段，优先于 `aspect_ratio`；建议填比例。不是可靠的输出分辨率开关 |
 | `resolution` | string | 否 | 自动决定 | 仅支持 `"auto"`；可省略。固定分辨率如 `"720p"`、`"1080p"`、`"4k"` 会被拒绝 |
@@ -274,7 +274,7 @@ curl --fail-with-body "$SUB2API_BASE_URL/videos/generations" \
 {
   "model": "muse-video",
   "prompt": "让画面中的小船缓缓前进，水面出现自然涟漪。",
-  "seconds": 15,
+  "seconds": 10,
   "size": "16:9",
   "input_reference": "https://your-public-cdn.example/boat.png"
 }
@@ -481,7 +481,7 @@ curl --fail-with-body -X DELETE "$SUB2API_BASE_URL/videos/tasks" \
 
 | 配置 | 一次成功生成如何计算 |
 | --- | --- |
-| `per_request` | 按次单价 × 1；1 秒和 60 秒的同价卡任务费用相同 |
+| `per_request` | 按次单价 × 1。1 秒和 10 秒的同价卡任务费用相同 |
 | `video` | 按秒单价 × 请求的期望秒数；上游没有返回可信实际秒数供本接口结算 |
 
 按次价使用用户/分组有效倍率；按秒价可能使用站点配置的视频独立倍率。客户端应直接使用报价中的 `unit_price`，不要自己拼接管理员配置猜测价格。
@@ -515,7 +515,7 @@ curl --fail-with-body -X DELETE "$SUB2API_BASE_URL/videos/tasks" \
 {
   "error": {
     "type": "invalid_request_error",
-    "message": "duration must be an integer from 1 to 60"
+    "message": "duration must be an integer from 1 to 10"
   }
 }
 ```
@@ -826,7 +826,7 @@ Grok、Gemini Omni、Sora 等模型的文档中即使存在上述参数，也不
 | 创建路径 | `/v1/videos/generations` 或 `/v1/videos` | `/v1/videos` |
 | `model` | 必须 `muse-video`，由管理员配置映射 | 可省略；默认 `muse-video`，源码也含 `sora` 别名及未知名称回落逻辑；本站不因此开放这些别名 |
 | `prompt` | 非空字符串，首尾去空白 | schema 为长度至少 1 的字符串 |
-| `duration` / `seconds` | 整数 1–60；均省略时本站明确发送 5 秒 | schema 均默认 null；都不传时驱动不追加秒数提示，没有固定 5 秒的原生默认保证 |
+| `duration` / `seconds` | 整数 1–10，均省略时本站明确发送 5 秒 | 整数 1–60，schema 均默认 null。都不传时驱动不追加秒数提示，没有固定 5 秒的原生默认保证 |
 | `size` | 字符串，采用值最多 16 字符 | 字符串，schema 未声明枚举或长度上限 |
 | `aspect_ratio` | 本站提供的兼容字段，转为 `size` | 没有原生字段；直接传给上游不会自动转为 `size` |
 | `resolution` | 只支持 auto，固定分辨率提前报错 | schema 没有该控制字段 |
@@ -851,4 +851,4 @@ Grok、Gemini Omni、Sora 等模型的文档中即使存在上述参数，也不
 - [上游任务状态](https://github.com/www222fff/muse2api/blob/3a20b5e7aa4056c99c0eb8c732d73ce3804d5dbf/src/muse2api/services/tasks.py)：异步状态与重启中断行为。
 - [Muse 官方网站](https://muse.ai/)、[官方产品介绍](https://introducing.muse.ai/)、[官方商业介绍](https://muse.ai/business)、[官方支持页](https://muse.ai/support)：本次已核对的官方公开资料。这些页面没有提供可核对的 `muse-video` 公开 API 参数规格，也没有给出本接口的视频时长、4K、画幅、音轨或多图参考输出保证。
 
-**官方依据的边界：** 公开介绍未提供参数规格，不等于官方产品绝不具备某项能力；只是不能把未确认的网页功能写成此 API 的支持承诺。因此本文全部可调用参数以本站实现与 muse2api 源码交叉核对，60 秒和画幅仅作为请求提示，也没有把其他同名产品或其他视频模型的参数表混入本站 Muse 接口。
+**官方依据的边界：** 公开介绍未提供参数规格，不等于官方产品绝不具备某项能力；只是不能把未确认的网页功能写成此 API 的支持承诺。因此本文全部可调用参数以本站实现与 muse2api 源码交叉核对，请求的时长和画幅仅作为生成提示，也没有把其他同名产品或其他视频模型的参数表混入本站 Muse 接口。

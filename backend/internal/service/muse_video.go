@@ -18,6 +18,8 @@ import (
 	"github.com/tidwall/gjson"
 )
 
+const museVideoMaxDurationSeconds = 10
+
 // Muse exposes a single video model. Other OpenAI video models must not be
 // silently sent to this adapter, because Muse itself accepts unknown aliases.
 func IsMuseVideoModel(model string) bool {
@@ -71,8 +73,8 @@ func ParseMuseVideoRequest(body []byte) (GrokMediaRequestInfo, error) {
 		if !value.Exists() || value.Type == gjson.Null {
 			continue
 		}
-		if value.Type != gjson.Number || value.Float() != float64(value.Int()) || value.Int() < 1 || value.Int() > 60 {
-			return info, fmt.Errorf("%s must be an integer from 1 to 60", field)
+		if value.Type != gjson.Number || value.Float() != float64(value.Int()) || value.Int() < 1 || value.Int() > museVideoMaxDurationSeconds {
+			return info, fmt.Errorf("%s must be an integer from 1 to %d", field, museVideoMaxDurationSeconds)
 		}
 		// Native Muse gives duration priority over seconds.
 		if field == "duration" || !gjson.GetBytes(body, "duration").Exists() || gjson.GetBytes(body, "duration").Type == gjson.Null {

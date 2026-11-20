@@ -96,20 +96,20 @@ describe('video studio capabilities', () => {
     expect(normalizeVideoAspectRatio(undefined)).toBe('16:9')
   })
 
-  it('offers Muse for both creation modes with up to 60 seconds and no unsupported resolution', () => {
+  it('offers Muse for both creation modes with up to 10 seconds and no unsupported resolution', () => {
     const available = filterVideoModels([{ id: 'muse-chat' }, { id: 'muse-video' }, { id: 'muse-video' }])
     expect(available).toEqual([{ id: 'muse-video' }])
     expect(selectPreferredVideoModel(available, 'text')).toBe('muse-video')
     expect(selectPreferredVideoModel(available, 'image')).toBe('muse-video')
-    expect(getVideoMaxDuration('muse-video')).toBe(60)
+    expect(getVideoMaxDuration('muse-video')).toBe(10)
     expect(getVideoMaxDuration('grok-imagine-video')).toBe(15)
     expect(getVideoResolutionOptions('muse-video')).toEqual(['auto'])
     expect(buildGenerateVideoRequest({
       operation: 'image', model: 'muse-video', prompt: ' animate ',
-      resolution: '1080p', aspectRatio: '9:16', duration: 90,
+      resolution: '1080p', aspectRatio: '9:16', duration: 11,
       imageUrl: 'data:image/png;base64,aW1n',
     })).toEqual({
-      model: 'muse-video', prompt: 'animate', resolution: 'auto', aspect_ratio: '9:16', duration: 60,
+      model: 'muse-video', prompt: 'animate', resolution: 'auto', aspect_ratio: '9:16', duration: 10,
       image: { url: 'data:image/png;base64,aW1n' },
     })
   })

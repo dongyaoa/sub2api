@@ -56,7 +56,7 @@ export function isMuseVideoModel(modelId: string): boolean {
 }
 
 export function getVideoMaxDuration(modelId: string): number {
-  return isMuseVideoModel(modelId) ? 60 : 15
+  return isMuseVideoModel(modelId) ? 10 : 15
 }
 
 export function getVideoMinDuration(modelId: string): number {

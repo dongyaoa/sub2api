@@ -56,7 +56,7 @@ export default {
     resolution: 'Resolution',
     aspectRatio: 'Aspect ratio',
     resolutionAuto: 'Model default',
-    museParametersHint: 'Muse supports text to video and a single starting image. Request 1–60 seconds; duration and aspect ratio are preferences, and the model determines the actual output. Resolution selection and 4K are currently unavailable.',
+    museParametersHint: 'Muse supports text to video and a single starting image. Choose 1–10 seconds. The model determines the final duration and aspect ratio. Resolution selection and 4K are currently unavailable.',
     pricing: 'Current group price',
     pricingPerRequest: 'Current group price / request',
     pricingPerSecond: 'Current group price / second',

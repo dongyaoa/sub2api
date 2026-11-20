@@ -23,8 +23,8 @@ func museVideoTestAccount() *Account {
 
 func TestMuseVideoCreateAdaptsWorkbenchAndNativeParameters(t *testing.T) {
 	for _, body := range []string{
-		`{"model":"muse-video","prompt":"waves","resolution":"auto","aspect_ratio":"9:16","duration":60,"image":{"url":"data:image/png;base64,aW1hZ2U="}}`,
-		`{"model":"muse-video","prompt":"waves","size":"9:16","seconds":60,"input_reference":"data:image/png;base64,aW1hZ2U="}`,
+		`{"model":"muse-video","prompt":"waves","resolution":"auto","aspect_ratio":"9:16","duration":10,"image":{"url":"data:image/png;base64,aW1hZ2U="}}`,
+		`{"model":"muse-video","prompt":"waves","size":"9:16","seconds":10,"input_reference":"data:image/png;base64,aW1hZ2U="}`,
 	} {
 		upstream := &httpUpstreamRecorder{resp: grokMediaContentStatusResponse(`{"id":"task_muse","status":"queued","progress":0,"created_at":123,"model":"muse-video","result":null,"error":null}`)}
 		svc := &OpenAIGatewayService{httpUpstream: upstream}
@@ -33,10 +33,10 @@ func TestMuseVideoCreateAdaptsWorkbenchAndNativeParameters(t *testing.T) {
 		require.NoError(t, err)
 		require.Equal(t, "https://muse.internal/proxy/v1/videos", upstream.lastReq.URL.String())
 		require.Equal(t, "Bearer muse-key", upstream.lastReq.Header.Get("Authorization"))
-		require.JSONEq(t, `{"model":"muse-video","prompt":"waves","size":"9:16","duration":60,"image":"data:image/png;base64,aW1hZ2U="}`, string(upstream.lastBody))
+		require.JSONEq(t, `{"model":"muse-video","prompt":"waves","size":"9:16","duration":10,"image":"data:image/png;base64,aW1hZ2U="}`, string(upstream.lastBody))
 		require.Equal(t, "task_muse", result.ResponseID)
 		require.Zero(t, result.VideoCount, "submitting a task must not charge")
-		require.Equal(t, 60, result.VideoDurationSeconds)
+		require.Equal(t, 10, result.VideoDurationSeconds)
 		require.Equal(t, "auto", result.VideoResolution)
 		require.Equal(t, "pending", gjson.Get(w.Body.String(), "status").String())
 		require.Equal(t, "task_muse", gjson.Get(w.Body.String(), "request_id").String())
@@ -46,7 +46,8 @@ func TestMuseVideoCreateAdaptsWorkbenchAndNativeParameters(t *testing.T) {
 func TestMuseVideoParameterValidation(t *testing.T) {
 	for _, body := range []string{
 		`{`, `[]`, `{}`, `{"model":"other","prompt":"waves"}`, `{"model":"muse-video","prompt":1}`,
-		`{"model":"muse-video","prompt":" "}`, `{"model":"muse-video","prompt":"waves","duration":61}`,
+		`{"model":"muse-video","prompt":" "}`, `{"model":"muse-video","prompt":"waves","duration":11}`,
+		`{"model":"muse-video","prompt":"waves","seconds":11}`,
 		`{"model":"muse-video","prompt":"waves","duration":0}`, `{"model":"muse-video","prompt":"waves","seconds":-1}`,
 		`{"model":"muse-video","prompt":"waves","duration":5.5}`, `{"model":"muse-video","prompt":"waves","duration":"5"}`,
 		`{"model":"muse-video","prompt":"waves","resolution":"4k"}`, `{"model":"muse-video","prompt":"waves","resolution":"720p"}`,
@@ -59,14 +60,14 @@ func TestMuseVideoParameterValidation(t *testing.T) {
 		_, err := ParseMuseVideoRequest([]byte(body))
 		require.Error(t, err, body)
 	}
-	info, err := ParseMuseVideoRequest([]byte(`{"model":"muse-video","prompt":"waves","duration":60,"seconds":1,"size":"1080x1920","image":"https://example.com/first.png"}`))
+	info, err := ParseMuseVideoRequest([]byte(`{"model":"muse-video","prompt":"waves","duration":10,"seconds":1,"size":"1080x1920","image":"https://example.com/first.png"}`))
 	require.NoError(t, err)
-	require.Equal(t, 60, info.DurationSeconds, "native duration takes precedence")
+	require.Equal(t, 10, info.DurationSeconds, "native duration takes precedence")
 	require.Equal(t, "1080x1920", info.AspectRatio)
 	require.True(t, info.HasInputImage())
 	require.Contains(t, string(info.ModerationBody()), "https://example.com/first.png")
-	info = ParseGrokMediaRequest("application/json", []byte(`{"model":"muse-video","prompt":"waves","seconds":60,"input_reference":"data:image/png;base64,aQ=="}`))
-	require.Equal(t, 60, info.DurationSeconds)
+	info = ParseGrokMediaRequest("application/json", []byte(`{"model":"muse-video","prompt":"waves","seconds":1,"input_reference":"data:image/png;base64,aQ=="}`))
+	require.Equal(t, 1, info.DurationSeconds)
 	require.Equal(t, "auto", info.Resolution)
 	require.True(t, info.HasInputImage())
 	info, err = ParseMuseVideoRequest([]byte(`{"model":"muse-video","prompt":"waves"}`))
@@ -86,13 +87,13 @@ func TestMuseVideoCreateAppliesChannelMappingBeforeAccountMapping(t *testing.T) 
 	require.Equal(t, "channel-video", svc.ResolveVideoStudioRoutingModel(context.Background(), &groupID, "muse-video"))
 	c, _ := grokMediaContentTestContext(http.MethodPost, "/v1/videos/generations", nil)
 	c.Set("api_key", &APIKey{GroupID: &groupID, Group: &Group{ID: groupID, Platform: PlatformOpenAI}})
-	result, err := svc.ForwardMuseVideo(context.Background(), c, account, GrokMediaEndpointVideosGenerations, "", []byte(`{"model":"muse-video","prompt":"waves","duration":60,"aspect_ratio":"16:9"}`))
+	result, err := svc.ForwardMuseVideo(context.Background(), c, account, GrokMediaEndpointVideosGenerations, "", []byte(`{"model":"muse-video","prompt":"waves","duration":10,"aspect_ratio":"16:9"}`))
 	require.NoError(t, err)
 	require.Equal(t, "sora", gjson.GetBytes(upstream.lastBody, "model").String())
 	require.Equal(t, "sora", result.UpstreamModel)
 	require.Equal(t, "muse-video", result.Model)
 	require.Equal(t, "muse-video", result.BillingModel)
-	require.Equal(t, 60, result.VideoDurationSeconds)
+	require.Equal(t, 10, result.VideoDurationSeconds)
 	require.Equal(t, "auto", result.VideoResolution)
 }
 

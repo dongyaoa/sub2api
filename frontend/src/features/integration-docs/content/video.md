@@ -78,7 +78,7 @@ curl --fail-with-body -sS "$SUB2API_BASE_URL/v1/videos" \
 | 参考视频 | 最多 3 段，用于动作/镜头参考 | 不支持 | 使用独立编辑/延长接口 | 不等同于 Omni 的 `video_references` |
 | 声音参考 | 无已适配字段 | 无已适配字段 | 官方不支持 | 官方最多 3 个声音参考，权限限制见“Grok 生成与编辑”栏目 |
 | 中间关键帧 | 无已适配字段 | 不支持 | 官方不支持 | 官方最多 4 个，依赖上游透传 |
-| 新生成时长 | 3–15 秒，默认 5 | 1–60 秒，默认 5；是期望时长 | 1–15 秒，默认 8；参考图模式最多 10 秒 | 1–15 秒，默认 8 |
+| 新生成时长 | 3–15 秒，默认 5 | 期望时长 1–10 秒，默认 5 | 1–15 秒，默认 8；参考图模式最多 10 秒 | 1–15 秒，默认 8 |
 | 分辨率 | 360p / 720p / 1080p / 4K | 模型决定，`auto` | 480p / 720p | 文/单图最高原生 1080p；参考模式最高 720p |
 | 视频编辑/延长 | 不支持独立端点 | 不支持 | 官方支持，本平台有路由 | 官方不支持 |
 | 随机种子 | 已有适配 | 不支持 | 当前官方生成参数未列出 | 当前官方生成参数未列出 |
@@ -296,6 +296,8 @@ Muse 的分辨率档位键为 `auto`。Omni 只配置部分分辨率时，未配
 
 ## Muse 视频参数
 
+文生视频和首帧图生视频的**期望时长最长为 10 秒**。`duration` 或 `seconds` 填写 1–10 之间的整数，两个字段都省略时默认 5 秒。实际成片时长以生成的视频文件为准。
+
 ### JSON 字段总表
 
 文生视频与图生视频使用同一个 POST 接口。除下表外，没有其他已经接通的 Muse 视频生成参数。
@@ -304,8 +306,8 @@ Muse 的分辨率档位键为 `auto`。Omni 只配置部分分辨率时，未配
 | --- | --- | --- | --- | --- |
 | `model` | string | 是 | 不允许省略 | 使用 `muse-video`。本站识别时去除首尾空白、不区分大小写，建议固定小写 |
 | `prompt` | string | 是 | 不允许省略 | 非空提示词；去除首尾空白后仍须有内容。文生视频、图生视频都必填。无单独公开的字符上限，仍受请求体大小和上游限制 |
-| `duration` | integer | 否 | 与 `seconds` 均未提供时为 `5` | **1–60**，单位秒，表示期望时长；必须传 JSON 数字，不支持 `"10"`、`2.5`、`0`、`61` |
-| `seconds` | integer | 否 | 使用 `duration` 或默认 5 秒 | `duration` 的兼容别名，范围同为 1–60；同时提供时 `duration` 优先 |
+| `duration` | integer | 否 | 与 `seconds` 均未提供时为 `5` | **1–10**，单位秒，表示期望时长。必须传 JSON 数字，不支持 `"10"`、`2.5`、`0`、`11` |
+| `seconds` | integer | 否 | 使用 `duration` 或默认 5 秒 | `duration` 的兼容别名，范围同为 1–10，同时提供时 `duration` 优先 |
 | `aspect_ratio` | string | 否 | 不发送画幅提示，由上游决定 | 本站统一字段；推荐七种常用比例。最终采用的画幅字符串最多 16 个 Unicode 字符 |
 | `size` | string | 否 | 回退 `aspect_ratio` | 上游原生画幅提示字段，优先于 `aspect_ratio`；建议填比例。不是可靠的输出分辨率开关 |
 | `resolution` | string | 否 | 自动决定 | 仅支持 `"auto"`；可省略。固定分辨率如 `"720p"`、`"1080p"`、`"4k"` 会被拒绝 |
@@ -395,7 +397,7 @@ Muse 的分辨率档位键为 `auto`。Omni 只配置部分分辨率时，未配
 
 该请求使用本站默认期望时长 5 秒，不指定画幅或固定分辨率。
 
-#### 显式指定参数
+#### 请求 10 秒的文生视频
 
 ```bash
 curl --fail-with-body "$SUB2API_BASE_URL/v1/videos/generations" \
@@ -434,7 +436,7 @@ curl --fail-with-body "$SUB2API_BASE_URL/v1/videos/generations" \
 {
   "model": "muse-video",
   "prompt": "让画面中的小船缓缓前进，水面出现自然涟漪。",
-  "seconds": 15,
+  "seconds": 10,
   "size": "16:9",
   "input_reference": "https://your-public-cdn.example/boat.png"
 }
@@ -1058,6 +1060,7 @@ Windows PowerShell 设置环境变量时使用 `$env:SUB2API_API_KEY="…"`、`$
 | HTTP / 类型 | 常见原因 | 处理 |
 | --- | --- | --- |
 | 400 `invalid_request_error` | 时长越界、缺 prompt、尺寸冲突、首尾帧与参考模式混用 | 按对应模型参数表修正 |
+| 400 `duration must be an integer from 1 to 10` 或 `seconds must be an integer from 1 to 10` | Muse 请求的时长超出 1–10 秒，或字段类型有误 | 将对应字段改为 JSON 整数，例如 `"duration": 10`，再提交任务 |
 | 400 `api_key_in_query_deprecated` | 把 Key 放在查询参数中 | 改为 Bearer 请求头 |
 | 401 | Key 缺失、无效或被停用 | 检查请求头和 Key 状态 |
 | 403 `permission_error` | 分组无媒体权限、模型不在允许列表 | 检查 Key 所属分组及模型权限 |

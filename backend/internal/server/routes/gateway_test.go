@@ -373,7 +373,7 @@ func TestGatewayRoutesUnsupportedPlatformVideosAreRejectedAtPlatformGate(t *test
 func TestGatewayRoutesOpenAIVideoLifecycleAllowed(t *testing.T) {
 	router := newGatewayRoutesTestRouter(service.PlatformOpenAI)
 	for _, tc := range []struct{ method, path, body string }{
-		{http.MethodPost, "/v1/videos", `{"model":"muse-video","prompt":"waves","duration":60,"size":"16:9"}`},
+		{http.MethodPost, "/v1/videos", `{"model":"muse-video","prompt":"waves","duration":10,"size":"16:9"}`},
 		{http.MethodPost, "/v1/videos/generations", `{"model":"muse-video","prompt":"waves"}`},
 		{http.MethodPost, "/videos", `{"model":"muse-video","prompt":"waves"}`},
 		{http.MethodPost, "/videos/generations", `{"model":"muse-video","prompt":"waves"}`},

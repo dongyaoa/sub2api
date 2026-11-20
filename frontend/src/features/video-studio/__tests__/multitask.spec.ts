@@ -178,9 +178,12 @@ describe('video studio independent tasks', () => {
     } finally { wrapper.unmount() }
   })
 
-  it('submits Muse at 60 seconds and displays per-request pricing without resolution claims', async () => {
+  it('caps reused Muse durations at 10 seconds and submits with per-request pricing', async () => {
     api.listKeys.mockResolvedValue([{ ...keys[0], group: { ...keys[0]!.group, platform: 'openai', name: 'Muse' } }])
     api.listModels.mockResolvedValue({ data: [{ id: 'muse-video' }] })
+    api.listTasks.mockResolvedValue({ tasks: [{ id: 'old-muse', status: 'failed', metadata: {
+      operation: 'text', model: 'muse-video', prompt: 'muse-long-video', duration: 60, aspect_ratio: '16:9',
+    } }], retentionDays: 7, persistentHistory: true })
     api.getPricing.mockResolvedValue({
       model: 'muse-video', billing_mode: 'per_request', pricing_source: 'group', rate_multiplier: 1,
       tiers: { auto: { base_price: 0.75, unit_price: 0.75, configured: true } },
@@ -188,17 +191,20 @@ describe('video studio independent tasks', () => {
     const wrapper = mountStudio()
     try {
       await flushPromises()
-      expect(wrapper.find('#video-studio-duration').attributes('max')).toBe('60')
+      expect(wrapper.find('#video-studio-duration').attributes('max')).toBe('10')
       expect(wrapper.text()).toContain('videoStudio.pricingPerRequest')
       expect(wrapper.text()).toContain('$0.75videoStudio.perRequest')
       expect(wrapper.text()).not.toContain('1080p')
-      await wrapper.find('#video-studio-duration').setValue('60')
-      await wrapper.find('#video-studio-prompt').setValue('muse-long-video')
+      await wrapper.find('button[title="muse-long-video"]').trigger('click')
+      await flushPromises()
+      await wrapper.findAll('button').find(button => button.text().includes('videoStudio.reuseParameters'))!.trigger('click')
+      await flushPromises()
+      expect((wrapper.find('#video-studio-duration').element as HTMLInputElement).value).toBe('10')
       expect(wrapper.text()).toContain('videoStudio.estimate $0.75')
       await wrapper.find('form').trigger('submit')
       await flushPromises()
       expect(api.submitTask).toHaveBeenCalledWith('key-1', {
-        model: 'muse-video', prompt: 'muse-long-video', resolution: 'auto', aspect_ratio: '16:9', duration: 60,
+        model: 'muse-video', prompt: 'muse-long-video', resolution: 'auto', aspect_ratio: '16:9', duration: 10,
       }, expect.any(AbortSignal))
     } finally { wrapper.unmount() }
   })

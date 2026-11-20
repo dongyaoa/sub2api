@@ -34,7 +34,7 @@ func NormalizeVideoBillingDurationSecondsOrDefault(durationSeconds int) int {
 }
 
 // NormalizeVideoBillingDurationForModelOrDefault keeps provider limits separate.
-// Muse accepts a requested duration of 1-60 seconds (a generation hint).
+// Historical Muse tasks can carry a requested duration of up to 60 seconds.
 func NormalizeVideoBillingDurationForModelOrDefault(model string, durationSeconds int) int {
 	if IsGeminiOmniVideoModel(model) {
 		if durationSeconds <= 0 {

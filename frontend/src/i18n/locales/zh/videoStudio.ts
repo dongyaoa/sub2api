@@ -56,7 +56,7 @@ export default {
     resolution: '分辨率',
     aspectRatio: '画幅比例',
     resolutionAuto: '由模型决定',
-    museParametersHint: 'Muse 支持文生视频和单张首帧图生视频。时长可请求 1–60 秒，时长和画幅比例为生成偏好，实际结果由模型决定；暂不支持指定分辨率或 4K。',
+    museParametersHint: 'Muse 支持文生视频和单张首帧图生视频。可选时长为 1–10 秒，实际时长和画幅由模型决定。暂不支持指定分辨率或 4K。',
     pricing: '当前分组价格',
     pricingPerRequest: '当前分组价格 / 次',
     pricingPerSecond: '当前分组价格 / 秒',
