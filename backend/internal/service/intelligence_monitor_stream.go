@@ -57,10 +57,19 @@ func readIntelligenceGenerationBody(body io.Reader, mode, contentType, key strin
 
 func readIntelligenceEventStream(body io.Reader, mode, key string, waitForChatDone bool) (string, string) {
 	limited := &io.LimitedReader{R: body, N: intelligenceResponseMaxBytes + 1}
+	text, _, message := readMonitorEventStream(limited, mode, key, waitForChatDone)
+	if limited.N <= 0 {
+		return "", "generation response exceeded the 4 MiB limit"
+	}
+	return text, message
+}
+
+// The terminal Responses object carries the token counts used for upstream probe billing.
+func readMonitorEventStream(limited *io.LimitedReader, mode, key string, waitForChatDone bool) (final, responseJSON, message string) {
 	scanner := bufio.NewScanner(limited)
-	scanner.Buffer(make([]byte, 4096), intelligenceResponseMaxBytes+1)
+	scanner.Buffer(make([]byte, 4096), int(limited.N))
 	var deltas, data strings.Builder
-	final, message, eventName := "", "", ""
+	eventName := ""
 	terminal := false
 	chatFinished := false
 	var anthropic intelligenceAnthropicStream
@@ -107,15 +116,17 @@ func readIntelligenceEventStream(body io.Reader, mode, key string, waitForChatDo
 		case "response.completed", "response.done":
 			terminal = true
 			response := parsed.Get("response")
-			final = extractOpenAIResponsesText([]byte(response.Raw))
+			responseJSON = response.Raw
+			final = extractOpenAIResponsesText([]byte(responseJSON))
 			status := response.Get("status").String()
 			failure := response.Get("error")
 			if (status != "" && status != "completed") || (failure.Exists() && failure.Type != gjson.Null) {
 				message = intelligenceGenerationEventError("model generation failed or returned an incomplete result", []byte(value), key)
 			}
-		case "response.failed", "response.incomplete", "response.cancelled", "error":
+		case "response.failed", "response.incomplete", "response.cancelled", "response.canceled", "error":
 			terminal = true
-			final = extractOpenAIResponsesText([]byte(parsed.Get("response").Raw))
+			responseJSON = parsed.Get("response").Raw
+			final = extractOpenAIResponsesText([]byte(responseJSON))
 			message = intelligenceGenerationEventError("model generation failed or returned an incomplete result", []byte(value), key)
 		default:
 			if mode == MonitorAPIModeChatCompletions {
@@ -161,9 +172,6 @@ func readIntelligenceEventStream(body io.Reader, mode, key string, waitForChatDo
 	if !terminal && scanner.Err() == nil {
 		consume()
 	}
-	if limited.N <= 0 {
-		return "", "generation response exceeded the 4 MiB limit"
-	}
 	if !terminal {
 		message = "generation stream ended before completion"
 		if scanner.Err() != nil {
@@ -176,5 +184,5 @@ func readIntelligenceEventStream(body io.Reader, mode, key string, waitForChatDo
 	if final == "" && message == "" {
 		message = "model returned no text"
 	}
-	return final, message
+	return final, responseJSON, message
 }

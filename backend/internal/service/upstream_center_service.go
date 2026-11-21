@@ -47,7 +47,10 @@ func NewUpstreamCenterService(repo UpstreamCenterRepository, encryptor SecretEnc
 	return &UpstreamCenterService{repo: repo, encryptor: encryptor, accounts: accountRepo, finance: financeSvc, ctx: ctx, cancel: cancel, slots: make(chan struct{}, 5), modelsClient: newSSRFSafeHTTPClient(15 * time.Second), probeClient: newUpstreamProbeHTTPClient(), checkModel: runCheckForModel}
 }
 
-const upstreamProbeMaxTimeout = 45 * time.Second
+const (
+	upstreamProbeMaxTimeout        = 45 * time.Second
+	upstreamAPIModeResponsesStream = "responses_stream"
+)
 
 func newUpstreamProbeHTTPClient() *http.Client {
 	// The target context sets the actual 5-45s budget. The shared upstream
@@ -448,6 +451,14 @@ func applyUpstreamString(dst *string, src *string) {
 		*dst = strings.TrimSpace(*src)
 	}
 }
+
+func (t *UpstreamTarget) probeOptions() CheckOptions {
+	if t.APIMode == upstreamAPIModeResponsesStream {
+		return CheckOptions{APIMode: MonitorAPIModeResponses, StreamResponses: true}
+	}
+	return CheckOptions{APIMode: t.APIMode}
+}
+
 func validateUpstreamTargetConfig(t *UpstreamTarget, key string, validateNetwork bool) error {
 	t.APIMode = defaultAPIMode(t.APIMode)
 	if t.Name == "" || utf8.RuneCountInString(t.Name) > 100 || len(t.Endpoint) > 500 || len(t.Notes) > 4000 || len(t.WalletRef) > 100 || len(t.AccountIDs) > 100 {
@@ -459,7 +470,7 @@ func validateUpstreamTargetConfig(t *UpstreamTarget, key string, validateNetwork
 	if t.Provider != MonitorProviderOpenAI && t.Provider != MonitorProviderAnthropic && t.Provider != MonitorProviderGemini {
 		return ErrChannelMonitorInvalidProvider
 	}
-	if err := validateAPIMode(t.Provider, t.APIMode); err != nil {
+	if err := validateAPIMode(t.Provider, t.probeOptions().APIMode); err != nil {
 		return err
 	}
 	if t.IntervalSeconds < 30 || t.IntervalSeconds > 3600 || t.TimeoutSeconds < 5 || t.TimeoutSeconds > 45 || t.DegradedThresholdMs < 100 || t.DegradedThresholdMs > 45000 {
@@ -572,6 +583,8 @@ func (s *UpstreamCenterService) runCheck(ctx context.Context, id int64, manual b
 			defer proxyClient.CloseIdleConnections()
 		}
 	}
+	opts := t.probeOptions()
+	opts.HTTPClient = upstreamRequestClient(requestCtx, s.probeClient)
 	entries := make([]*UpstreamHistoryRecord, 0, len(t.Models))
 	for _, model := range t.Models {
 		var result *CheckResult
@@ -581,7 +594,7 @@ func (s *UpstreamCenterService) runCheck(ctx context.Context, id int64, manual b
 			result = &CheckResult{Model: model, Status: MonitorStatusError, Message: upstreamProxyErrorCode(routeErr), CheckedAt: time.Now()}
 		} else {
 			probeCtx, cancel := context.WithTimeout(requestCtx, time.Duration(t.TimeoutSeconds)*time.Second)
-			result = s.checkModel(probeCtx, t.Provider, t.Endpoint, key, model, &CheckOptions{APIMode: t.APIMode, HTTPClient: upstreamRequestClient(requestCtx, s.probeClient)})
+			result = s.checkModel(probeCtx, t.Provider, t.Endpoint, key, model, &opts)
 			cancel()
 			if result.Status == MonitorStatusOperational || result.Status == MonitorStatusDegraded {
 				result.Status = MonitorStatusOperational

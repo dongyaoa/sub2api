@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"net/http"
 	"net/url"
 	"regexp"
@@ -58,6 +59,8 @@ type CheckOptions struct {
 	HTTPClient *http.Client
 	// APIMode 仅对 OpenAI provider 生效；空串等同 chat_completions。
 	APIMode string
+	// StreamResponses requests SSE for an upstream-center OpenAI Responses probe.
+	StreamResponses bool
 	// ExtraHeaders 用户自定义 HTTP 头（merge 到 adapter 默认 headers，用户优先）。
 	ExtraHeaders map[string]string
 	// BodyOverrideMode: off | merge | replace
@@ -267,28 +270,28 @@ func newOpenAICompatibleChatAdapter(path string) providerAdapter {
 	}
 }
 
-//nolint:gochecknoglobals // 适配器表是只读静态数据，初始化后不变更。
-var providerOpenAIResponsesAdapter = providerAdapter{
-	buildPath: func(string) string { return providerOpenAIResponsesPath },
-	buildBody: func(model, prompt string) ([]byte, error) {
-		return json.Marshal(map[string]any{
-			"model":             model,
-			"instructions":      "You are a channel health-check endpoint. Answer the arithmetic challenge exactly and briefly.",
-			"input":             prompt,
-			"max_output_tokens": monitorChallengeMaxTokens,
-			"stream":            false,
-		})
-	},
-	buildHeaders: func(apiKey string) map[string]string {
-		return map[string]string{"Authorization": "Bearer " + apiKey}
-	},
-	textPath: "output.0.content.0.text",
+func openAIResponsesMonitorAdapter(stream bool) providerAdapter {
+	return providerAdapter{
+		buildPath: func(string) string { return providerOpenAIResponsesPath },
+		buildBody: func(model, prompt string) ([]byte, error) {
+			return json.Marshal(map[string]any{
+				"model":             model,
+				"instructions":      "You are a channel health-check endpoint. Answer the arithmetic challenge exactly and briefly.",
+				"input":             prompt,
+				"max_output_tokens": monitorChallengeMaxTokens,
+				"stream":            stream,
+			})
+		},
+		buildHeaders: func(apiKey string) map[string]string {
+			return map[string]string{"Authorization": "Bearer " + apiKey}
+		},
+	}
 }
 
 // providerAdapterFor 按 provider + api_mode 选择具体 adapter。
-func providerAdapterFor(provider, apiMode string) (providerAdapter, string, bool) {
+func providerAdapterFor(provider, apiMode string, streamResponses bool) (providerAdapter, string, bool) {
 	if provider == MonitorProviderOpenAI && defaultAPIMode(apiMode) == MonitorAPIModeResponses {
-		return providerOpenAIResponsesAdapter, MonitorAPIModeResponses, true
+		return openAIResponsesMonitorAdapter(streamResponses), MonitorAPIModeResponses, true
 	}
 	adapter, ok := providerAdapters[provider]
 	return adapter, MonitorAPIModeChatCompletions, ok
@@ -307,7 +310,8 @@ func callProvider(ctx context.Context, provider, endpoint, apiKey, model, prompt
 	if err := validateAPIMode(provider, requestedAPIMode); err != nil {
 		return "", "", 0, err
 	}
-	adapter, apiMode, ok := providerAdapterFor(provider, requestedAPIMode)
+	streamResponses := opts != nil && opts.StreamResponses && provider == MonitorProviderOpenAI && requestedAPIMode == MonitorAPIModeResponses
+	adapter, apiMode, ok := providerAdapterFor(provider, requestedAPIMode, streamResponses)
 	if !ok {
 		return "", "", 0, fmt.Errorf("unsupported provider %q", provider)
 	}
@@ -316,19 +320,48 @@ func callProvider(ctx context.Context, provider, endpoint, apiKey, model, prompt
 		return "", "", 0, err
 	}
 	headers := mergeHeaders(adapter.buildHeaders(apiKey), opts)
+	if streamResponses {
+		headers["Accept"] = "text/event-stream"
+	}
 	full := joinURL(endpoint, monitorRequestPath(provider, endpoint, adapter, model))
 	client := monitorHTTPClient
 	if opts != nil && opts.HTTPClient != nil {
 		client = opts.HTTPClient
 	}
-	respBytes, status, err := postRawJSONWithClient(ctx, client, full, body, headers)
+	resp, err := postMonitorRequest(ctx, client, full, body, headers)
 	if err != nil {
-		return "", "", status, err
+		return "", "", 0, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	status = resp.StatusCode
+	if streamResponses && status >= 200 && status < 300 {
+		text, raw, err := readResponsesMonitorStream(resp, apiKey)
+		return text, raw, status, err
+	}
+	respBytes, err := io.ReadAll(io.LimitReader(resp.Body, monitorResponseMaxBytes))
+	if err != nil {
+		return "", "", status, fmt.Errorf("read body: %w", err)
 	}
 	if provider == MonitorProviderOpenAI && apiMode == MonitorAPIModeResponses {
 		return extractOpenAIResponsesText(respBytes), string(respBytes), status, nil
 	}
 	return extractMonitorResponseText(adapter, respBytes), string(respBytes), status, nil
+}
+
+func readResponsesMonitorStream(resp *http.Response, apiKey string) (string, string, error) {
+	mediaType, _, _ := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+	if mediaType != "text/event-stream" {
+		return "", "", errors.New("Responses stream expected Content-Type text/event-stream")
+	}
+	limited := &io.LimitedReader{R: resp.Body, N: monitorResponseMaxBytes + 1}
+	text, responseJSON, message := readMonitorEventStream(limited, MonitorAPIModeResponses, apiKey, false)
+	if limited.N <= 0 {
+		return "", "", fmt.Errorf("Responses stream exceeded %d bytes", monitorResponseMaxBytes)
+	}
+	if message != "" {
+		return "", responseJSON, errors.New(message)
+	}
+	return text, responseJSON, nil
 }
 
 func extractMonitorResponseText(adapter providerAdapter, respBytes []byte) string {
@@ -397,7 +430,7 @@ func extractOpenAIResponsesText(respBytes []byte) string {
 	if len(texts) > 0 {
 		return strings.Join(texts, "")
 	}
-	return gjson.GetBytes(respBytes, providerOpenAIResponsesAdapter.textPath).String()
+	return gjson.GetBytes(respBytes, "output.0.content.0.text").String()
 }
 
 // mergeHeaders 把用户自定义 headers 合并到 adapter 默认 headers 上。
@@ -426,7 +459,7 @@ func mergeHeaders(base map[string]string, opts *CheckOptions) map[string]string 
 //     bodyMergeKeyDenyList[provider] 的 key 会被静默丢弃，避免破坏 challenge / model 路由
 //   - replace: 直接 marshal BodyOverride 作为完整 body
 //
-// 任何 mode 返回的 []byte 都已经是合法 JSON，可直接送入 postRawJSONWithClient。
+// 任何 mode 返回的 []byte 都已经是合法 JSON，可直接送入 postMonitorRequest。
 func buildRequestBody(adapter providerAdapter, provider, apiMode, model, prompt string, opts *CheckOptions) ([]byte, error) {
 	mode := bodyOverrideMode(opts)
 
@@ -553,12 +586,10 @@ func hasNonEmptyBodyValue(v any) bool {
 	}
 }
 
-// postRawJSONWithClient 发送 POST + 已序列化好的 JSON 字节，限制响应体大小，返回响应字节、HTTP status、错误。
-// adapter 自行 marshal 是为了精确控制字段顺序与类型，所以这里直接收 []byte 而不是 any。
-func postRawJSONWithClient(ctx context.Context, client *http.Client, fullURL string, payload []byte, headers map[string]string) ([]byte, int, error) {
+func postMonitorRequest(ctx context.Context, client *http.Client, fullURL string, payload []byte, headers map[string]string) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, fullURL, bytes.NewReader(payload))
 	if err != nil {
-		return nil, 0, fmt.Errorf("build request: %w", err)
+		return nil, fmt.Errorf("build request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
@@ -568,15 +599,9 @@ func postRawJSONWithClient(ctx context.Context, client *http.Client, fullURL str
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return nil, 0, fmt.Errorf("do request: %w", err)
+		return nil, fmt.Errorf("do request: %w", err)
 	}
-	defer func() { _ = resp.Body.Close() }()
-
-	respBody, err := io.ReadAll(io.LimitReader(resp.Body, monitorResponseMaxBytes))
-	if err != nil {
-		return nil, resp.StatusCode, fmt.Errorf("read body: %w", err)
-	}
-	return respBody, resp.StatusCode, nil
+	return resp, nil
 }
 
 // monitorRequestPath 返回探测请求路径。智谱按 endpoint 区分：

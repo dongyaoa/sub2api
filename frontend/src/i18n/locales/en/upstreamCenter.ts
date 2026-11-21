@@ -1,5 +1,6 @@
 export default {
   upstreamCenter: {
+    responsesStreaming: 'Responses (streaming)',
     accountProxyHint: 'Checks, model discovery, usage and balance synchronization automatically use the linked account’s current egress proxy. No duplicate setup is needed.',
     totalFinance: {
       basis: 'Total profit = local charges today − synced upstream usage today, updated as data arrives.',

@@ -88,11 +88,16 @@ const providerOptions = computed(() => [
   { value: 'anthropic', label: t('upstreamCenter.form.providerAnthropic') },
   { value: 'gemini', label: t('upstreamCenter.form.providerGemini') }
 ])
-const apiModeOptions = [{ value: 'chat_completions', label: 'Chat Completions' }, { value: 'responses', label: 'Responses' }]
+const apiModeOptions = computed(() => [
+  { value: 'chat_completions', label: 'Chat Completions' },
+  { value: 'responses', label: 'Responses' },
+  { value: 'responses_stream', label: t('upstreamCenter.responsesStreaming') }
+])
 const title = computed(() => t(props.target ? props.supplier ? 'upstreamCenter.editGroup' : 'upstreamCenter.editMonitor' : props.supplier ? 'upstreamCenter.addGroup' : 'upstreamCenter.addMonitor'))
 const defaults = (): UpstreamTargetInput => ({ supplier_id: props.supplier?.id || null, name: '', provider: 'openai', api_mode: 'chat_completions', endpoint: props.supplier?.website || '', api_key: '', newapi_user_id: undefined, newapi_access_token: '', models: [defaultUpstreamMonitorModel('openai')], enabled: true, interval_seconds: DEFAULT_UPSTREAM_MONITOR_INTERVAL, timeout_seconds: 45, degraded_threshold_ms: 6000, account_ids: [], wallet_ref: 'default', notes: '' })
 const form = reactive<UpstreamTargetInput>(defaults())
 watch(() => form.provider, (provider, previous) => {
+  if (provider !== 'openai') form.api_mode = 'chat_completions'
   if (!props.target && form.models.length === 1 && form.models[0] === defaultUpstreamMonitorModel(previous)) {
     form.models = [defaultUpstreamMonitorModel(provider)]
   }
@@ -208,7 +213,6 @@ async function importAccount() {
     clearSourceTarget()
     if (!props.supplier || !form.account_ids.length) {
       if (['openai', 'anthropic', 'gemini'].includes(account.platform)) {
-        if (form.provider !== provider) form.api_mode = 'chat_completions'
         form.provider = provider
         form.endpoint = endpoint
       }

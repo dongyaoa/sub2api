@@ -1,5 +1,6 @@
 export default {
   upstreamCenter: {
+    responsesStreaming: 'Responses（流式）',
     accountProxyHint: '监测、模型获取及消费与余额同步会自动使用绑定账号当前的出口代理，无需重复配置。',
     totalFinance: {
       basis: '总利润 = 今日用户消费合计 − 已同步的今日上游消费合计，随同步数据更新。',

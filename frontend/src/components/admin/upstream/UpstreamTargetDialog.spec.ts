@@ -68,15 +68,15 @@ describe('HTTP upstream endpoints', () => {
 })
 
 describe('monitor sources from existing upstream groups', () => {
-  const sources = () => [{ ...supplier, newapi_access_token_configured: true, targets: [target()] }]
-  it('fills the selected group without copying account bindings or requiring console credentials', async () => {
-    const view = render(null, true, null, false, sources())
+  const sources = (api_mode: UpstreamTarget['api_mode'] = 'responses') => [{ ...supplier, newapi_access_token_configured: true, targets: [{ ...target(), api_mode }] }]
+  it.each(['responses', 'responses_stream'] as const)('reuses a %s group without copying account bindings or requiring console credentials', async api_mode => {
+    const view = render(null, true, null, false, sources(api_mode))
     await flushPromises()
     view.getComponent(ModelTagInput).vm.$emit('update:models', ['custom-monitor-model'])
     await view.get('#target-interval').setValue('90')
     await view.get('#monitor-source-group').setValue('9')
     expect((view.get('#target-endpoint').element as HTMLInputElement).value).toBe('https://example.com')
-    expect((view.get('#target-api-mode').element as HTMLSelectElement).value).toBe('responses')
+    expect((view.get('#target-api-mode').element as HTMLSelectElement).value).toBe(api_mode)
     expect(view.get('#target-key').attributes('required')).toBeUndefined()
     expect(view.find('[data-testid="newapi-authorization"]').exists()).toBe(false)
     expect(view.get('[data-testid="newapi-group-inheritance"]').text()).toBe('upstreamCenter.groupSource.authorizationHint')
@@ -84,7 +84,7 @@ describe('monitor sources from existing upstream groups', () => {
     await flushPromises()
     expect(mocks.models).toHaveBeenCalledWith(expect.objectContaining({ source_target_id: 9, target_id: undefined, account_id: undefined, api_key: undefined, endpoint: 'https://example.com' }))
     await view.get('form').trigger('submit'); await flushPromises()
-    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ name: 'Existing group', supplier_id: null, account_ids: [], source_target_id: 9, source_account_id: undefined, newapi_user_id: undefined, newapi_access_token: undefined, api_key: undefined, models: ['custom-monitor-model'], interval_seconds: 90 }))
+    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ name: 'Existing group', api_mode, supplier_id: null, account_ids: [], source_target_id: 9, source_account_id: undefined, newapi_user_id: undefined, newapi_access_token: undefined, api_key: undefined, models: ['custom-monitor-model'], interval_seconds: 90 }))
   })
   it('retains an existing source on name edits, and explicitly clears it when removed', async () => {
     const monitor = { ...target(), id: 30, supplier_id: null, account_ids: [], source_target_id: 9, newapi_access_token_configured: true }
@@ -531,22 +531,25 @@ describe('upstream target credentials and form lifecycle', () => {
     expect(item.models).toEqual(['gpt-4o-mini', 'gpt-4o'])
     expect(view.emitted('saved')).toHaveLength(1)
   })
-  it('hydrates saved selection and collapses the protocol picker while retaining a blank-key update', async () => {
-    const view = render(target(), false, supplier, true)
+  it.each([
+    ['responses', 'Responses', 'responses_stream', 'upstreamCenter.responsesStreaming'],
+    ['responses_stream', 'upstreamCenter.responsesStreaming', 'chat_completions', 'Chat Completions'],
+  ] as const)('hydrates %s and saves the new protocol while retaining a blank key', async (savedMode, savedLabel, newMode, newLabel) => {
+    const view = render({ ...target(), api_mode: savedMode }, false, supplier, true)
     await flushPromises()
     expect((view.get('#target-name').element as HTMLInputElement).value).toBe('Existing group')
     expect((view.get('#target-key').element as HTMLInputElement).value).toBe('')
     expect(view.find('select').exists()).toBe(false)
-    expect(view.get('#target-api-mode').text()).toContain('Responses')
+    expect(view.get('#target-api-mode').text()).toContain(savedLabel)
     await view.get('#target-api-mode').trigger('click')
     await flushPromises()
     expect(document.body.querySelector('.select-search-input')).toBeNull()
     await view.get('#target-api-mode').trigger('click')
-    await chooseOption(view, '#target-api-mode', 'Chat Completions')
-    expect(view.get('#target-api-mode').text()).toContain('Chat Completions')
+    await chooseOption(view, '#target-api-mode', newLabel)
+    expect(view.get('#target-api-mode').text()).toContain(newLabel)
     await view.get('form').trigger('submit')
     await flushPromises()
-    expect(mocks.update).toHaveBeenCalledWith(9, expect.objectContaining({ api_key: undefined, account_ids: [7], models: ['gpt-test'], api_mode: 'chat_completions' }))
+    expect(mocks.update).toHaveBeenCalledWith(9, expect.objectContaining({ api_key: undefined, account_ids: [7], models: ['gpt-test'], api_mode: newMode }))
     expect(view.emitted('saved')).toHaveLength(1)
     expect(view.emitted('close')).toHaveLength(1)
   })

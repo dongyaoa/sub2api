@@ -110,7 +110,7 @@ export interface UpstreamTargetInput {
   supplier_id: number | null
   name: string
   provider: UpstreamProvider
-  api_mode: 'chat_completions' | 'responses'
+  api_mode: 'chat_completions' | 'responses' | 'responses_stream'
   endpoint: string
   api_key?: string
   newapi_user_id?: number

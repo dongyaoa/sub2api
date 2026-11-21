@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -111,6 +112,49 @@ func TestUpstreamThirtySecondIntervalBounds(t *testing.T) {
 			require.NoError(t, err)
 		}
 	}
+}
+
+func TestUpstreamResponsesStreamProbe(t *testing.T) {
+	target := validUpstreamTestTarget()
+	target.Provider = MonitorProviderOpenAI
+	supplierID := int64(2)
+	target.SupplierID = &supplierID
+	repo := &upstreamTestRepo{target: target}
+	svc := NewUpstreamCenterService(repo, upstreamTestEncryptor{}, nil, nil)
+	mode := upstreamAPIModeResponsesStream
+	saved, err := svc.SaveTarget(context.Background(), target.ID, UpstreamTargetInput{APIMode: &mode})
+	require.NoError(t, err)
+	require.Equal(t, mode, saved.APIMode)
+	repo.target = repo.saved
+
+	svc.probeClient = &http.Client{Transport: upstreamModelsTransport(func(req *http.Request) (*http.Response, error) {
+		defer func() { _ = req.Body.Close() }()
+		var payload map[string]any
+		require.NoError(t, json.NewDecoder(req.Body).Decode(&payload))
+		require.Equal(t, "/v1/responses", req.URL.Path)
+		require.Equal(t, true, payload["stream"])
+		stream := fmt.Sprintf("data: {\"type\":\"response.output_text.delta\",\"delta\":%q}\n\n", answerFromOpenAIRequest(payload))
+		if repo.manual {
+			stream += `data: {"type":"response.completed","response":{"status":"completed"}}` + "\n\n"
+		}
+		return &http.Response{StatusCode: http.StatusOK, Header: http.Header{"Content-Type": {"text/event-stream"}}, Body: io.NopCloser(strings.NewReader(stream))}, nil
+	})}
+
+	records, err := svc.RunCheck(context.Background(), target.ID)
+	require.NoError(t, err)
+	require.Len(t, records, 1)
+	require.Equal(t, MonitorStatusOperational, records[0].Status, records[0].Message)
+
+	records, err = svc.runCheck(context.Background(), target.ID, false)
+	require.NoError(t, err)
+	require.Len(t, records, 1)
+	require.Equal(t, MonitorStatusError, records[0].Status)
+}
+
+func TestUpstreamResponsesStreamRequiresOpenAI(t *testing.T) {
+	target := validUpstreamTestTarget()
+	target.APIMode = upstreamAPIModeResponsesStream
+	require.ErrorIs(t, validateUpstreamTargetConfig(target, "test-key", false), ErrChannelMonitorInvalidAPIMode)
 }
 
 func TestUpstreamBlankKeyUpdatePreservesCiphertextAndRedactsJSON(t *testing.T) {
