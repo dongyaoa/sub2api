@@ -122,7 +122,7 @@ func (s *OpenAIGatewayService) ForwardAudioSpeech(
 	if userAgent := account.GetOpenAIUserAgent(); userAgent != "" {
 		req.Header.Set("User-Agent", userAgent)
 	}
-	account.ApplyHeaderOverrides(req.Header)
+	account.ApplyHeaderOverrides(req.Context(), req.Header)
 	proxyURL := ""
 	if account.ProxyID != nil && account.Proxy != nil {
 		proxyURL = account.Proxy.URL()

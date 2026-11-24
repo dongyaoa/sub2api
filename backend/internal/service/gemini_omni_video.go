@@ -439,7 +439,7 @@ func (s *OpenAIGatewayService) ForwardGeminiOmniVideo(ctx context.Context, c *gi
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
-	account.ApplyHeaderOverrides(req.Header)
+	account.ApplyHeaderOverrides(req.Context(), req.Header)
 	proxy := ""
 	if account.ProxyID != nil && account.Proxy != nil {
 		proxy = account.Proxy.URL()
@@ -501,7 +501,7 @@ func (s *OpenAIGatewayService) forwardGeminiOmniVideoContent(ctx context.Context
 	// never follow provider-returned URLs or forward the client's Range header.
 	req.Header.Set("Authorization", "Bearer "+token)
 	req.Header.Set("Accept", "video/*,application/octet-stream;q=0.8")
-	account.ApplyHeaderOverrides(req.Header)
+	account.ApplyHeaderOverrides(req.Context(), req.Header)
 	resp, err := s.httpUpstream.Do(req, proxy, account.ID, account.Concurrency)
 	if err != nil {
 		return err
