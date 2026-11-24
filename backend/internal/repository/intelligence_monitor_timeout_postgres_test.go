@@ -132,8 +132,22 @@ func TestIntelligenceMonitorPostgresCreationDefaultsPreserveExistingPlansAndRuns
 		require.JSONEq(t, beforePlan, afterPlan)
 		require.JSONEq(t, beforeRun, afterRun)
 	}
-	var interval, timeout int
-	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO intelligence_monitor_plans(name,source_type,created_by) VALUES('New plan','external',1) RETURNING interval_seconds,timeout_seconds`).Scan(&interval, &timeout))
+	var oldDefaultPlanID int64
+	var interval, timeout, candy int
+	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO intelligence_monitor_plans(name,source_type,created_by) VALUES('Previous default','external',1) RETURNING id,interval_seconds,timeout_seconds`).Scan(&oldDefaultPlanID, &interval, &timeout))
 	require.Equal(t, 300, interval)
 	require.Equal(t, 600, timeout)
+
+	migration, err = migrations.FS.ReadFile("281_intelligence_monitor_interval_default.sql")
+	require.NoError(t, err)
+	_, err = db.ExecContext(ctx, string(migration))
+	require.NoError(t, err)
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT interval_seconds FROM intelligence_monitor_plans WHERE id=$1`, oldDefaultPlanID).Scan(&interval))
+	require.Equal(t, 300, interval, "upgrades preserve the previous cadence")
+	require.NoError(t, db.QueryRowContext(ctx, `SELECT interval_seconds FROM intelligence_monitor_plans WHERE id=$1`, planID).Scan(&interval))
+	require.Equal(t, 1800, interval, "upgrades preserve a custom cadence")
+	require.NoError(t, db.QueryRowContext(ctx, `INSERT INTO intelligence_monitor_plans(name,source_type,created_by) VALUES('New default','external',1) RETURNING interval_seconds,timeout_seconds,candy_interval_seconds`).Scan(&interval, &timeout, &candy))
+	require.Equal(t, 1200, interval)
+	require.Equal(t, 600, timeout)
+	require.Equal(t, 180, candy)
 }

@@ -87,10 +87,18 @@
       </div>
       <div class="rounded-xl border border-gray-200 p-4 dark:border-dark-700">
         <div class="flex items-center justify-between gap-4"><div><label for="intelligence-enabled" class="text-sm font-medium text-gray-800 dark:text-gray-200">{{ t('intelligenceMonitor.form.enabled') }}</label><p class="mt-1 text-xs leading-5 text-gray-500">{{ t('intelligenceMonitor.form.scheduleHint') }}</p></div><Toggle id="intelligence-enabled" v-model="form.enabled"/></div>
-        <fieldset v-if="form.enabled" class="mt-4"><legend class="input-label">{{ t('intelligenceMonitor.form.interval') }}</legend><div class="grid grid-cols-2 gap-2 sm:grid-cols-4"><button v-for="seconds in intervals" :key="seconds" type="button" class="duration-choice" :class="intervalChoice === seconds && 'duration-choice-selected'" :data-interval="seconds" :aria-pressed="intervalChoice === seconds" @click="chooseInterval(seconds)">{{ durationLabel(seconds) }}</button><button type="button" class="duration-choice" :class="intervalChoice === 'custom' && 'duration-choice-selected'" data-interval="custom" :aria-pressed="intervalChoice === 'custom'" @click="chooseInterval('custom')">{{ t('intelligenceMonitor.form.customInterval') }}</button></div>
-          <div v-if="intervalChoice === 'custom'" class="mt-3"><label for="intelligence-interval-custom" class="input-label">{{ t('intelligenceMonitor.form.customSeconds') }}</label><input id="intelligence-interval-custom" v-model="customInterval" type="text" inputmode="numeric" class="input" :aria-invalid="Boolean(intervalError)" aria-describedby="intelligence-interval-hint intelligence-interval-error" :placeholder="t('intelligenceMonitor.form.intervalPlaceholder')" @input="intervalError = ''"/></div>
-          <p id="intelligence-interval-hint" class="mt-2 text-xs leading-5 text-gray-500">{{ t('intelligenceMonitor.form.intervalHint') }}</p>
-        </fieldset><p v-if="intervalError" id="intelligence-interval-error" role="alert" class="mt-2 text-xs text-rose-500">{{ intervalError }}</p>
+        <fieldset v-if="form.enabled" class="mt-4">
+          <legend class="input-label">{{ t('intelligenceMonitor.form.interval') }}</legend>
+          <div class="grid grid-cols-3 gap-2">
+            <button v-for="seconds in intervals" :key="seconds" type="button" class="duration-choice"
+              :class="form.interval_seconds === seconds && 'duration-choice-selected'"
+              :data-interval="seconds" :aria-pressed="form.interval_seconds === seconds"
+              @click="form.interval_seconds = seconds">{{ durationLabel(seconds) }}</button>
+          </div>
+          <p v-if="plan && !intervals.includes(form.interval_seconds)" class="mt-2 text-xs text-gray-500" data-testid="legacy-interval">
+            {{ t('intelligenceMonitor.form.legacyInterval', { interval: durationLabel(form.interval_seconds) }) }}
+          </p>
+        </fieldset>
       </div>
       <div class="rounded-xl border border-gray-200 p-4 dark:border-dark-700" data-testid="candy-option"><div class="flex items-center justify-between gap-4"><div><label for="intelligence-candy-enabled" class="text-sm font-medium text-gray-800 dark:text-gray-200">{{ t('intelligenceMonitor.candy.enabled') }}</label><p class="mt-1 text-xs leading-5 text-gray-500">{{ t('intelligenceMonitor.candy.enableHint') }}</p></div><Toggle id="intelligence-candy-enabled" v-model="form.candy_enabled"/></div><fieldset v-if="form.candy_enabled" class="mt-4"><legend class="input-label">{{ t('intelligenceMonitor.candy.interval') }}</legend><div class="grid grid-cols-4 gap-2"><button v-for="seconds in candyIntervals" :key="seconds" type="button" class="duration-choice" :class="form.candy_interval_seconds === seconds && 'duration-choice-selected'" :data-candy-interval="seconds" :aria-pressed="form.candy_interval_seconds === seconds" @click="form.candy_interval_seconds = seconds">{{ durationLabel(seconds) }}</button></div><p class="mt-2 text-xs text-gray-500">{{ t('intelligenceMonitor.candy.intervalHint') }}</p></fieldset></div>
       <div><label for="intelligence-notes" class="input-label">{{ t('intelligenceMonitor.notes') }}</label><textarea id="intelligence-notes" v-model="form.notes" class="input min-h-[76px]" maxlength="2000" :placeholder="t('intelligenceMonitor.form.notesPlaceholder')"/></div>
@@ -132,7 +140,8 @@ const localSource = ref<InstanceType<typeof IntelligenceLocalSource> | null>(nul
 const promptSettings = ref<InstanceType<typeof IntelligencePromptSettings> | null>(null)
 const candyIntervals = [180, 300, 600, 900]
 const sources = computed<{value:IntelligenceSource;icon:'server'|'link'|'grid'}[]>(() => [{ value:'upstream',icon:'server' }, ...(props.plan?.source_type === 'local_group' ? [{ value:'local_group' as const,icon:'grid' as const }] : []),{ value:'external',icon:'link' }])
-const intervals = [300, 600, 900]
+const defaultInterval = 20 * 60
+const intervals = [5 * 60, 10 * 60, defaultInterval]
 const timeoutOptions = computed(() => {
   const presets = [300, 600, 900]
   const saved = props.plan?.timeout_seconds
@@ -144,9 +153,8 @@ const openAIModelOptions = PELICAN_MODELS.map(option => ({ ...option }))
 const effortOptions = PELICAN_REASONING_EFFORTS.map(value => ({ value, label: value }))
 const messagesOption = { value: 'messages', label: 'Anthropic Messages' }
 const openAIProtocolOptions = [{ value: 'responses', label: 'Responses' }, { value: 'chat_completions', label: 'Chat Completions' }]
-const defaults = (): IntelligencePlanInput & { model: string; candy_enabled: boolean; candy_interval_seconds: number } => ({ name:'',model:props.initialModel || PELICAN_MODEL,source_type:oauthOnly.value?'openai_oauth':localOnly.value?'local_group':'upstream',account_id:null,endpoint:'',api_key:'',upstream_target_id:null,group_id:null,local_api_key_id:null,supplier_note:'',group_note:'',rate_note:'',notes:'',custom_prompt:'',channel_prompts:[],api_mode:'responses',enabled:true,candy_enabled:false,candy_interval_seconds:180,interval_seconds:300,timeout_seconds:600 })
+const defaults = (): IntelligencePlanInput & { model: string; candy_enabled: boolean; candy_interval_seconds: number } => ({ name:'',model:props.initialModel || PELICAN_MODEL,source_type:oauthOnly.value?'openai_oauth':localOnly.value?'local_group':'upstream',account_id:null,endpoint:'',api_key:'',upstream_target_id:null,group_id:null,local_api_key_id:null,supplier_note:'',group_note:'',rate_note:'',notes:'',custom_prompt:'',channel_prompts:[],api_mode:'responses',enabled:true,candy_enabled:false,candy_interval_seconds:180,interval_seconds:defaultInterval,timeout_seconds:600 })
 const form = reactive(defaults()), groups = ref<AdminGroup[]>([]), saving = ref(false), error = ref(''), groupError = ref(''), groupsLoading = ref(false)
-const intervalChoice = ref<number | 'custom'>(300), customInterval = ref('300'), intervalError = ref('')
 const localSelection = ref<string[]>([])
 const confirmedModels = ref<string[]>([])
 const batchNotice = ref('')
@@ -217,12 +225,6 @@ function durationLabel(seconds: number) {
     : seconds % 60 === 0 ? t('intelligenceMonitor.minutes', { count: seconds / 60 })
       : t('intelligenceMonitor.seconds', { count: seconds })
 }
-function chooseInterval(value: number | 'custom') {
-  intervalChoice.value = value
-  intervalError.value = ''
-  if (typeof value === 'number') form.interval_seconds = value
-}
-watch(() => form.enabled, () => { intervalError.value = '' })
 const oauthAccounts = ref<AccountListItem[]>([]), accountsLoading = ref(false), accountsReady = ref(false), accountError = ref(''), accountSelectionError = ref('')
 const sameModelPlans = computed(() => (props.monitoredPlans || []).filter(plan => plan.id !== props.plan?.id && (plan.model || PELICAN_MODEL) === form.model))
 const monitoredAccounts = computed(() => {
@@ -349,9 +351,7 @@ watch([() => props.show, () => props.upstreamTargetId, () => props.plan?.id, () 
     if (!props.plan) form.name = selectedTarget.value?.name || ''
   }
   syncModelProtocol()
-  intervalChoice.value = intervals.includes(form.interval_seconds) ? form.interval_seconds : 'custom'
-  customInterval.value = String(form.interval_seconds)
-  error.value = ''; groupError.value = ''; accountError.value = ''; accountSelectionError.value = ''; intervalError.value = ''
+  error.value = ''; groupError.value = ''; accountError.value = ''; accountSelectionError.value = ''
   oauthAccounts.value = []; accountsReady.value = false; groups.value = []
   if (lockedUpstream.value) return
   if (oauthOnly.value) { await loadAccounts(); return }
@@ -371,7 +371,6 @@ async function save() {
   if (saving.value) return
   error.value = ''
   if (duplicateSource.value || (batchLocal.value && !pendingModels.value.length)) return
-  intervalError.value = ''
   if (lockedUpstream.value) {
     form.source_type = 'upstream'
     form.upstream_target_id = props.upstreamTargetId
@@ -398,14 +397,6 @@ async function save() {
     accountSelectionError.value = t('intelligenceMonitor.oauth.unavailable')
     return
   }
-  if (intervalChoice.value === 'custom') {
-    const text = customInterval.value.trim()
-    const seconds = Number(text)
-    const valid = /^\d+$/.test(text) && Number.isSafeInteger(seconds) && seconds >= 30 && seconds <= 86400
-    if (form.enabled && !valid) { intervalError.value = t('intelligenceMonitor.form.validInterval'); return }
-    if (valid) form.interval_seconds = seconds
-  }
-  if (!Number.isInteger(form.interval_seconds) || form.interval_seconds < 30 || form.interval_seconds > 86400) { intervalError.value = t('intelligenceMonitor.form.validInterval'); return }
   if (form.source_type==='external') {
     if (!isValidUpstreamEndpoint(form.endpoint)) { error.value=t('intelligenceMonitor.form.validEndpoint'); return }
     if (!form.api_key?.trim() && (!props.plan || props.plan.source_type !== 'external')) { error.value=t('intelligenceMonitor.form.requiredKey'); return }

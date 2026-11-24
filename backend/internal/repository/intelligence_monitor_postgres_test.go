@@ -66,7 +66,7 @@ func intelligenceMonitorTestDB(t *testing.T, legacySchema ...bool) (*sql.DB, con
 	_, err = db.ExecContext(ctx, string(migration))
 	require.NoError(t, err, "OAuth migration must remain idempotent")
 	if len(legacySchema) == 0 || !legacySchema[0] {
-		for _, name := range []string{"249_intelligence_monitor_interval_seconds.sql", "250_intelligence_monitor_generation_timeout.sql", "252_intelligence_monitor_creation_defaults.sql"} {
+		for _, name := range []string{"249_intelligence_monitor_interval_seconds.sql", "250_intelligence_monitor_generation_timeout.sql", "252_intelligence_monitor_creation_defaults.sql", "281_intelligence_monitor_interval_default.sql"} {
 			migration, err = migrations.FS.ReadFile(name)
 			require.NoError(t, err)
 			_, err = db.ExecContext(ctx, string(migration))

@@ -55,7 +55,7 @@ describe('image studio capabilities', () => {
 
   it.each(['openai', 'gemini', 'grok'] as const)('excludes video models even with stale image flags on %s', (platform) => {
     const videos = [
-      'gemini-omni-1.2-flash', 'gemini-omni-1.2', 'omni-1.2', 'omni-featured',
+      'gemini-omni-1.2-flash', 'gemini-omni-flash', 'gemini-omni-1.2', 'omni-1.2', 'omni-featured',
       'grok-imagine-video', 'grok-imagine-video-1.5', 'grok-imagine-video-1.5-preview',
       'svggrok-imagine-video-1.5', 'muse-video', 'models/GEMINI-OMNI-1.2-FLASH',
       'custom-image-to-video', 'veo-3.1', 'sora-2', 'seedance-2', 'custom-t2v-1',

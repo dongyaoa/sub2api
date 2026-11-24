@@ -1,10 +1,12 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { i18n } from '@/i18n'
+import zhMediaStudio from '@/i18n/locales/zh/mediaStudio'
 import ImageStudioView from '../ImageStudioView.vue'
 import type { ImageModelPricing } from '../types'
 
-const { listKeys, listModels, getPricing, showError } = vi.hoisted(() => ({
-  listKeys: vi.fn(), listModels: vi.fn(), getPricing: vi.fn(), showError: vi.fn(),
+const { listKeys, listModels, getPricing, submitTask, showError } = vi.hoisted(() => ({
+  listKeys: vi.fn(), listModels: vi.fn(), getPricing: vi.fn(), submitTask: vi.fn(), showError: vi.fn(),
 }))
 
 vi.mock('../access', async (importOriginal) => ({
@@ -16,7 +18,7 @@ vi.mock('../api', () => ({
   listImageTasks: async () => ({ tasks: [], retentionDays: 7 }),
   extractTaskImageData: () => [],
   clearImageTasks: vi.fn(), deleteImageTask: vi.fn(), getImageTask: vi.fn(),
-  submitImageTask: vi.fn(), submitImageEditTask: vi.fn(),
+  submitImageTask: submitTask, submitImageEditTask: vi.fn(),
 }))
 vi.mock('@/stores/app', () => ({ useAppStore: () => ({ showError }) }))
 vi.mock('vue-router', () => ({ useRouter: () => ({ push: vi.fn() }) }))
@@ -70,6 +72,40 @@ beforeEach(() => {
 afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
 describe('image studio model and billing integration', () => {
+  it('shows the account balance error only after generation and keeps upstream errors distinct', async () => {
+    i18n.global.setLocaleMessage('zh', zhMediaStudio)
+    i18n.global.locale.value = 'zh'
+    const { submitImageTask } = await vi.importActual<typeof import('../api')>('../api')
+    submitTask.mockImplementation(submitImageTask)
+    const upstreamError = { code: 'insufficient_balance', type: 'upstream_error', message: 'Upstream image account has insufficient balance' }
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(Response.json({ code: 'INSUFFICIENT_BALANCE', message: 'Insufficient account balance' }, { status: 403 }))
+      .mockResolvedValueOnce(Response.json({ error: upstreamError }, { status: 502 }))
+    vi.stubGlobal('fetch', fetchMock)
+    const balanceMessage = zhMediaStudio.mediaStudio.insufficientBalance
+    const wrapper = mountStudio()
+    try {
+      await flushPromises()
+      expect(wrapper.find('#image-studio-key').text()).toContain('Key 1')
+      expect(wrapper.find('#image-studio-model').text()).toContain('gemini-nano-banana-2.1')
+      expect(wrapper.text()).toContain('$0.1')
+      expect(wrapper.text()).not.toContain(balanceMessage)
+      expect(showError).not.toHaveBeenCalled()
+      await wrapper.find('#image-studio-prompt').setValue('A landscape')
+      expect(wrapper.find('button[type="submit"]').attributes('disabled')).toBeUndefined()
+      expect(fetchMock).not.toHaveBeenCalled()
+      await wrapper.find('form').trigger('submit')
+      await flushPromises()
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      expect(wrapper.text()).toContain(balanceMessage)
+
+      await wrapper.find('form').trigger('submit')
+      await flushPromises()
+      expect(wrapper.text()).toContain(upstreamError.message)
+      expect(wrapper.text()).not.toContain(balanceMessage)
+    } finally { wrapper.unmount() }
+  })
+
   it('selects only image models from a mixed catalog with incorrect video image flags', async () => {
     listModels.mockResolvedValue({ object: 'list', data: [
       { id: 'gemini-omni-1.2-flash', image_generation: true },

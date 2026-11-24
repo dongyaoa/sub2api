@@ -1,5 +1,7 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { i18n } from '@/i18n'
+import zhMediaStudio from '@/i18n/locales/zh/mediaStudio'
 import VideoStudioView from '../VideoStudioView.vue'
 import type { GenerateVideoRequest, VideoTask } from '../types'
 
@@ -87,19 +89,55 @@ beforeEach(() => {
 afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); vi.unstubAllGlobals() })
 
 describe('video studio independent tasks', () => {
-  function configureOmni() {
+  it('shows an account balance rejection after submitting a priced model and preserves subscription errors', async () => {
+    i18n.global.setLocaleMessage('zh', zhMediaStudio)
+    i18n.global.locale.value = 'zh'
+    const { submitVideoTask } = await vi.importActual<typeof import('../api')>('../api')
+    api.submitTask.mockImplementation(submitVideoTask)
+    const subscriptionMessage = 'No active subscription found for this group'
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(Response.json({ code: 'INSUFFICIENT_BALANCE', message: 'Insufficient account balance' }, { status: 403 }))
+      .mockResolvedValueOnce(Response.json({ code: 'SUBSCRIPTION_NOT_FOUND', message: subscriptionMessage }, { status: 403 }))
+    vi.stubGlobal('fetch', fetchMock)
+    const balanceMessage = zhMediaStudio.mediaStudio.insufficientBalance
+    const wrapper = mountStudio()
+    try {
+      await flushPromises()
+      expect(wrapper.find('#video-studio-key').text()).toContain('Key 1')
+      expect(wrapper.find('#video-studio-model').text()).toContain('grok-imagine-video')
+      expect(wrapper.text()).toContain('videoStudio.estimate $')
+      expect(wrapper.text()).not.toContain(balanceMessage)
+      expect(api.showError).not.toHaveBeenCalled()
+      await wrapper.find('#video-studio-prompt').setValue('A moving landscape')
+      expect(wrapper.find('button[type="submit"]').attributes('disabled')).toBeUndefined()
+      expect(fetchMock).not.toHaveBeenCalled()
+      await wrapper.find('form').trigger('submit')
+      await flushPromises()
+      expect(fetchMock).toHaveBeenCalledTimes(1)
+      expect(wrapper.text()).toContain(balanceMessage)
+
+      await wrapper.find('form').trigger('submit')
+      await flushPromises()
+      expect(wrapper.text()).toContain(subscriptionMessage)
+      expect(wrapper.text()).not.toContain(balanceMessage)
+    } finally { wrapper.unmount() }
+  })
+
+  function configureOmni(model = 'gemini-omni-1.2-flash') {
     api.listKeys.mockResolvedValue([{ ...keys[0], group: { ...keys[0]!.group, platform: 'gemini', name: 'Gemini' } }])
-    api.listModels.mockResolvedValue({ data: [{ id: 'gemini-omni-1.2-flash' }] })
-    api.getPricing.mockResolvedValue({ model: 'gemini-omni-1.2-flash', billing_mode: 'per_request', pricing_source: 'group', rate_multiplier: 1,
+    api.listModels.mockResolvedValue({ data: [{ id: model }] })
+    api.getPricing.mockResolvedValue({ model, billing_mode: 'per_request', pricing_source: 'group', rate_multiplier: 1,
       tiers: Object.fromEntries(['360p', '720p', '1080p', '4k'].map(resolution => [resolution, { base_price: 0.5, unit_price: 0.5, configured: true }])) })
   }
 
-  it('offers Omni 3–15 seconds, 4K portrait dimensions, seed zero and per-request pricing', async () => {
-    configureOmni()
+  it.each(['gemini-omni-flash', 'gemini-omni-1.2-flash'])('lists, prices and submits the configured %s model with Omni controls', async (model) => {
+    configureOmni(model)
     const wrapper = mountStudio()
     try {
       await flushPromises()
       const range = wrapper.find('#video-studio-duration')
+      expect((wrapper.get('#video-studio-model').element as HTMLSelectElement).value).toBe(model)
+      expect(api.getPricing).toHaveBeenCalledWith('key-1', model, expect.any(AbortSignal))
       expect(range.attributes('min')).toBe('3')
       expect(range.attributes('max')).toBe('15')
       expect((range.element as HTMLInputElement).value).toBe('5')
@@ -111,7 +149,7 @@ describe('video studio independent tasks', () => {
       expect(wrapper.text()).toContain('videoStudio.estimate $0.5')
       await wrapper.find('form').trigger('submit')
       await flushPromises()
-      expect(api.submitTask.mock.calls[0]?.[1]).toEqual({ model: 'gemini-omni-1.2-flash', prompt: 'omni 4k', resolution: '4k', aspect_ratio: '9:16', image_size: '2160x3840', duration: 15, seed: 0 })
+      expect(api.submitTask.mock.calls[0]?.[1]).toEqual({ model, prompt: 'omni 4k', resolution: '4k', aspect_ratio: '9:16', image_size: '2160x3840', duration: 15, seed: 0 })
     } finally { wrapper.unmount() }
   })
 

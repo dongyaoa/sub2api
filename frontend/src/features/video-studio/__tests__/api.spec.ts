@@ -11,11 +11,11 @@ import {
 } from '../api'
 
 describe('video studio API', () => {
-  it('creates Gemini Omni tasks on /v1/videos with all reference and output parameters', async () => {
+  it.each(['gemini-omni-flash', 'gemini-omni-1.2-flash'])('creates %s tasks on /v1/videos with the selected ID and parameters', async (model) => {
     const accepted = { id: 'omni-task', status: 'queued' }
     const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => accepted })
     vi.stubGlobal('fetch', fetchMock)
-    const payload = { model: 'gemini-omni-1.2-flash', prompt: 'move', resolution: '4k' as const, aspect_ratio: '9:16' as const, image_size: '2160x3840', duration: 15, seed: 7, image_references: ['https://example.com/i.png'], video_references: ['https://example.com/v.mp4'] }
+    const payload = { model, prompt: 'move', resolution: '4k' as const, aspect_ratio: '9:16' as const, image_size: '2160x3840', duration: 15, seed: 7, image_references: ['https://example.com/i.png'], video_references: ['https://example.com/v.mp4'] }
     await expect(submitVideoTask('gemini-key', payload)).resolves.toEqual(accepted)
     expect(fetchMock.mock.calls[0]?.[0]).toMatch(/\/v1\/videos$/)
     expect(JSON.parse(fetchMock.mock.calls[0]?.[1].body)).toEqual(payload)

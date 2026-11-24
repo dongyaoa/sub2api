@@ -99,7 +99,7 @@ func TestImageStudioModelsRecognizesChannelMappedAliasesAndRestrictions(t *testi
 
 func TestImageStudioModelsRejectsVideoNamesRegardlessOfPriceCard(t *testing.T) {
 	videoModels := []string{
-		"gemini-omni-1.2-flash", "gemini-omni-1.2", "omni-1.2", "omni-featured",
+		"gemini-omni-flash", "gemini-omni-1.2-flash", "gemini-omni-1.2", "omni-1.2", "omni-featured",
 		"models/GEMINI-OMNI-1.2-FLASH", "muse-video", "grok-imagine-video",
 		"grok-imagine-video-1.5", "grok-imagine-video-1.5-preview", "svggrok-imagine-video-1.5",
 		"veo-3.1-generate-preview", "sora2", "seedance-1.0", "provider/image-to-video",

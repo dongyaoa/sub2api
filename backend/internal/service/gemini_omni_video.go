@@ -21,7 +21,7 @@ const geminiOmniMaxReferenceBytes = 20 * 1024 * 1024
 
 func IsGeminiOmniVideoModel(model string) bool {
 	switch strings.ToLower(strings.TrimSpace(model)) {
-	case "gemini-omni-1.2-flash", "gemini-omni-1.2", "omni-1.2", "omni-featured":
+	case "gemini-omni-flash", "gemini-omni-1.2-flash", "gemini-omni-1.2", "omni-1.2", "omni-featured":
 		return true
 	default:
 		return false
@@ -51,7 +51,7 @@ func parseGeminiOmniVideoRequest(body []byte) (GrokMediaRequestInfo, map[string]
 	}
 	model, prompt := gjson.GetBytes(body, "model"), gjson.GetBytes(body, "prompt")
 	if model.Type != gjson.String || !IsGeminiOmniVideoModel(model.String()) {
-		return fail("model must be gemini-omni-1.2-flash or a supported Omni alias")
+		return fail("model must be a supported Gemini Omni video model")
 	}
 	if prompt.Type != gjson.String || strings.TrimSpace(prompt.String()) == "" {
 		return fail("prompt is required")

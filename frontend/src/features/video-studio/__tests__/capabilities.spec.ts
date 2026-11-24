@@ -19,7 +19,7 @@ const models = [
 
 describe('video studio capabilities', () => {
   it('recognizes Gemini Omni and its aliases with the full documented output range', () => {
-    const aliases = ['gemini-omni-1.2-flash', 'gemini-omni-1.2', 'omni-1.2', 'omni-featured']
+    const aliases = ['gemini-omni-1.2-flash', 'gemini-omni-flash', 'gemini-omni-1.2', 'omni-1.2', 'omni-featured']
     expect(filterVideoModels([...aliases.map(id => ({ id })), { id: 'gemini-flash' }]).map(item => item.id)).toEqual(aliases)
     for (const model of aliases) {
       expect(getVideoMinDuration(model)).toBe(3)

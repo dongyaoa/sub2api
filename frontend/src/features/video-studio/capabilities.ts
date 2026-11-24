@@ -13,7 +13,7 @@ export const SVG_IMAGE_VIDEO_MODEL = 'svggrok-imagine-video-1.5'
 export const LEGACY_IMAGE_VIDEO_MODEL = 'grok-imagine-video-1.5-preview'
 export const MUSE_VIDEO_MODEL = 'muse-video'
 export const GEMINI_OMNI_VIDEO_MODEL = 'gemini-omni-1.2-flash'
-const GEMINI_OMNI_MODELS = new Set([GEMINI_OMNI_VIDEO_MODEL, 'gemini-omni-1.2', 'omni-1.2', 'omni-featured'])
+const GEMINI_OMNI_MODELS = new Set([GEMINI_OMNI_VIDEO_MODEL, 'gemini-omni-flash', 'gemini-omni-1.2', 'omni-1.2', 'omni-featured'])
 export const DEFAULT_VIDEO_ASPECT_RATIO: VideoAspectRatio = '16:9'
 export const VIDEO_ASPECT_RATIOS: VideoAspectRatio[] = ['16:9', '9:16', '1:1', '4:3', '3:4', '3:2', '2:3']
 

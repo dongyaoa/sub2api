@@ -1509,6 +1509,78 @@ func TestAPIKeyAuthRejectsExhaustedBalance(t *testing.T) {
 	requireAPIKeyAuthError(t, w, "INSUFFICIENT_BALANCE", "Insufficient account balance")
 }
 
+func TestAPIKeyAuthStudioDiscoveryWithZeroBalance(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	cfg := &config.Config{RunMode: config.RunModeStandard}
+	subscriptionRepo := &stubUserSubscriptionRepo{getActive: func(context.Context, int64, int64) (*service.UserSubscription, error) {
+		return nil, service.ErrSubscriptionNotFound
+	}}
+	subscriptionService := service.NewSubscriptionService(nil, subscriptionRepo, nil, nil, cfg)
+	t.Cleanup(subscriptionService.Stop)
+
+	expiredAt := time.Now().Add(-time.Hour)
+	tests := []struct {
+		name      string
+		method    string
+		target    string
+		changeKey func(*service.APIKey)
+		status    int
+		errorCode string
+	}{
+		{"image catalog", http.MethodGet, "/v1/models?image_studio=1", nil, http.StatusOK, ""},
+		{"image catalog alias", http.MethodGet, "/models?image_studio=1", nil, http.StatusOK, ""},
+		{"video catalog", http.MethodGet, "/v1/models?video_studio=1", nil, http.StatusOK, ""},
+		{"video catalog alias", http.MethodGet, "/models?video_studio=1", nil, http.StatusOK, ""},
+		{"image pricing", http.MethodGet, "/v1/images/pricing", nil, http.StatusOK, ""},
+		{"video pricing", http.MethodGet, "/v1/videos/pricing", nil, http.StatusOK, ""},
+		{"ordinary catalog", http.MethodGet, "/v1/models", nil, http.StatusForbidden, "INSUFFICIENT_BALANCE"},
+		{"inactive flags", http.MethodGet, "/models?image_studio=0&video_studio=0", nil, http.StatusForbidden, "INSUFFICIENT_BALANCE"},
+		{"Codex manifest", http.MethodGet, "/v1/models?video_studio=1&client_version=1", nil, http.StatusForbidden, "INSUFFICIENT_BALANCE"},
+		{"single model", http.MethodGet, "/models/example?image_studio=1", nil, http.StatusForbidden, "INSUFFICIENT_BALANCE"},
+		{"catalog POST", http.MethodPost, "/v1/models?video_studio=1", nil, http.StatusForbidden, "INSUFFICIENT_BALANCE"},
+		{"image generation", http.MethodPost, "/v1/images/generations?image_studio=1", nil, http.StatusForbidden, "INSUFFICIENT_BALANCE"},
+		{"video generation", http.MethodPost, "/v1/videos/generations?video_studio=1", nil, http.StatusForbidden, "INSUFFICIENT_BALANCE"},
+		{"expired key", http.MethodGet, "/v1/models?image_studio=1", func(key *service.APIKey) {
+			key.ExpiresAt = &expiredAt
+		}, http.StatusForbidden, "API_KEY_EXPIRED"},
+		{"exhausted quota", http.MethodGet, "/models?video_studio=1", func(key *service.APIKey) {
+			key.Quota, key.QuotaUsed = 1, 1
+		}, http.StatusTooManyRequests, "API_KEY_QUOTA_EXHAUSTED"},
+		{"missing subscription", http.MethodGet, "/v1/models?video_studio=1", func(key *service.APIKey) {
+			key.Group.SubscriptionType = service.SubscriptionTypeSubscription
+		}, http.StatusForbidden, "SUBSCRIPTION_NOT_FOUND"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			group := &service.Group{ID: 8, Status: service.StatusActive, Hydrated: true, Platform: service.PlatformOpenAI}
+			user := &service.User{ID: 7, Role: service.RoleUser, Status: service.StatusActive, Balance: 0}
+			key := &service.APIKey{ID: 100, Key: "studio-key", Status: service.StatusActive, UserID: user.ID, User: user, GroupID: &group.ID, Group: group}
+			if tt.changeKey != nil {
+				tt.changeKey(key)
+			}
+			repo := &stubApiKeyRepo{getByKey: func(context.Context, string) (*service.APIKey, error) { return key, nil }}
+			router := newAuthTestRouter(service.NewAPIKeyService(repo, nil, nil, nil, nil, nil, cfg), subscriptionService, cfg)
+			req := httptest.NewRequest(tt.method, tt.target, nil)
+			router.Handle(tt.method, req.URL.Path, func(c *gin.Context) {
+				authKey, ok := GetAPIKeyFromContext(c)
+				require.True(t, ok)
+				require.Equal(t, key.ID, authKey.ID)
+				c.Status(http.StatusOK)
+			})
+			req.Header.Set("Authorization", "Bearer "+key.Key)
+			w := httptest.NewRecorder()
+			router.ServeHTTP(w, req)
+
+			require.Equal(t, tt.status, w.Code, w.Body.String())
+			if tt.errorCode != "" {
+				var response ErrorResponse
+				require.NoError(t, json.Unmarshal(w.Body.Bytes(), &response))
+				require.Equal(t, tt.errorCode, response.Code)
+			}
+		})
+	}
+}
+
 func TestAPIKeyAuthOpenAIQuotaErrorFormat(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

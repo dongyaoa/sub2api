@@ -54,16 +54,23 @@ func TestNormalizeCodexPageContextFirstMessage(t *testing.T) {
 	require.Equal(t, got, again)
 }
 
-var codexTextContextNamesForTest = []string{"browser_info", "goal_objective", "untrusted_context", "untrusted_content", "ide_context", "proposed_plan"}
+var codexTextContextNamesForTest = []string{"browser_info", "browser_tabs", "goal_objective", "untrusted_context", "untrusted_content", "ide_context", "proposed_plan"}
 
 func TestNormalizeCodexAdditionalUntrustedContext(t *testing.T) {
 	for _, name := range codexTextContextNamesForTest {
 		t.Run(name, func(t *testing.T) {
 			output := "external context\nline two"
-			if name == "ide_context" {
+			switch name {
+			case "browser_tabs":
+				output = `<in-app-browser-context source="ambient-ui-state">Example tab</in-app-browser-context>`
+			case "ide_context":
 				output = "# Context from my IDE setup:\n\n## Active file: main.go\n\n## Active selection of the file:\nfunc main() {}"
 			}
 			contextItem := map[string]any{"type": "function_call_output", "namespace": "agent", "name": name, "output": output}
+			if name == "browser_tabs" {
+				// Desktop includes an output item ID even though there was no tool call.
+				contextItem["id"] = "fco_tabs"
+			}
 			body := pageContextRequest(t, contextItem,
 				map[string]any{"role": "user", "content": "continue"})
 			h := &OpenAIGatewayHandler{}

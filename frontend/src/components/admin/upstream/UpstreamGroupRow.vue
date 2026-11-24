@@ -5,7 +5,7 @@
         <UpstreamProviderBadge :provider="target.provider" />
         <button type="button" class="max-w-[240px] truncate text-left text-sm font-semibold text-gray-900 hover:text-primary-600 dark:text-gray-100 dark:hover:text-primary-400" :title="target.name" @click="emit('details', target, selectedModel)">{{ target.name }}</button>
         <UpstreamStatusBadge :status="targetStatus(target, selectedModel)" />
-        <UpstreamRateBadge :billing="target.balance?.billing" />
+        <UpstreamRateBadge :billing="target.balance?.billing" show-group-name />
         <span class="font-mono text-[10px] text-gray-400 dark:text-dark-400">{{ target.api_key_masked }}</span>
       </div>
       <div class="flex max-w-full flex-wrap items-center gap-0.5">

@@ -11,11 +11,12 @@ import (
 
 func TestGeminiOmniSchedulingKeepsGeminiAccountsAndCapability(t *testing.T) {
 	resetOpenAIAdvancedSchedulerSettingCacheForTest()
+	const model = "gemini-omni-flash"
 	groupID := int64(172)
 	valid := Account{ID: 1, Platform: PlatformGemini, Type: AccountTypeAPIKey,
 		Status: StatusActive, Schedulable: true, Concurrency: 1, GroupIDs: []int64{groupID},
 		Credentials: map[string]any{"base_url": "https://omni.example/v1beta", "api_key": "test-key",
-			"model_mapping": map[string]any{"gemini-omni-1.2-flash": "gemini-omni-1.2-flash"}},
+			"model_mapping": map[string]any{model: model}},
 	}
 	openai := valid
 	openai.ID, openai.Platform = 2, PlatformOpenAI
@@ -31,14 +32,14 @@ func TestGeminiOmniSchedulingKeepsGeminiAccountsAndCapability(t *testing.T) {
 			}
 			ctx := context.Background()
 			selection, _, err := svc.SelectAccountWithSchedulerForCapability(ctx, &groupID, "", "",
-				"gemini-omni-1.2-flash", nil, OpenAIUpstreamTransportHTTPSSE,
+				model, nil, OpenAIUpstreamTransportHTTPSSE,
 				OpenAIEndpointCapabilityGeminiOmniVideo, false, false, false, PlatformGemini)
 			require.NoError(t, err)
 			require.Equal(t, valid.ID, selection.Account.ID)
 			selection.ReleaseFunc()
 			advanced := newDefaultOpenAIAccountScheduler(svc, nil)
 			selection, _, err = advanced.Select(ctx, OpenAIAccountScheduleRequest{
-				GroupID: &groupID, Platform: PlatformGemini, RequestedModel: "gemini-omni-1.2-flash",
+				GroupID: &groupID, Platform: PlatformGemini, RequestedModel: model,
 				RequiredTransport: OpenAIUpstreamTransportHTTPSSE, RequiredCapability: OpenAIEndpointCapabilityGeminiOmniVideo,
 			})
 			require.NoError(t, err)
@@ -47,7 +48,7 @@ func TestGeminiOmniSchedulingKeepsGeminiAccountsAndCapability(t *testing.T) {
 
 			// Gemini text endpoints must not enter this narrowly scoped exception.
 			selection, _, err = svc.SelectAccountWithSchedulerForCapability(ctx, &groupID, "", "",
-				"gemini-omni-1.2-flash", nil, OpenAIUpstreamTransportHTTPSSE,
+				model, nil, OpenAIUpstreamTransportHTTPSSE,
 				OpenAIEndpointCapabilityChatCompletions, false, false, false, PlatformGemini)
 			require.ErrorIs(t, err, ErrNoAvailableAccounts)
 			require.Nil(t, selection)

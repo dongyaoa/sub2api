@@ -860,6 +860,13 @@ func prepareGrokVideoCompletionBilling(
 	// Re-merge with pending: resolution is request-only; model/duration fill gaps.
 	merged := *statusResult
 	if pending != nil {
+		// Omni lookups carry only a task ID. Prefer the submitted names over
+		// the adapter's legacy model default when the create snapshot survived.
+		if service.IsGeminiOmniVideoModel(pending.Model) {
+			merged.Model = pending.Model
+			merged.BillingModel = firstNonEmptyString(pending.BillingModel, pending.Model)
+			merged.UpstreamModel = firstNonEmptyString(pending.UpstreamModel, merged.UpstreamModel)
+		}
 		if strings.TrimSpace(merged.Model) == "" {
 			merged.Model = firstNonEmptyString(pending.BillingModel, pending.Model, pending.OriginalModel)
 		}

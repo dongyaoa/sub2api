@@ -1,6 +1,6 @@
 import { mount } from '@vue/test-utils'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { UpstreamTarget } from '@/api/admin/upstreamCenter'
+import type { UpstreamBillingSnapshot, UpstreamTarget } from '@/api/admin/upstreamCenter'
 import Select from '@/components/common/Select.vue'
 import UpstreamGroupRow from './UpstreamGroupRow.vue'
 import UpstreamTargetCard from './UpstreamTargetCard.vue'
@@ -22,6 +22,20 @@ function target(): UpstreamTarget {
 }
 
 describe('upstream card headline measurements', () => {
+  it('shows the upstream-reported group before the key multiplier and omits it for an unnamed upstream', async () => {
+    const item = target()
+    const billing = { source: 'sub2api_billing', group_name: '上游标准组', effective_rate_multiplier: 0.8, status: 'ok', stale: false } as UpstreamBillingSnapshot
+    const withBilling = (groupName: string | null) => ({ ...item, balance: { ...item.balance!, billing: { ...billing, group_name: groupName } } })
+    const wrapper = mount(UpstreamGroupRow, { props: { target: withBilling(billing.group_name), busy: false, running: false }, global: { stubs: { ...stubs, UpstreamRateBadge: false } } })
+    const reported = wrapper.get('[data-testid="upstream-billing-group"]')
+    expect(reported.text()).toBe('上游标准组')
+    expect(reported.element.parentElement!.textContent).toMatch(/上游标准组\s*upstreamCenter\.billing\.rate\s*0\.8×/)
+    await wrapper.setProps({ target: withBilling(null) })
+    expect(wrapper.find('[data-testid="upstream-billing-group"]').exists()).toBe(false)
+    expect(wrapper.text()).toContain('0.8×')
+    wrapper.unmount()
+  })
+
   it.each([UpstreamGroupRow, UpstreamTargetCard])('keeps a daily usage sync failure visible separately from successful wallet data', (component) => {
     const item = target()
     item.balance = { ...item.balance, status: 'ok', error: 'newapi_usage_incomplete' } as UpstreamTarget['balance']

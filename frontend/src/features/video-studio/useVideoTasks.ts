@@ -1,5 +1,6 @@
 import { computed, onBeforeUnmount, ref, type Ref } from 'vue'
 import type { ApiKey } from '@/types'
+import { studioGenerationErrorMessage } from '../media-studio/generationError'
 import { clearVideoTasks, downloadVideoContent, getVideoRequestId, getVideoTask, listVideoTasks, submitVideoTask } from './api'
 import { isGeminiOmniVideoModel, normalizeVideoAspectRatio, normalizeVideoResolution } from './capabilities'
 import { normalizeVideoTaskState, shouldRetryVideoPollError, videoTaskPollDelay } from './polling'
@@ -57,7 +58,8 @@ function fromTask(task: VideoTask, key: ApiKey): VideoHistoryItem {
       duration: Math.max(1, Number(metadata.duration) || 4) },
     startedAt: serverTime(task.created_at) || Date.now(),
     completedAt: serverTime(task.completed_at),
-    status: normalizeVideoTaskState(task.status), task, errorMessage: videoTaskError(task.error),
+    status: normalizeVideoTaskState(task.status), task,
+    errorMessage: studioGenerationErrorMessage(task.error, videoTaskError(task.error)),
   }
 }
 
@@ -310,7 +312,10 @@ export function useVideoTasks(keys: Ref<ApiKey[]>, messages: { error: (message: 
     } catch (error) {
       if (!disposed && (error as Error).name !== 'AbortError') {
         const item = history.value.find(entry => entry.requestId === id)
-        if (item) Object.assign(item, { status: 'failed', completedAt: Date.now(), errorMessage: videoTaskError(error) || messages.failed() })
+        if (item) Object.assign(item, {
+          status: 'failed', completedAt: Date.now(),
+          errorMessage: studioGenerationErrorMessage(error, videoTaskError(error)) || messages.failed(),
+        })
       }
     } finally { controllers.delete(id); submitting.value = false }
   }

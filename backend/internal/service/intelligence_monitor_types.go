@@ -27,7 +27,7 @@ const IntelligenceMonitorCandyPrompt = `不使用任何外部工具回答以下�
 圆形          7       9       8
 五角星形      7       6       4`
 const IntelligenceMonitorDefaultTimeoutSeconds = 600
-const IntelligenceMonitorDefaultIntervalSeconds = 300
+const IntelligenceMonitorDefaultIntervalSeconds = 1200
 const IntelligenceMonitorMinTimeoutSeconds = 180
 const IntelligenceMonitorMaxTimeoutSeconds = 900
 

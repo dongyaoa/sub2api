@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"strings"
 	"time"
-	"unicode/utf8"
 )
 
 const upstreamRemoteBillingFreshness = 150 * time.Second
@@ -49,7 +48,7 @@ func upstreamRemoteBillingURL(endpoint string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return strings.TrimSuffix(usageURL, "/v1/usage") + "/v1/sub2api/billing", nil
+	return strings.TrimSuffix(usageURL, "/v1/usage") + "/v1/sub2api/billing?include=group", nil
 }
 
 func (s *UpstreamFinanceService) fetchRemoteBilling(ctx context.Context, target *UpstreamFinanceTarget) *UpstreamRemoteBillingSnapshot {
@@ -102,22 +101,13 @@ func parseUpstreamRemoteBilling(body []byte, source string) (*UpstreamRemoteBill
 		return nil, err
 	}
 	var fields struct {
-		GroupID   *int64  `json:"group_id"`
-		GroupName *string `json:"group_name"`
+		GroupID *int64 `json:"group_id"`
 	}
 	if err = json.Unmarshal(body, &fields); err != nil {
 		return nil, err
 	}
 	if fields.GroupID != nil && *fields.GroupID <= 0 {
 		fields.GroupID = nil
-	}
-	if fields.GroupName != nil {
-		trimmed := strings.TrimSpace(*fields.GroupName)
-		if trimmed == "" || utf8.RuneCountInString(trimmed) > 100 {
-			fields.GroupName = nil
-		} else {
-			fields.GroupName = &trimmed
-		}
 	}
 	// parseUpstreamBillingProbeResponse validates and normalizes these fields.
 	groupRate, _ := data["group_rate_multiplier"].(float64)
@@ -126,9 +116,12 @@ func parseUpstreamRemoteBilling(body []byte, source string) (*UpstreamRemoteBill
 	observedAt, _ := data["observed_at"].(string)
 	observed, _ := time.Parse(time.RFC3339Nano, observedAt)
 	snapshot := &UpstreamRemoteBillingSnapshot{
-		GroupID: fields.GroupID, GroupName: fields.GroupName, GroupRateMultiplier: &groupRate,
+		GroupID: fields.GroupID, GroupRateMultiplier: &groupRate,
 		ResolvedRateMultiplier: &resolvedRate, EffectiveRateMultiplier: &effectiveRate,
 		BillingScope: "token", Source: source, Status: "ok", ObservedAt: &observed,
+	}
+	if name := upstreamBillingGroupInfo(body).Name; name != "" {
+		snapshot.GroupName = &name
 	}
 	if value, ok := data["user_rate_multiplier"].(float64); ok {
 		snapshot.UserRateMultiplier = &value

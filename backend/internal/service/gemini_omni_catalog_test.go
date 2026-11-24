@@ -25,6 +25,9 @@ func TestGeminiOmniVideoStudioCatalogUsesGeminiAccountConfiguration(t *testing.T
 		{"explicit mapping", func(a *Account) {
 			a.Credentials["model_mapping"] = map[string]any{"omni-featured": "provider-target", "gemini-2.5-flash": "gemini-2.5-flash"}
 		}, []string{"omni-featured"}},
+		{"account only offers the unversioned flash ID", func(a *Account) {
+			a.Credentials["model_mapping"] = map[string]any{"gemini-omni-flash": "gemini-omni-flash"}
+		}, []string{"gemini-omni-flash"}},
 		{"OAuth is not supported", func(a *Account) {
 			a.Type = AccountTypeOAuth
 			a.Credentials["model_mapping"] = map[string]any{omniPricingTestModel: omniPricingTestModel}

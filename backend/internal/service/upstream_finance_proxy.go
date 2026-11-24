@@ -64,6 +64,16 @@ func (s *UpstreamFinanceService) fetchBalanceWithAccountProxy(ctx context.Contex
 	snapshot := s.fetchBalance(ctx, target)
 	if snapshot.Billing == nil {
 		snapshot.Billing = s.fetchRemoteBilling(ctx, target)
+	} else if snapshot.Billing.Source == "sub2api_usage" && snapshot.Billing.GroupName == nil {
+		// Some relays declare the rate in usage, but publish the name only via
+		// billing. The optional lookup must not replace the usage observation.
+		embedded := snapshot.Billing
+		lookupCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+		remote := s.fetchRemoteBilling(lookupCtx, target)
+		cancel()
+		if remote.GroupName != nil && (embedded.GroupID == nil || remote.GroupID == nil || *embedded.GroupID == *remote.GroupID) {
+			embedded.GroupName = remote.GroupName
+		}
 	}
 	return snapshot
 }

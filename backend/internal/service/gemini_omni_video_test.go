@@ -26,8 +26,11 @@ func geminiOmniVideoTestAccount() *Account {
 func TestGeminiOmniVideoCreateParameters(t *testing.T) {
 	for _, body := range []string{
 		`{"model":"gemini-omni-1.2-flash","prompt":"waves","duration":15,"resolution":"4k","aspect_ratio":"9:16","first_frame":"data:image/png;base64,aW1hZ2U=","last_frame":"https://example.com/last.png","seed":0}`,
-		`{"model":"gemini-omni-1.2-flash","prompt":"waves","seconds":"15","size":"2160x3840","input_reference":{"url":"data:image/png;base64,aW1hZ2U="},"last_frame":"https://example.com/last.png","seed":0}`,
+		`{"model":"gemini-omni-flash","prompt":"waves","seconds":"15","size":"2160x3840","input_reference":{"url":"data:image/png;base64,aW1hZ2U="},"last_frame":"https://example.com/last.png","seed":0}`,
 	} {
+		requestedModel := gjson.Get(body, "model").String()
+		account := geminiOmniVideoTestAccount()
+		account.Credentials["model_mapping"] = map[string]any{requestedModel: requestedModel}
 		metadata, parseErr := ParseGeminiOmniVideoRequest([]byte(body))
 		require.NoError(t, parseErr)
 		require.NotNil(t, metadata.Seed, "zero is an explicit seed, not an absent value")
@@ -35,11 +38,11 @@ func TestGeminiOmniVideoCreateParameters(t *testing.T) {
 		upstream := &httpUpstreamRecorder{resp: grokMediaContentStatusResponse(`{"id":"task_omni","status":"queued","progress":0}`)}
 		svc := &OpenAIGatewayService{httpUpstream: upstream}
 		c, w := grokMediaContentTestContext(http.MethodPost, "/v1/videos", nil)
-		result, err := svc.ForwardGeminiOmniVideo(context.Background(), c, geminiOmniVideoTestAccount(), GrokMediaEndpointVideosGenerations, "", []byte(body))
+		result, err := svc.ForwardGeminiOmniVideo(context.Background(), c, account, GrokMediaEndpointVideosGenerations, "", []byte(body))
 		require.NoError(t, err)
 		require.Equal(t, "https://gemini.example/proxy/v1/videos", upstream.lastReq.URL.String())
 		require.Equal(t, "Bearer omni-test-key", upstream.lastReq.Header.Get("Authorization"))
-		require.JSONEq(t, `{"model":"gemini-omni-1.2-flash","prompt":"waves","seconds":"15","duration":15,"resolution":"4K","aspect_ratio":"9:16","size":"2160x3840","image_size":"2160x3840","first_frame":"data:image/png;base64,aW1hZ2U=","last_frame":"https://example.com/last.png","seed":0}`, string(upstream.lastBody))
+		require.JSONEq(t, fmt.Sprintf(`{"model":%q,"prompt":"waves","seconds":"15","duration":15,"resolution":"4K","aspect_ratio":"9:16","size":"2160x3840","image_size":"2160x3840","first_frame":"data:image/png;base64,aW1hZ2U=","last_frame":"https://example.com/last.png","seed":0}`, requestedModel), string(upstream.lastBody))
 		require.Equal(t, "task_omni", result.ResponseID)
 		require.Zero(t, result.VideoCount, "create acceptance must never bill")
 		require.Equal(t, 15, result.VideoDurationSeconds)
@@ -90,7 +93,7 @@ func TestGeminiOmniVideoChannelMappingPreservesProviderParametersAndQuote(t *tes
 	for _, source := range []string{BillingModelSourceRequested, BillingModelSourceChannelMapped} {
 		t.Run(source, func(t *testing.T) {
 			groupID := int64(166)
-			requestedModel, channelModel, accountModel := "gemini-omni-1.2-flash", "omni-channel-route", "vendor-video-route"
+			requestedModel, channelModel, accountModel := "gemini-omni-flash", "omni-channel-route", "vendor-video-route"
 			billingModel := requestedModel
 			if source == BillingModelSourceChannelMapped {
 				billingModel = channelModel
@@ -109,7 +112,8 @@ func TestGeminiOmniVideoChannelMappingPreservesProviderParametersAndQuote(t *tes
 			require.NoError(t, err)
 			c, _ := grokMediaContentTestContext(http.MethodPost, "/v1/videos", nil)
 			c.Set("api_key", key)
-			result, err := svc.ForwardGeminiOmniVideo(context.Background(), c, account, GrokMediaEndpointVideosGenerations, "", []byte(`{"model":"gemini-omni-1.2-flash","prompt":"waves","duration":15,"resolution":"4k","aspect_ratio":"9:16"}`))
+			body := fmt.Sprintf(`{"model":%q,"prompt":"waves","duration":15,"resolution":"4k","aspect_ratio":"9:16"}`, requestedModel)
+			result, err := svc.ForwardGeminiOmniVideo(context.Background(), c, account, GrokMediaEndpointVideosGenerations, "", []byte(body))
 			require.NoError(t, err)
 			require.Equal(t, accountModel, gjson.GetBytes(upstream.lastBody, "model").String())
 			require.Equal(t, accountModel, result.UpstreamModel)

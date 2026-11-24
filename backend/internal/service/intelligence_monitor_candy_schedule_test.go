@@ -24,7 +24,7 @@ func TestIntelligenceCandyScheduleValidatesIndependentIntervals(t *testing.T) {
 			}
 			require.NoError(t, err)
 			require.Equal(t, seconds, plan.CandyIntervalSeconds)
-			require.Equal(t, 300, plan.IntervalSeconds, "candy interval does not modify artwork cadence")
+			require.Equal(t, 1200, plan.IntervalSeconds, "candy interval does not modify artwork cadence")
 		})
 	}
 	repo := &intelligenceTestRepository{}

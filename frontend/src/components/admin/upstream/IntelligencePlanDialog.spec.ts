@@ -7,7 +7,10 @@ import Select from '@/components/common/Select.vue'
 import IntelligencePlanDialog from './IntelligencePlanDialog.vue'
 
 const mocks = vi.hoisted(() => ({ accounts: vi.fn(), account: vi.fn(), groups: vi.fn(), create: vi.fn(), update: vi.fn(), keys: vi.fn(), channels: vi.fn() }))
-vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (key: string, params?: { count?: number }) => params?.count === undefined ? key : `${key}:${params.count}` }) }))
+vi.mock('vue-i18n', () => ({ useI18n: () => ({ t: (key: string, params?: { count?: number; interval?: string }) => {
+  const value = params?.count ?? params?.interval
+  return value === undefined ? key : `${key}:${value}`
+} }) }))
 vi.mock('@/api/keys', () => ({ list: mocks.keys }))
 vi.mock('@/api/admin/accounts', () => ({ list: mocks.accounts, getById: mocks.account }))
 vi.mock('@/api/admin/groups', () => ({ getAll: mocks.groups }))
@@ -186,10 +189,10 @@ describe('OAuth intelligence plan dialog', () => {
     expect(view.get('[data-testid="intelligence-locked-oauth"]').text()).toContain('Renamed in account management')
     expect(view.get('button[type="submit"]').attributes('disabled')).toBeUndefined()
     expect(view.get('#intelligence-enabled').attributes('aria-checked')).toBe('true')
-    expect(view.get('[data-interval="300"]').attributes('aria-pressed')).toBe('true')
+    expect(view.get('[data-interval="1200"]').attributes('aria-pressed')).toBe('true')
     expect(view.get('[data-timeout="600"]').attributes('aria-pressed')).toBe('true')
     await view.get('form').trigger('submit'); await flushPromises()
-    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ source_type: 'openai_oauth', account_id: 7, name: '', api_mode: 'responses', enabled: true, interval_seconds: 300, timeout_seconds: 600, upstream_target_id: null, group_id: null, endpoint: undefined, api_key: undefined }))
+    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ source_type: 'openai_oauth', account_id: 7, name: '', api_mode: 'responses', enabled: true, interval_seconds: 1200, timeout_seconds: 600, upstream_target_id: null, group_id: null, endpoint: undefined, api_key: undefined }))
     expect(view.emitted('saved')).toHaveLength(1)
   })
 
@@ -330,7 +333,7 @@ describe('OAuth intelligence plan dialog', () => {
     expect(view.get('[data-candy-interval="180"]').attributes('aria-pressed')).toBe('true')
     await view.get('[data-candy-interval="600"]').trigger('click')
     await view.get('form').trigger('submit'); await flushPromises()
-    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ interval_seconds: 300, candy_interval_seconds: 600, candy_enabled: true }))
+    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ interval_seconds: 1200, candy_interval_seconds: 600, candy_enabled: true }))
   })
   it('defaults candy off while preserving scheduled testing, then saves explicit opt-in', async () => {
     const view = render()
@@ -383,7 +386,7 @@ describe('OAuth intelligence plan dialog', () => {
     await trigger.trigger('click')
     await view.get('form').trigger('submit')
     await flushPromises()
-    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ source_type: 'openai_oauth', account_id: 7, name: '', enabled: true, interval_seconds: 300, timeout_seconds: 600, api_mode: 'responses', endpoint: undefined, api_key: undefined, upstream_target_id: null, group_id: null }))
+    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ source_type: 'openai_oauth', account_id: 7, name: '', enabled: true, interval_seconds: 1200, timeout_seconds: 600, api_mode: 'responses', endpoint: undefined, api_key: undefined, upstream_target_id: null, group_id: null }))
     expect(view.emitted('saved')).toHaveLength(1)
     expect(view.emitted('close')).toHaveLength(1)
   })
@@ -606,7 +609,7 @@ describe('intelligence plan choices and interval validation', () => {
     expect((view.get('#intelligence-name').element as HTMLInputElement).value).toBe('Primary GPT')
     await view.get('form').trigger('submit')
     await flushPromises()
-    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ source_type: 'upstream', upstream_target_id: 11, account_id: null, group_id: null, name: 'Primary GPT', enabled: true, timeout_seconds: 600, interval_seconds: 300 }))
+    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ source_type: 'upstream', upstream_target_id: 11, account_id: null, group_id: null, name: 'Primary GPT', enabled: true, timeout_seconds: 600, interval_seconds: 1200 }))
     expect(view.emitted('saved')).toEqual([[created]])
     expect(view.emitted('close')).toHaveLength(1)
   })
@@ -629,7 +632,7 @@ describe('intelligence plan choices and interval validation', () => {
     expect(mocks.groups).not.toHaveBeenCalled()
     await view.get('form').trigger('submit'); await flushPromises()
     expect(mocks.create).toHaveBeenCalledTimes(1)
-    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ source_type: 'upstream', upstream_target_id: 31, account_id: null, group_id: null, name: 'Independent API account', model: 'gpt-6-astra', enabled: true, interval_seconds: 300, timeout_seconds: 600, endpoint: undefined, api_key: undefined }))
+    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ source_type: 'upstream', upstream_target_id: 31, account_id: null, group_id: null, name: 'Independent API account', model: 'gpt-6-astra', enabled: true, interval_seconds: 1200, timeout_seconds: 600, endpoint: undefined, api_key: undefined }))
     expect(mocks.create.mock.calls[0]![0]).not.toHaveProperty('supplier_id')
     expect(view.emitted('saved')).toEqual([[created]])
   })
@@ -801,7 +804,7 @@ describe('intelligence plan choices and interval validation', () => {
     await view.get('#intelligence-name').setValue('Evening comparison')
     await view.get('form').trigger('submit')
     await flushPromises()
-    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ name: 'Evening comparison', source_type: 'upstream', upstream_target_id: 21, enabled: true, interval_seconds: 300, timeout_seconds: 600 }))
+    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ name: 'Evening comparison', source_type: 'upstream', upstream_target_id: 21, enabled: true, interval_seconds: 1200, timeout_seconds: 600 }))
   })
 
   it('preserves an existing upstream plan name and timing until its group is changed', async () => {
@@ -809,8 +812,7 @@ describe('intelligence plan choices and interval validation', () => {
     const view = render({ oauthOnly: false, overview: upstreamOverview, plan })
     await flushPromises()
     expect((view.get('#intelligence-name').element as HTMLInputElement).value).toBe('Keep my custom name')
-    expect(view.get('[data-interval="custom"]').attributes('aria-pressed')).toBe('true')
-    expect((view.get('#intelligence-interval-custom').element as HTMLInputElement).value).toBe('1800')
+    expect(view.get('[data-testid="legacy-interval"]').text()).toContain('minutes:30')
     expect(view.get('[data-timeout="900"]').attributes('aria-pressed')).toBe('true')
     await view.setProps({ overview: { ...upstreamOverview, suppliers: [...upstreamOverview.suppliers] } })
     await view.get('form').trigger('submit')
@@ -922,7 +924,7 @@ describe('intelligence plan choices and interval validation', () => {
     expect(mocks.update).toHaveBeenCalledWith(plan.id, expect.objectContaining({ notes: 'Updated notes', model: 'gpt-6-astra' }))
   })
 
-  it('defaults to enabled scheduling with a 10-minute wait and 5-minute interval while preserving all minute presets', async () => {
+  it('defaults to enabled scheduling with a 10-minute wait and 20-minute interval while preserving all minute presets', async () => {
     const view = render()
     await flushPromises()
     await selectOAuth(view)
@@ -936,7 +938,7 @@ describe('intelligence plan choices and interval validation', () => {
       expect(view.get(`[data-timeout="${seconds}"]`).text()).toBe(`intelligenceMonitor.minutes:${seconds / 60}`)
     }
     expect(view.get('#intelligence-enabled').attributes('aria-checked')).toBe('true')
-    expect(view.get('[data-interval="300"]').attributes('aria-pressed')).toBe('true')
+    expect(view.get('[data-interval="1200"]').attributes('aria-pressed')).toBe('true')
     await view.get('[data-interval="300"]').trigger('click')
     expect(view.get('[data-interval="300"]').text()).toBe('intelligenceMonitor.minutes:5')
     await view.get('form').trigger('submit')
@@ -944,29 +946,29 @@ describe('intelligence plan choices and interval validation', () => {
     expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ enabled: true, interval_seconds: 300, timeout_seconds: 900 }))
   })
 
-  it.each(['oauth', 'upstream', 'locked upstream', 'local', 'external'] as const)('offers only 5/10/15 minutes and custom for the %s entry, independently of candy', async entry => {
+  it.each(['oauth', 'upstream', 'locked upstream', 'local', 'external'] as const)('offers only 5/10/20 minutes for the %s entry, independently of candy', async entry => {
     const source_type = entry === 'oauth' ? 'openai_oauth' : entry === 'local' ? 'local_group' : entry === 'external' ? 'external' : 'upstream'
     const plan = savedPlan({ source_type, account_id: entry === 'oauth' ? 7 : null, upstream_target_id: source_type === 'upstream' ? 11 : null, group_id: entry === 'local' ? 5 : null, endpoint: 'https://external.example', interval_seconds: 300, candy_enabled: true, candy_interval_seconds: 180 })
     const view = render({ oauthOnly: entry === 'oauth', localOnly: entry === 'local', overview: upstreamOverview, plan, ...(entry === 'locked upstream' ? { upstreamTargetId: 11 } : {}) })
     await flushPromises()
-    expect(view.findAll('[data-interval]').map(button => button.attributes('data-interval'))).toEqual(['300', '600', '900', 'custom'])
+    expect(view.findAll('[data-interval]').map(button => button.attributes('data-interval'))).toEqual(['300', '600', '1200'])
     expect(view.get('[data-interval="300"]').attributes('aria-pressed')).toBe('true')
     expect(view.findAll('[data-candy-interval]').map(button => button.attributes('data-candy-interval'))).toEqual(['180', '300', '600', '900'])
-    for (const seconds of [300, 600, 900]) {
+    for (const seconds of [300, 600, 1200]) {
       await view.get(`[data-interval="${seconds}"]`).trigger('click')
       expect(view.get(`[data-interval="${seconds}"]`).attributes('aria-pressed')).toBe('true')
       expect(view.get(`[data-interval="${seconds}"]`).text()).toBe(`intelligenceMonitor.minutes:${seconds / 60}`)
     }
     expect(view.get('[data-candy-interval="180"]').attributes('aria-pressed')).toBe('true')
     await view.get('form').trigger('submit'); await flushPromises()
-    expect(mocks.update).toHaveBeenCalledWith(plan.id, expect.objectContaining({ source_type, interval_seconds: 900, candy_interval_seconds: 180 }))
+    expect(mocks.update).toHaveBeenCalledWith(plan.id, expect.objectContaining({ source_type, interval_seconds: 1200, candy_interval_seconds: 180 }))
   })
 
-  it.each([30, 45, 1800, 3600, 7200, 21600, 43200, 86400])('shows a stored %s-second interval as custom without changing it on save', async seconds => {
+  it.each([45, 900, 1800, 86400])('keeps a stored %s-second interval when saving unrelated changes', async seconds => {
     const view = render({ plan: savedPlan({ interval_seconds: seconds }) }); await flushPromises()
-    expect(view.get('[data-interval="custom"]').attributes('aria-pressed')).toBe('true')
-    expect((view.get('#intelligence-interval-custom').element as HTMLInputElement).value).toBe(String(seconds))
-    expect(view.findAll('[data-interval]').map(button => button.attributes('data-interval'))).toEqual(['300', '600', '900', 'custom'])
+    expect(view.get('[data-testid="legacy-interval"]').exists()).toBe(true)
+    expect(view.find('[data-interval][aria-pressed="true"]').exists()).toBe(false)
+    expect(view.findAll('[data-interval]').map(button => button.attributes('data-interval'))).toEqual(['300', '600', '1200'])
     expect(mocks.update).not.toHaveBeenCalled()
     await view.get('form').trigger('submit'); await flushPromises()
     expect(mocks.update).toHaveBeenCalledWith(3, expect.objectContaining({ interval_seconds: seconds }))
@@ -996,7 +998,7 @@ describe('intelligence plan choices and interval validation', () => {
     await view.get('#intelligence-enabled').trigger('click')
     await view.get('form').trigger('submit')
     await flushPromises()
-    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ enabled: false, interval_seconds: 300, timeout_seconds: 600 }))
+    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ enabled: false, interval_seconds: 1200, timeout_seconds: 600 }))
   })
 
   it.each([180, 240])('keeps a legacy %s-second timeout selected and unchanged until explicitly edited', async seconds => {
@@ -1016,49 +1018,14 @@ describe('intelligence plan choices and interval validation', () => {
     expect(mocks.update).toHaveBeenLastCalledWith(3, expect.objectContaining({ timeout_seconds: 900 }))
   })
 
-  it('restores custom intervals and preserves drafts across preset and schedule toggles', async () => {
+  it('replaces a legacy interval only after a preset is chosen', async () => {
     const view = render({ plan: savedPlan({ interval_seconds: 45 }) })
     await flushPromises()
-    expect(view.get('[data-interval="custom"]').attributes('aria-pressed')).toBe('true')
-    expect((view.get('#intelligence-interval-custom').element as HTMLInputElement).value).toBe('45')
-    await view.get('#intelligence-interval-custom').setValue('75')
-    await view.get('[data-interval="600"]').trigger('click')
-    await view.get('[data-interval="custom"]').trigger('click')
-    expect((view.get('#intelligence-interval-custom').element as HTMLInputElement).value).toBe('75')
-    await view.get('#intelligence-enabled').trigger('click')
-    await view.get('#intelligence-enabled').trigger('click')
-    expect((view.get('#intelligence-interval-custom').element as HTMLInputElement).value).toBe('75')
-    await view.get('form').trigger('submit')
-    await flushPromises()
-    expect(mocks.update).toHaveBeenCalledWith(3, expect.objectContaining({ interval_seconds: 75 }))
-  })
-
-  it('preserves a valid custom interval while saving with scheduling disabled', async () => {
-    const view = render({ plan: savedPlan({ interval_seconds: 45 }) })
-    await flushPromises()
-    await view.get('#intelligence-interval-custom').setValue('90')
+    await view.get('[data-interval="1200"]').trigger('click')
+    expect(view.find('[data-testid="legacy-interval"]').exists()).toBe(false)
     await view.get('#intelligence-enabled').trigger('click')
     await view.get('form').trigger('submit')
     await flushPromises()
-    expect(mocks.update).toHaveBeenCalledWith(3, expect.objectContaining({ enabled: false, interval_seconds: 90 }))
-  })
-
-  it.each(['', ' ', '29', '86401', '30.5', '300.0', '1e3', '-30', 'abc'])('rejects invalid custom interval %j', async value => {
-    const view = render({ plan: savedPlan({ interval_seconds: 45 }) })
-    await flushPromises()
-    await view.get('#intelligence-interval-custom').setValue(value)
-    await view.get('form').trigger('submit')
-    expect(mocks.update).not.toHaveBeenCalled()
-    expect(view.get('#intelligence-interval-error').text()).toBe('intelligenceMonitor.form.validInterval')
-    expect(view.get('#intelligence-interval-custom').attributes('aria-invalid')).toBe('true')
-  })
-
-  it.each(['30', '86400'])('accepts the custom interval boundary %s', async value => {
-    const view = render({ plan: savedPlan({ interval_seconds: 45 }) })
-    await flushPromises()
-    await view.get('#intelligence-interval-custom').setValue(value)
-    await view.get('form').trigger('submit')
-    await flushPromises()
-    expect(mocks.update).toHaveBeenCalledWith(3, expect.objectContaining({ interval_seconds: Number(value) }))
+    expect(mocks.update).toHaveBeenCalledWith(3, expect.objectContaining({ enabled: false, interval_seconds: 1200 }))
   })
 })

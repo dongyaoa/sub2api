@@ -73,6 +73,57 @@ func TestUpstreamFinanceRemoteBillingFreshness(t *testing.T) {
 	require.True(t, snapshot.Stale)
 }
 
+func TestUpstreamFinanceEmbeddedBillingEnrichesOnlyMissingGroupNames(t *testing.T) {
+	now := time.Now().UTC()
+	target := &UpstreamFinanceTarget{ID: 1, Endpoint: "https://8.8.8.8/prefix/v1", APIKeyEncrypted: "test-key"}
+	for _, tc := range []struct {
+		name          string
+		remoteField   string
+		wantGroupName string
+	}{
+		{"modern upstream", `"group_name":"上游分组",`, "上游分组"},
+		{"matching group ID", `"group_id":7,"group_name":"上游分组",`, "上游分组"},
+		{"group changed between requests", `"group_id":8,"group_name":"另一个分组",`, ""},
+		{"old upstream", "", ""},
+		{"malformed optional name", `"group_name":17,`, ""},
+		{"unsafe optional name", `"group_name":"group\u0000name",`, ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			svc := NewUpstreamFinanceService(nil, financeTestCipher{}, nil, nil, nil)
+			svc.now = func() time.Time { return now }
+			embedded := strings.Replace(remoteBillingFixture(.5, now), "{", `{"group_id":7,`, 1)
+			later := remoteBillingFixture(.75, now.Add(time.Minute))
+			calls := 0
+			svc.client.Transport = financeRoundTrip(func(req *http.Request) (*http.Response, error) {
+				calls++
+				var body string
+				switch req.URL.Path {
+				case "/prefix/v1/usage":
+					body = `{"balance":2,"usage":{"today":{"actual_cost":1}},"billing":` + embedded + "}"
+				case "/prefix/v1/sub2api/billing":
+					require.Equal(t, "group", req.URL.Query().Get("include"))
+					body = strings.Replace(later, "{", "{"+tc.remoteField, 1)
+				default:
+					t.Fatalf("unexpected request path %s", req.URL.Path)
+				}
+				return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(body)), Header: http.Header{}}, nil
+			})
+			got := svc.fetchBalanceWithAccountProxy(context.Background(), target)
+			require.Equal(t, 2, calls)
+			require.Equal(t, "ok", got.Billing.Status)
+			require.Equal(t, .5, *got.Billing.EffectiveRateMultiplier)
+			require.Equal(t, "sub2api_usage", got.Billing.Source)
+			require.Equal(t, int64(7), *got.Billing.GroupID)
+			require.Equal(t, now, *got.Billing.ObservedAt)
+			if tc.wantGroupName == "" {
+				require.Nil(t, got.Billing.GroupName)
+			} else {
+				require.Equal(t, tc.wantGroupName, *got.Billing.GroupName)
+			}
+		})
+	}
+}
+
 func TestUpstreamFinanceRemoteBillingEndpointAndFailure(t *testing.T) {
 	now := time.Now().UTC()
 	svc := NewUpstreamFinanceService(nil, financeTestCipher{}, nil, nil, nil)
@@ -81,12 +132,14 @@ func TestUpstreamFinanceRemoteBillingEndpointAndFailure(t *testing.T) {
 	calls := 0
 	svc.client.Transport = financeRoundTrip(func(req *http.Request) (*http.Response, error) {
 		calls++
-		require.Equal(t, "https://8.8.8.8/prefix/v1/sub2api/billing", req.URL.String())
+		require.Equal(t, "https://8.8.8.8/prefix/v1/sub2api/billing?include=group", req.URL.String())
 		require.Equal(t, "Bearer private-test-key", req.Header.Get("Authorization"))
-		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(remoteBillingFixture(0, now))), Header: http.Header{}}, nil
+		body := strings.Replace(remoteBillingFixture(0, now), "{", `{"group_name":"  上游标准组  ",`, 1)
+		return &http.Response{StatusCode: 200, Body: io.NopCloser(strings.NewReader(body)), Header: http.Header{}}, nil
 	})
 	got := svc.fetchRemoteBilling(context.Background(), target)
 	require.Equal(t, "ok", got.Status)
+	require.Equal(t, "上游标准组", *got.GroupName)
 	require.NotNil(t, got.EffectiveRateMultiplier)
 	require.Zero(t, *got.EffectiveRateMultiplier)
 	require.False(t, got.Stale)
@@ -110,11 +163,12 @@ func TestUpstreamFinanceRemoteBillingHTTPWithPort(t *testing.T) {
 	svc := NewUpstreamFinanceService(nil, financeTestCipher{}, nil, nil, nil)
 	svc.now = func() time.Time { return now }
 	svc.client.Transport = financeRoundTrip(func(req *http.Request) (*http.Response, error) {
-		require.Equal(t, "http://216.158.77.26:7070/prefix/v1/sub2api/billing", req.URL.String())
+		require.Equal(t, "http://216.158.77.26:7070/prefix/v1/sub2api/billing?include=group", req.URL.String())
 		require.Equal(t, "Bearer private-test-key", req.Header.Get("Authorization"))
 		return &http.Response{StatusCode: http.StatusOK, Body: io.NopCloser(strings.NewReader(remoteBillingFixture(.5, now))), Header: http.Header{}}, nil
 	})
 	got := svc.fetchRemoteBilling(context.Background(), &UpstreamFinanceTarget{ID: 1, Endpoint: "http://216.158.77.26:7070/prefix/v1", APIKeyEncrypted: "private-test-key"})
 	require.Equal(t, "ok", got.Status)
 	require.Equal(t, .5, *got.EffectiveRateMultiplier)
+	require.Nil(t, got.GroupName, "older upstreams can return a valid rate without a group name")
 }

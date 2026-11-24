@@ -154,7 +154,7 @@ func TestGeminiOmniInflightEstimateUsesCompletedPricing(t *testing.T) {
 }
 
 func TestGeminiOmniVideoBillingProviderLimits(t *testing.T) {
-	for _, model := range []string{omniPricingTestModel, "gemini-omni-1.2", "omni-1.2", "omni-featured"} {
+	for _, model := range []string{"gemini-omni-flash", omniPricingTestModel, "gemini-omni-1.2", "omni-1.2", "omni-featured"} {
 		require.Equal(t, 5, NormalizeVideoBillingDurationForModelOrDefault(model, 0))
 		require.Equal(t, 3, NormalizeVideoBillingDurationForModelOrDefault(model, 1))
 		require.Equal(t, 15, NormalizeVideoBillingDurationForModelOrDefault(model, 60))
@@ -213,7 +213,7 @@ func TestGeminiOmniVideoPricingOmitsUnconfiguredResolutions(t *testing.T) {
 
 func TestGeminiOmniModelPlazaUsesVideoPricingPriority(t *testing.T) {
 	ctx, groupID, channelPrice, groupPrice := context.Background(), int64(100), 0.4, 0.2
-	for _, model := range []string{omniPricingTestModel, "gemini-omni-1.2", "omni-1.2", "omni-featured"} {
+	for _, model := range []string{"gemini-omni-flash", omniPricingTestModel, "gemini-omni-1.2", "omni-1.2", "omni-featured"} {
 		for _, mode := range []BillingMode{BillingModePerRequest, BillingModeVideo} {
 			resolver := newOpenAIImageChannelPricingResolverForTest(t, groupID, model, channelPrice)
 			cache := resolver.channelService.cache.Load().(*channelCache)

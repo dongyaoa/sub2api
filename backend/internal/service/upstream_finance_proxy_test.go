@@ -137,7 +137,8 @@ func TestUpstreamFinanceProxyFollowsAccountChangesAndFailsClosed(t *testing.T) {
 		i := i
 		servers[i] = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			calls[i]++
-			_, _ = w.Write([]byte(`{"balance":2,"usage":{"today":{"actual_cost":1}},"billing":` + remoteBillingFixture(.2, time.Now()) + `}`))
+			billing := strings.Replace(remoteBillingFixture(.2, time.Now()), "{", `{"group_name":"Premium",`, 1)
+			_, _ = w.Write([]byte(`{"balance":2,"usage":{"today":{"actual_cost":1}},"billing":` + billing + `}`))
 		}))
 		defer servers[i].Close()
 	}

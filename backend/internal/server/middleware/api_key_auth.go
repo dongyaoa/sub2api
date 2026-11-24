@@ -274,7 +274,7 @@ func apiKeyAuthWithSubscription(apiKeyService *service.APIKeyService, subscripti
 				}
 			} else {
 				// 非订阅模式 或 订阅模式但 subscriptionService 未注入：回退到余额检查
-				if apiKeyBalanceBelowAuthThreshold(apiKey.User.Balance, cfg) {
+				if apiKeyBalanceBelowAuthThreshold(apiKey.User.Balance, cfg) && !isStudioModelCatalogRead(c) {
 					AbortWithError(c, 403, "INSUFFICIENT_BALANCE", "Insufficient account balance")
 					return
 				}
@@ -358,6 +358,16 @@ func isAsyncImageTaskRead(method, path string) bool {
 		path == "/images/tasks" ||
 		strings.HasPrefix(path, "/v1/images/tasks/") ||
 		strings.HasPrefix(path, "/images/tasks/")
+}
+
+// Studio catalogs list models for the authenticated group before the user
+// chooses one to generate with. Only the account balance check is deferred.
+func isStudioModelCatalogRead(c *gin.Context) bool {
+	if c.Request.Method != http.MethodGet || (c.Request.URL.Path != "/v1/models" && c.Request.URL.Path != "/models") {
+		return false
+	}
+	// The router dispatches client_version requests to the separate Codex catalog.
+	return c.Query("client_version") == "" && (c.Query("image_studio") == "1" || c.Query("video_studio") == "1")
 }
 
 func isAsyncMediaTaskRead(method, path string) bool {

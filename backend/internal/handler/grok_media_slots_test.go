@@ -420,3 +420,24 @@ func TestGrokMediaVideoCompletionStillClaimsBillingOnce(t *testing.T) {
 	}
 	require.Len(t, bindings.billed, 1)
 }
+
+func TestGeminiOmniVideoCompletionRecoversSubmittedModels(t *testing.T) {
+	h, _, _, _ := newGrokMediaSlotHandler(t, false, false)
+	ctx := context.Background()
+	c, _ := grokMediaSlotContext(ctx, false)
+	key, ok := middleware2.GetAPIKeyFromContext(c)
+	require.True(t, ok)
+	subject := middleware2.AuthSubject{UserID: 10, Concurrency: 5}
+	pending := service.GrokVideoPendingBilling{Model: "gemini-omni-flash", BillingModel: "quoted-name",
+		UpstreamModel: "vendor-name", VideoResolution: "4k", VideoDurationSeconds: 15}
+	require.NoError(t, h.gatewayService.StoreGrokVideoPendingBilling(ctx, "task", subject.UserID, key.ID, pending))
+	status := &service.OpenAIForwardResult{ResponseID: "task", VideoCount: 1,
+		Model: "gemini-omni-1.2-flash", BillingModel: "gemini-omni-1.2-flash", UpstreamModel: "gemini-omni-1.2-flash"}
+	bill := prepareGrokVideoCompletionBilling(ctx, h, zap.NewNop(), key, subject, "task", status)
+	require.NotNil(t, bill)
+	require.Equal(t, pending.Model, bill.Model)
+	require.Equal(t, pending.BillingModel, bill.BillingModel)
+	require.Equal(t, pending.UpstreamModel, bill.UpstreamModel)
+	require.Equal(t, pending.VideoResolution, bill.VideoResolution)
+	require.Equal(t, pending.VideoDurationSeconds, bill.VideoDurationSeconds)
+}

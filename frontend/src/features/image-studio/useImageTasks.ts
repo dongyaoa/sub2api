@@ -1,5 +1,6 @@
 import { computed, onBeforeUnmount, ref, type Ref } from 'vue'
 import type { ApiKey } from '@/types'
+import { studioGenerationErrorMessage } from '../media-studio/generationError'
 import { deleteImageTask, extractTaskImageData, getImageTask, listImageTasks, submitImageEditTask, submitImageTask } from './api'
 import type { GenerateImageRequest, ImageAspectRatio, ImageResolutionTier, ImageStudioPlatform, ImageTask, StudioOperation } from './types'
 
@@ -96,7 +97,7 @@ function fromTask(task: ImageTask, key: ApiKey): StudioHistoryItem {
       size: metadata.size || '', quality, aspect_ratio: metadata.aspect_ratio, resolution: metadata.resolution },
     task,
     thumbnail: extractTaskImageData(task)[0]?.url,
-    errorMessage: taskErrorText(task.error),
+    errorMessage: studioGenerationErrorMessage(task.error, taskErrorText(task.error)),
   }
 }
 
@@ -257,7 +258,10 @@ export function useImageTasks(keys: Ref<ApiKey[]>, notifyError: (message: string
     } catch (error) {
       if (disposed || (error as Error).name === 'AbortError') return
       const item = history.value.find(entry => entry.id === id)
-      if (item) Object.assign(item, { status: 'failed', completedAt: Date.now(), errorMessage: taskErrorText(error) })
+      if (item) Object.assign(item, {
+        status: 'failed', completedAt: Date.now(),
+        errorMessage: studioGenerationErrorMessage(error, taskErrorText(error)),
+      })
     } finally {
       controllers.delete(id)
       submitting.value = false

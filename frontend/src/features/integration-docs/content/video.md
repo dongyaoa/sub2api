@@ -86,7 +86,7 @@ curl --fail-with-body -sS "$SUB2API_BASE_URL/v1/videos" \
 
 别名说明：
 
-- Omni 已识别 `gemini-omni-1.2`、`omni-1.2`、`omni-featured`；只使用你的模型目录实际返回的名称。
+- Omni 也支持 `gemini-omni-flash`、`gemini-omni-1.2`、`omni-1.2` 和 `omni-featured`。提交时填写当前 Key 的模型目录返回的名称。
 - `svggrok-imagine-video-1.5` 是站点兼容的已配置名称，不是 xAI 官方标准模型名。需由管理员配置上游映射；本平台按 1.5 家族提供工作台选项与默认计费规则。
 - xAI 官方还列出 `grok-imagine-video-1.5-lite`。本指南不把它列为当前工作台默认支持模型；仅在管理员另行配置并验证后使用，不能从官方存在该名称推断当前 Key 可用。
 
