@@ -46,7 +46,7 @@ export function isGrokVideoModel(modelId: string): boolean {
 }
 
 export function getVideoResolutionOptions(modelId: string): VideoResolution[] {
-  if (isMuseVideoModel(modelId)) return ['auto']
+  if (isMuseVideoModel(modelId)) return ['auto', '720p', '1080p']
   if (isGeminiOmniVideoModel(modelId)) return ['360p', '720p', '1080p', '4k']
   return isVideo15Model(modelId) ? ['480p', '720p', '1080p'] : ['480p', '720p']
 }

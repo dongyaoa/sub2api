@@ -222,8 +222,7 @@
 
               <div>
                 <span class="input-label">{{ t('videoStudio.resolution') }}</span>
-                <p v-if="isMuseModel" class="text-xs text-gray-500 dark:text-gray-400">{{ t('videoStudio.resolutionAuto') }}</p>
-                <div v-else class="grid gap-2" :class="isOmniModel ? 'grid-cols-4' : 'grid-cols-3'">
+                <div class="grid gap-2" :class="isOmniModel ? 'grid-cols-4' : 'grid-cols-3'">
                   <button
                     v-for="tier in allResolutions"
                     :key="tier"
@@ -231,6 +230,7 @@
                     class="h-9 rounded-md border text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-40"
                     :class="resolution === tier ? 'border-primary-500 bg-primary-50 text-primary-700 dark:bg-primary-950/30 dark:text-primary-300' : 'border-gray-200 text-gray-600 hover:border-gray-300 dark:border-dark-600 dark:text-gray-300 dark:hover:border-dark-500'"
                     :disabled="isWorking || !resolutionOptions.includes(tier)"
+                    :aria-pressed="resolution === tier"
                     @click="resolution = tier"
                   >
                     {{ resolutionLabel(tier) }}
@@ -279,10 +279,10 @@
                     v-for="price in visiblePriceTiers"
                     :key="price.resolution"
                     class="min-w-0 rounded-md border px-2 py-1.5"
-                    :class="resolution === price.resolution ? 'border-primary-400 bg-primary-50/60 dark:bg-primary-950/20' : 'border-gray-200 dark:border-dark-700'"
+                    :class="pricingResolution === price.resolution ? 'border-primary-400 bg-primary-50/60 dark:bg-primary-950/20' : 'border-gray-200 dark:border-dark-700'"
                   >
                     <div class="flex items-center justify-between gap-1">
-                      <span class="text-[11px] font-semibold text-gray-700 dark:text-gray-300">{{ resolutionLabel(price.resolution) }}</span>
+                      <span class="text-[11px] font-semibold text-gray-700 dark:text-gray-300">{{ isMuseModel ? t('videoStudio.allResolutions') : resolutionLabel(price.resolution) }}</span>
                       <span class="h-1.5 w-1.5 rounded-full" :class="price.configured ? 'bg-emerald-500' : 'bg-gray-300 dark:bg-gray-600'" />
                     </div>
                     <div class="truncate text-sm font-semibold tabular-nums text-gray-950 dark:text-white">{{ formatUSD(price.unitPrice) }}{{ priceUnit }}</div>
@@ -624,7 +624,7 @@ const modelOptions = computed(() => models.value.map((item) => ({
     ? item.display_name + ' (' + item.id + ')'
     : item.id,
 })))
-const allResolutions = computed<VideoResolution[]>(() => isOmniModel.value ? resolutionOptions.value : ['480p', '720p', '1080p'])
+const allResolutions = computed<VideoResolution[]>(() => isMuseModel.value || isOmniModel.value ? resolutionOptions.value : ['480p', '720p', '1080p'])
 const aspectRatioOptions = computed(() => getVideoAspectRatioOptions(model.value))
 const isMuseModel = computed(() => isMuseVideoModel(model.value))
 const isOmniModel = computed(() => isGeminiOmniVideoModel(model.value))
@@ -637,7 +637,8 @@ const effectivePricing = computed(() => resolveVideoStudioPricing(selectedGroup.
   selectedGroup.value ? userRates.value[selectedGroup.value.id] : undefined))
 const priceTiers = computed(() => getVideoPriceTiers(effectivePricing.value))
 const visiblePriceTiers = computed(() => priceTiers.value.filter((item) => resolutionOptions.value.includes(item.resolution)))
-const estimatedCost = computed(() => estimateVideoCost(effectivePricing.value, resolution.value, duration.value))
+const pricingResolution = computed(() => isMuseModel.value ? 'auto' : resolution.value)
+const estimatedCost = computed(() => estimateVideoCost(effectivePricing.value, pricingResolution.value, duration.value))
 const pricingLabel = computed(() => t(isVideoPerRequestPricing(effectivePricing.value) ? 'videoStudio.pricingPerRequest' : effectivePricing.value?.billing_mode === 'video' ? 'videoStudio.pricingPerSecond' : 'videoStudio.pricing'))
 const priceUnit = computed(() => t(isVideoPerRequestPricing(effectivePricing.value) ? 'videoStudio.perRequest' : 'videoStudio.perSecond'))
 // Only lock the draft during submission; accepted jobs run independently.

@@ -51,8 +51,8 @@ func NormalizeVideoBillingDurationForModelOrDefault(model string, durationSecond
 	return NormalizeVideoBillingDurationSecondsOrDefault(durationSeconds)
 }
 
-// Muse exposes no resolution control or guarantee. Never relabel its automatic
-// output as a 480p/720p/1080p tier or charge a legacy Grok resolution price.
+// Muse bills the generation at its auto tier. Resizing the downloaded file
+// does not change the provider's generation price.
 func NormalizeVideoBillingResolutionForModelOrDefault(model, resolution string) string {
 	if IsGeminiOmniVideoModel(model) {
 		switch strings.ToLower(strings.TrimSpace(resolution)) {

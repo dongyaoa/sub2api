@@ -2,7 +2,7 @@
 
 本文介绍通过本站 Sub2API 调用 `muse-video` 的完整方式：查询模型和价格、文生视频、首帧图生视频、查询进度、下载视频、读取及清空历史。
 
-参数核对日期：**2026-11-07**。本文以本站实际适配代码和 muse2api 上游源码为准。`muse-video` 是 muse2api 暴露的模型标识；兼容 OpenAI 风格的路径和鉴权，并不代表支持其他视频模型的全部字段。
+本文以本站实际适配代码和 muse2api 0.4.0 源码为准。`muse-video` 是 muse2api 暴露的模型标识，使用 OpenAI 风格的路径和鉴权。
 
 ## 目录
 
@@ -46,13 +46,13 @@
 | 首帧图生视频 | 支持；一张图片，同时填写 `prompt` |
 | 时长 | 期望时长为整数 **1–10 秒**，本站 API 省略时使用 **5 秒** |
 | 画幅比例 | 支持比例提示；常用 `16:9`、`9:16`、`1:1`、`4:3`、`3:4`、`3:2`、`2:3` |
-| 分辨率 | 自动决定；不提供固定 480p、720p、1080p、2K、4K 控制 |
+| 输出分辨率 | `auto` 保留源片尺寸，`720p`、`1080p` 由本站按目标画幅导出 |
 | 每次数量 | 一个视频；`n` 只能为 `1` |
 | 异步执行 | 支持；创建后返回任务 ID，再查询状态和下载 |
 | 价格 | 由本站模型广场对应价卡决定，支持按次或按请求秒数计费 |
 | 多任务 | 可以分别创建多个任务；并发数量受站点及分组限制 |
 
-**时长和画幅用于表达生成意图。** 当前上游浏览器驱动把它们加入提示词。本站最多可请求 10 秒，实际时长由模型决定。没有官方依据证明本接口能固定输出 4K；把“4K”写进提示词或传入 `size="3840x2160"` 都不能建立 4K 输出保证。
+**时长和画幅用于表达生成意图。** 上游浏览器驱动把它们加入提示词，Muse 决定源片细节和实际时长。指定固定输出分辨率后，本站按目标画幅处理并核验下载文件的宽高。
 
 ## 2. 完整接口清单
 
@@ -131,7 +131,7 @@ curl --fail-with-body "$SUB2API_BASE_URL/videos/pricing?model=muse-video" \
 - `per_request`：一条生成任务的预估费用 = `unit_price`，不乘时长。
 - `video`：预估费用 = `unit_price × duration`；省略时长时按本站默认 5 秒估算。
 - `unit_price` 已包含倍率，客户端不要再次乘 `rate_multiplier`。
-- `auto` 是自动输出这一档的名字，不是 480p 的别名。
+- 自动、720p 和 1080p 共用 `tiers.auto` 报价。
 - 价格未配置时查询返回错误，不能把“查询失败”当作免费。
 
 ## 4. 创建视频：全部参数
@@ -148,7 +148,7 @@ curl --fail-with-body "$SUB2API_BASE_URL/videos/pricing?model=muse-video" \
 | `seconds` | integer | 否 | 使用 `duration` 或默认 5 秒 | `duration` 的兼容别名，范围同为 1–10，同时提供时 `duration` 优先 |
 | `aspect_ratio` | string | 否 | 不发送画幅提示，由上游决定 | 本站统一字段；推荐七种常用比例。最终采用的画幅字符串最多 16 个 Unicode 字符 |
 | `size` | string | 否 | 回退 `aspect_ratio` | 上游原生画幅提示字段，优先于 `aspect_ratio`；建议填比例。不是可靠的输出分辨率开关 |
-| `resolution` | string | 否 | 自动决定 | 仅支持 `"auto"`；可省略。固定分辨率如 `"720p"`、`"1080p"`、`"4k"` 会被拒绝 |
+| `resolution` | string | 否 | `"auto"` | `"auto"`、`"720p"`、`"1080p"`。可与 `aspect_ratio` 或 `size` 同时提交，固定档位指定输出短边的像素数 |
 | `image` | string 或 object | 图生视频时提供一个图片字段 | 无图片则文生视频 | 单张首帧；支持图片 data URL、公开 HTTP(S) URL、纯 base64，或下文的兼容对象格式；不支持数组 |
 | `input_reference` | string 或 object | 图生视频时提供一个图片字段 | 回退 `image`，都没有则文生视频 | 首帧图片别名；与 `image` 使用同样格式。实际优先采用 `image` |
 | `n` | number | 否 | `1` | 只能为 `1`，一次创建一条任务；批量需求应分别 POST |
@@ -177,9 +177,15 @@ curl --fail-with-body "$SUB2API_BASE_URL/videos/pricing?model=muse-video" \
 | `3:2` | 横向摄影画幅 |
 | `2:3` | 纵向摄影画幅 |
 
-上述比例是工作台提供的常用值，不是上游声明的强制枚举。API 原生 `size` 可以接受其他不超过 16 字符的提示，例如 `21:9`；“参数通过校验”不等于上游保证该比例。
+在 `auto` 档位，`size` 是传给 Muse 的画幅提示，下载文件保留源片尺寸。在 `720p` 和 `1080p` 档位，本站把画幅和档位换算成输出宽高。省略画幅时按源片的显示比例计算。FFmpeg 等比缩放源片，画幅不一致时补边以保留完整画面。源片较小时，放大后的细节仍取决于源片。
 
-`size: "1080x1920"` 也能作为字符串被接受，但当前上游把它加入 `aspect ratio …` 提示语，并不据此锁定像素数。不要把这个写法宣传成 1080p，更不能据此宣传 4K。真实宽高、时长应从下载后的视频文件读取。
+固定档位可使用数字比例（如 `9:16`）或像素宽高形式（如 `1080x1920`）表达画幅。像素宽高形式按比例换算，例如搭配 `720p` 时，`1080x1920` 导出为 720 × 1280。计算后的任一边最长为 8192 像素。
+
+| 画幅 | 720p 下载尺寸（宽 × 高） | 1080p 下载尺寸（宽 × 高） |
+| --- | --- | --- |
+| `16:9` | 1280 × 720 | 1920 × 1080 |
+| `9:16` | 720 × 1280 | 1080 × 1920 |
+| `1:1` | 720 × 720 | 1080 × 1080 |
 
 ### 4.4 首帧图片的全部兼容形式
 
@@ -245,11 +251,13 @@ curl --fail-with-body "$SUB2API_BASE_URL/videos/generations" \
     "model": "muse-video",
     "prompt": "海边日落，浪花轻拍礁石，镜头平稳缓慢横移。",
     "duration": 10,
-    "aspect_ratio": "16:9",
-    "resolution": "auto",
+    "aspect_ratio": "9:16",
+    "resolution": "1080p",
     "n": 1
   }'
 ```
+
+该请求向 muse2api 发送 `size: "9:16"`，并在本站任务中记录 `1080p`。下载文件为 1080 × 1920 像素。
 
 ### 5.3 单张首帧图生视频
 
@@ -369,7 +377,7 @@ curl --fail-with-body "$SUB2API_BASE_URL/videos/$TASK_ID" \
 | `video.url` | string，可选 | 本站受保护的下载路径；不是可匿名访问的上游直链 |
 | `error` | object 或 string，可选 | 失败原因；对象常带 `message` 和 `code` |
 
-单任务接口不承诺返回实际视频秒数、宽高、码率、文件大小或用量账单。提示词、请求秒数、自动分辨率等提交参数可在历史列表的 `metadata` 中读取。
+提示词、请求秒数和所选输出分辨率可在历史列表的 `metadata` 中读取。实际视频秒数、宽高和码率可从下载文件读取。
 
 轮询建议：开始每 5 秒一次，超过 5 分钟改为每 15 秒一次；这与工作台行为一致。轮询超时表示客户端停止等待，不会取消服务端任务。请保留 ID 后继续查询。
 
@@ -385,6 +393,7 @@ curl --fail "$SUB2API_BASE_URL/videos/$TASK_ID/content" \
 - `/content` 返回二进制，不能当 JSON 解析。HTTP 错误时可能返回 JSON 错误对象，应先检查 HTTP 状态，避免把错误文本保存成视频。
 - 未完成时可能返回 `409 video_not_ready`；稍后查询同一个任务，不要重新创建。
 - 首次下载包含读取上游文件、转成浏览器可播放的 H.264 MP4、保存等步骤，可能比后续下载慢。客户端和反向代理需要留出下载等待时间。
+- 固定档位在缓存和交付前核验像素尺寸。对于第 5.2 节的示例，下载后执行 `ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=p=0:s=x video.mp4` 应得到 `1080x1920`。
 - 当前本站视频存储/转换限制为 **512 MiB**；这不是首帧图片大小限制，也不是上游生成能力的承诺。
 - 已保存的视频可以处理 `Range: bytes=…` 范围请求。首次读取 Muse 文件可能忽略 Range 并返回完整 `200`；客户端必须兼容 `200` 和 `206`。
 - `video.url` 通常是以 `/v1/…` 开头的相对本站路径。最稳妥的方式是自己用已知 Base URL 和任务 ID 构造 `/videos/{id}/content`，不要把 Key 发往任意响应 URL。
@@ -452,7 +461,7 @@ curl --fail-with-body "$SUB2API_BASE_URL/videos/tasks?limit=10" \
 | `metadata.model/prompt` | 提交时的模型和提示词 |
 | `metadata.duration` | 提交的期望秒数，不是媒体实测秒数 |
 | `metadata.aspect_ratio` | 提交的画幅提示；未指定时可能省略 |
-| `metadata.resolution` | Muse 为 `auto` |
+| `metadata.resolution` | 任务的输出档位，`auto`、`720p` 或 `1080p` |
 | `content_available` | 本站是否已经保存可访问的视频文件；为 false 不一定意味着生成失败 |
 | `content_type/byte_size` | 可选，已保存文件的媒体类型和字节数 |
 | `browser_playable` | 本站记录的播放兼容状态；应同时检查 `content_available` |
@@ -533,7 +542,7 @@ curl --fail-with-body -X DELETE "$SUB2API_BASE_URL/videos/tasks" \
 
 | HTTP / 状态 | 常见类型或原因 | 建议 |
 | --- | --- | --- |
-| `400` | `invalid_request_error`；无 prompt、时长错误、固定分辨率、多图、多视频等 | 按参数表修正请求 |
+| `400` | `invalid_request_error`，如缺少 prompt、时长或分辨率取值无效、多图、多视频 | 按参数表修正请求 |
 | `401` | `authentication_error` / `invalid_api_key` | 检查本站 Key、Bearer 格式和 Key 状态；上游凭据问题需管理员排查 |
 | `403` | 分组未开放媒体生成、Key 无权限、余额不足或过期等 | 检查分组和账户状态；不要通过修改任务 ID 尝试访问其他 Key 的任务 |
 | `404` | 任务不存在、Key 不匹配、模型不允许或记录已无法恢复 | 使用原 Key 与原任务 ID；核对模型列表 |
@@ -796,7 +805,7 @@ Windows PowerShell 设置环境变量时使用 `$env:SUB2API_API_KEY="…"`、`$
 
 | 功能 / 字段 | 当前行为或替代方式 |
 | --- | --- |
-| 固定分辨率：`resolution=480p/720p/1080p/2k/4k` | 拒绝；只能 `auto` 或省略 |
+| `resolution=480p/2k/4k` | 可选输出档位为 `auto`、`720p`、`1080p` |
 | `width`、`height`、`image_size` | 不作为 Muse 输出尺寸控制传给上游 |
 | `fps`、`frame_rate`、`bitrate`、编码/质量档位 | 未接通，不能控制输出帧率、码率或编码质量 |
 | `seed`、`negative_prompt`、`guidance_scale`、`steps` | 未接通；`seed` 不提供可重复生成保证。额外描述可写入 prompt，但不等价于原生控制 |
@@ -829,7 +838,7 @@ Grok、Gemini Omni、Sora 等模型的文档中即使存在上述参数，也不
 | `duration` / `seconds` | 整数 1–10，均省略时本站明确发送 5 秒 | 整数 1–60，schema 均默认 null。都不传时驱动不追加秒数提示，没有固定 5 秒的原生默认保证 |
 | `size` | 字符串，采用值最多 16 字符 | 字符串，schema 未声明枚举或长度上限 |
 | `aspect_ratio` | 本站提供的兼容字段，转为 `size` | 没有原生字段；直接传给上游不会自动转为 `size` |
-| `resolution` | 只支持 auto，固定分辨率提前报错 | schema 没有该控制字段 |
+| `resolution` | `auto` 保留源片尺寸，`720p`、`1080p` 在本站处理并核验 | 视频路由只向生成器传递画幅和期望时长等生成参数 |
 | `image` / `input_reference` | 单字符串或兼容 URL 对象 | schema 为单个字符串；底层加载支持 data URL、公开 URL 和 base64 |
 | `n` | 只接受 1 | 视频 schema 没有此字段，每次创建一个任务 |
 | 状态 | 适配为 pending/done/failed，本地历史还有 processing/completed | queued/running/succeeded/failed/cancelled |
@@ -851,4 +860,4 @@ Grok、Gemini Omni、Sora 等模型的文档中即使存在上述参数，也不
 - [上游任务状态](https://github.com/www222fff/muse2api/blob/3a20b5e7aa4056c99c0eb8c732d73ce3804d5dbf/src/muse2api/services/tasks.py)：异步状态与重启中断行为。
 - [Muse 官方网站](https://muse.ai/)、[官方产品介绍](https://introducing.muse.ai/)、[官方商业介绍](https://muse.ai/business)、[官方支持页](https://muse.ai/support)：本次已核对的官方公开资料。这些页面没有提供可核对的 `muse-video` 公开 API 参数规格，也没有给出本接口的视频时长、4K、画幅、音轨或多图参考输出保证。
 
-**官方依据的边界：** 公开介绍未提供参数规格，不等于官方产品绝不具备某项能力；只是不能把未确认的网页功能写成此 API 的支持承诺。因此本文全部可调用参数以本站实现与 muse2api 源码交叉核对，请求的时长和画幅仅作为生成提示，也没有把其他同名产品或其他视频模型的参数表混入本站 Muse 接口。
+上游将时长和画幅用于生成提示。本站在下载阶段根据任务中保存的画幅和分辨率确定固定档位的输出尺寸。

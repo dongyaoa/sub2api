@@ -2,7 +2,7 @@
 
 面向用户的完整调用说明见 [Muse Video API 用户调用文档](muse-video-api.md)，包含全部参数、响应字段、价格、curl/Python/Node.js 示例和功能边界。本文保留为部署及适配说明。
 
-核对来源：[`www222fff/muse2api`](https://github.com/www222fff/muse2api)，提交 `3a20b5e7aa4056c99c0eb8c732d73ce3804d5dbf`（2026-11-07 核对）。同时检查 README、`api/schemas.py`、`api/routes/videos.py`、`drivers/browser/driver.py`、`services/tasks.py` 和 `core/media.py`，以实际接口实现为准。
+适配版本为 [muse2api 0.4.0](https://github.com/www222fff/muse2api/releases/tag/0.4.0)，对应提交 `3a20b5e7aa4056c99c0eb8c732d73ce3804d5dbf`。
 
 ## 上游能力与限制
 
@@ -13,11 +13,11 @@
 | 图生视频 | `image` 或 `input_reference`，一张首帧；支持 data URL、公开 HTTP(S) URL，底层也接受 base64 | 工作台上传单张首帧，以 data URL 提交；兼容统一接口的 `{ "url": "…" }` |
 | 时长 | `duration` / `seconds`，整数 1–60，二者同时存在时 `duration` 优先 | 本站接受 1–10 秒，默认 5 秒 |
 | 画幅 | `size` 为自由字符串，示例为 `16:9` | 常用七种比例；API 也可传原生 `size`；统一 `aspect_ratio` 转为 `size` |
-| 分辨率 | 没有独立分辨率字段、固定像素档位或 4K 保证 | 显示“由模型决定”，不展示虚构的 480p/720p/1080p/4K 选项 |
+| 输出分辨率 | 浏览器驱动使用 Muse 生成的源片 | 自动、720p、1080p。自动保留源片尺寸，固定档由 Sub2API 处理并核验 |
 | 数量 | 每次一个异步视频任务 | 一次提交一条视频 |
 | 其他生成参数 | 没有 seed、negative_prompt、音轨、尾帧、多图参考、视频编辑/延长等参数 | 不展示这些控制项 |
 
-**本站 API 接受的期望时长为 1–10 秒。** 浏览器驱动的 `_media_prompt` 把 `size` 和 `duration` 分别拼成 `aspect ratio …`、`… seconds long` 提示词。实际时长、画幅和清晰度取决于 Muse 的生成结果，接口没有保证值，也没有返回实际时长。`size=3840x2160` 会被原样当作画幅提示词，不能据此宣称支持 4K。
+**本站 API 接受的期望时长为 1–10 秒。** 浏览器驱动的 `_media_prompt` 把 `size` 和 `duration` 分别拼成 `aspect ratio …`、`… seconds long` 提示词。Muse 决定源片时长、画幅和细节。固定输出档位使用 FFmpeg 将源片等比缩放至目标画幅，必要时补边。省略画幅时使用源片的显示比例。
 
 生产生成需使用 muse2api 的 `browser` 驱动；仓库的 `http` 驱动尚未实现视频生成，`mock` 只供测试。
 
@@ -51,13 +51,13 @@ Muse 不提供实际秒数，若选择按秒收费，本适配按提交的期望
   "model": "muse-video",
   "prompt": "枫叶在微风中缓缓飘落",
   "duration": 10,
-  "aspect_ratio": "16:9",
-  "resolution": "auto",
+  "aspect_ratio": "9:16",
+  "resolution": "1080p",
   "image": { "url": "data:image/png;base64,..." }
 }
 ```
 
-文生视频省略 `image`。后端转为 muse2api 的 `model`、`prompt`、`duration`、`size`、字符串 `image`；同时兼容原生 `seconds` 和 `input_reference`。非法时长、固定分辨率、多图或多视频数量在调用上游前报错。
+文生视频省略 `image`。后端提交给 muse2api 的字段为 `model`、`prompt`、`duration`、`size` 和可选的字符串 `image`。示例向 Muse 发送 `size: "9:16"`，Sub2API 在任务中记录 `resolution: "1080p"`，取回视频并核验为 1080 × 1920 后才缓存并交付。三个输出档位沿用同一 Muse 价卡。
 
 任务与原上游账户绑定，查询不会切到其他账户。`succeeded + result.url` 转换为工作台的完成状态；失败/取消任务不产生生成扣费。复用既有视频保存、浏览器播放转换、用量去重流程；正常持久化任务在视频保存并可播放后扣费，重复轮询/下载不会重复收费。上游视频文件地址只提取合法媒体文件名，在管理员配置的 Base URL 下下载；不跟随任意返回地址或重定向。
 
@@ -65,4 +65,4 @@ Muse 不提供实际秒数，若选择按秒收费，本适配按提交的期望
 
 自动测试覆盖原生/统一参数、1–10 秒边界、单首帧、创建/状态/内容转换、任务归属平台、受控媒体下载、模型目录、报价/实际收费一致、免费价卡、缺价拦截、按次不乘秒数和任务去重。前端测试覆盖 OpenAI Key、参数切换、历史恢复、价格单位与过期报价防护。
 
-这些验证使用模拟上游，不会发起真实收费生成。实际输出时长、画幅和清晰度需要部署后用自己的 muse2api 服务确认。
+可用 FFprobe 验证下载文件的尺寸。对于上述竖屏示例，执行 `ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=p=0:s=x video.mp4` 应输出 `1080x1920`。源片细节和实际时长取决于 muse2api 的生成结果。

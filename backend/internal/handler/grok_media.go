@@ -154,17 +154,19 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 		platform = service.PlatformGemini
 		noAccountCode, noAccountMessage = "gemini_omni_video_no_eligible_account", "No eligible Gemini Omni video API-key accounts"
 	}
+	lookupTask := videoRecord
 	if endpoint.IsVideoLookupRequest() && !endpoint.IsSeedance() {
-		platform = videoLookupPlatform(apiKey.Group, videoRecord)
-		if videoRecord == nil && apiKey.Group != nil && apiKey.Group.Platform == service.PlatformComposite {
-			// Recover the submission platform when only the owner binding and
-			// pending billing snapshot survived a task-store outage.
+		if lookupTask == nil && (endpoint == service.GrokMediaEndpointVideoContent || (apiKey.Group != nil && apiKey.Group.Platform == service.PlatformComposite)) {
+			// The owner's create snapshot can recover the provider and output
+			// settings when task history is temporarily unavailable.
 			if pending, pendingErr := h.gatewayService.LoadGrokVideoPendingBilling(c.Request.Context(), requestID, subject.UserID, apiKey.ID); pendingErr == nil && pending != nil {
-				platform = videoLookupPlatform(apiKey.Group, &service.VideoTaskRecord{
-					Metadata: service.VideoTaskMetadata{Model: pending.Model}, UpstreamModel: pending.UpstreamModel,
-				})
+				lookupTask = &service.VideoTaskRecord{
+					Metadata:      service.VideoTaskMetadata{Model: pending.Model, Resolution: pending.VideoResolution, AspectRatio: pending.AspectRatio},
+					UpstreamModel: pending.UpstreamModel,
+				}
 			}
 		}
+		platform = videoLookupPlatform(apiKey.Group, lookupTask)
 	}
 	routingModel := service.NormalizeGrokMediaModelForEndpoint(endpoint, requestModel, requestInfo.HasInputImage())
 	if endpoint == service.GrokMediaEndpointVideosGenerations && (service.IsMuseVideoModel(requestModel) || service.IsGeminiOmniVideoModel(requestModel)) {
@@ -295,6 +297,13 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 	}
 	// Media requests use media pricing, so they are exempt from token profit control.
 	requestCtx := service.WithOpenAIProfitControlSuppressed(c.Request.Context())
+	if endpoint == service.GrokMediaEndpointVideoContent && platform == service.PlatformOpenAI {
+		if lookupTask == nil {
+			h.errorResponse(c, http.StatusServiceUnavailable, "video_task_unavailable", "Video output settings are unavailable. Retry the download.")
+			return
+		}
+		requestCtx = service.WithMuseVideoOutput(requestCtx, lookupTask.Metadata)
+	}
 	profitVetoCount := 0
 	var videoContentAccount *service.Account
 	if endpoint == service.GrokMediaEndpointVideoContent && videoRecord != nil && h.videoTasks != nil {
@@ -677,6 +686,9 @@ func (h *OpenAIGatewayHandler) handleGrokMedia(c *gin.Context, endpoint service.
 				// Wall-clock start for usage duration_ms: create accepted → first done discovery.
 				CreatedAt: videoCreateStartedAt,
 			}
+			if service.IsMuseVideoModel(requestModel) {
+				pending.AspectRatio = requestInfo.AspectRatio
+			}
 			if err := h.gatewayService.StoreGrokVideoPendingBilling(requestCtx, result.ResponseID, subject.UserID, apiKey.ID, pending); err != nil {
 				reqLog.Warn("grok_media.store_video_pending_billing_failed_retrying",
 					zap.Int64("account_id", account.ID),
@@ -860,9 +872,9 @@ func prepareGrokVideoCompletionBilling(
 	// Re-merge with pending: resolution is request-only; model/duration fill gaps.
 	merged := *statusResult
 	if pending != nil {
-		// Omni lookups carry only a task ID. Prefer the submitted names over
-		// the adapter's legacy model default when the create snapshot survived.
-		if service.IsGeminiOmniVideoModel(pending.Model) {
+		// These providers return only a task ID and their public model.
+		// Use the submission's channel pricing and upstream model aliases.
+		if service.IsGeminiOmniVideoModel(pending.Model) || service.IsMuseVideoModel(pending.Model) {
 			merged.Model = pending.Model
 			merged.BillingModel = firstNonEmptyString(pending.BillingModel, pending.Model)
 			merged.UpstreamModel = firstNonEmptyString(pending.UpstreamModel, merged.UpstreamModel)

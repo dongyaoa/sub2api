@@ -424,6 +424,7 @@ type GrokVideoPendingBilling struct {
 	BillingModel         string `json:"billing_model,omitempty"`
 	UpstreamModel        string `json:"upstream_model,omitempty"`
 	VideoResolution      string `json:"video_resolution,omitempty"`
+	AspectRatio          string `json:"aspect_ratio,omitempty"`
 	VideoDurationSeconds int    `json:"video_duration_seconds,omitempty"`
 	OriginalModel        string `json:"original_model,omitempty"`
 	// CreatedAt is when the gateway accepted the async create (RFC3339Nano UTC).
@@ -503,7 +504,9 @@ func (s *OpenAIGatewayService) StoreGrokVideoPendingBilling(
 	pending.UpstreamModel = strings.TrimSpace(pending.UpstreamModel)
 	pending.OriginalModel = strings.TrimSpace(pending.OriginalModel)
 	videoModel := videoUsageModel(&OpenAIForwardResult{Model: pending.Model, UpstreamModel: pending.UpstreamModel}, pending.BillingModel)
-	if pending.VideoResolution != "" {
+	// Muse uses the create snapshot to recover the requested download size.
+	// Its billing resolution is normalized to auto when computing the charge.
+	if pending.VideoResolution != "" && !IsMuseVideoModel(videoModel) {
 		pending.VideoResolution = NormalizeVideoBillingResolutionForModelOrDefault(videoModel, pending.VideoResolution)
 	}
 	if pending.VideoDurationSeconds > 0 {

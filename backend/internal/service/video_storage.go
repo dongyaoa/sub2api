@@ -127,13 +127,31 @@ func transcodeVideoWithFFmpeg(ctx context.Context, contentType string, data []by
 
 	runCtx, cancel := context.WithTimeout(ctx, defaultVideoTranscodeTimeout)
 	defer cancel()
-	// ffmpegPath comes only from an operator-controlled environment variable or exec.LookPath.
-	//nolint:gosec // G702: request data cannot control the executable path.
-	cmd := exec.CommandContext(runCtx, ffmpegPath,
+	args := []string{
 		"-hide_banner", "-loglevel", "error", "-y",
 		"-fflags", "+genpts",
 		"-i", inputPath,
 		"-map", "0:v:0", "-map", "0:a?", "-sn", "-dn",
+	}
+	spec := museVideoOutputFromContext(ctx)
+	target, err := museVideoTargetDimensions(spec.Resolution, spec.AspectRatio)
+	if err != nil {
+		return nil, err
+	}
+	if spec.Resolution != "" && spec.Resolution != "auto" {
+		if target == (videoDimensions{}) {
+			source, pixelAspect, err := readVideoFrameDimensions(runCtx, ffmpegPath, inputPath, true)
+			if err != nil {
+				return nil, fmt.Errorf("determine source aspect ratio: %w", err)
+			}
+			target, err = museDimensionsForRatio(spec.Resolution, float64(source.width)/float64(source.height)*pixelAspect)
+			if err != nil {
+				return nil, err
+			}
+		}
+		args = append(args, "-vf", target.scaleFilter(), "-metadata:s:v:0", "rotate=0")
+	}
+	args = append(args,
 		"-c:v", "libx264", "-preset", "veryfast", "-crf", "23",
 		"-pix_fmt", "yuv420p", "-profile:v", "high", "-tag:v", "avc1", "-bf", "0",
 		"-c:a", "aac", "-b:a", "128k",
@@ -141,7 +159,8 @@ func transcodeVideoWithFFmpeg(ctx context.Context, contentType string, data []by
 		"-max_muxing_queue_size", "1024",
 		outputPath,
 	)
-	output, err := cmd.CombinedOutput()
+	//nolint:gosec // G702: request data cannot control the executable path.
+	output, err := exec.CommandContext(runCtx, ffmpegPath, args...).CombinedOutput()
 	if err != nil {
 		if runCtx.Err() != nil {
 			return nil, fmt.Errorf("transcode video: %w", runCtx.Err())
@@ -154,6 +173,16 @@ func transcodeVideoWithFFmpeg(ctx context.Context, contentType string, data []by
 			detail = err.Error()
 		}
 		return nil, fmt.Errorf("transcode video with ffmpeg: %s", detail)
+	}
+	if target != (videoDimensions{}) {
+		actual, pixelAspect, err := readVideoFrameDimensions(runCtx, ffmpegPath, outputPath, false)
+		if err != nil {
+			return nil, fmt.Errorf("verify Muse output dimensions: %w", err)
+		}
+		if actual != target || pixelAspect != 1 {
+			return nil, fmt.Errorf("Muse output is %dx%d with pixel aspect %.3g, expected %dx%d with square pixels",
+				actual.width, actual.height, pixelAspect, target.width, target.height)
+		}
 	}
 	converted, err := os.ReadFile(outputPath)
 	if err != nil {

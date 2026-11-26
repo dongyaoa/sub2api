@@ -216,7 +216,7 @@ describe('video studio independent tasks', () => {
     } finally { wrapper.unmount() }
   })
 
-  it('caps reused Muse durations at 10 seconds and submits with per-request pricing', async () => {
+  it('submits the selected Muse output resolution and aspect ratio at the model price', async () => {
     api.listKeys.mockResolvedValue([{ ...keys[0], group: { ...keys[0]!.group, platform: 'openai', name: 'Muse' } }])
     api.listModels.mockResolvedValue({ data: [{ id: 'muse-video' }] })
     api.listTasks.mockResolvedValue({ tasks: [{ id: 'old-muse', status: 'failed', metadata: {
@@ -232,17 +232,21 @@ describe('video studio independent tasks', () => {
       expect(wrapper.find('#video-studio-duration').attributes('max')).toBe('10')
       expect(wrapper.text()).toContain('videoStudio.pricingPerRequest')
       expect(wrapper.text()).toContain('$0.75videoStudio.perRequest')
-      expect(wrapper.text()).not.toContain('1080p')
+      expect(wrapper.findAll('button').find(button => button.text() === '720p')).toBeDefined()
       await wrapper.find('button[title="muse-long-video"]').trigger('click')
       await flushPromises()
       await wrapper.findAll('button').find(button => button.text().includes('videoStudio.reuseParameters'))!.trigger('click')
       await flushPromises()
       expect((wrapper.find('#video-studio-duration').element as HTMLInputElement).value).toBe('10')
+      expect(wrapper.findAll('button').find(button => button.text() === 'videoStudio.resolutionAuto')!.attributes('aria-pressed')).toBe('true')
+      await wrapper.findAll('button').find(button => button.text() === '1080p')!.trigger('click')
+      await wrapper.findAll('button').find(button => button.text() === '9:16')!.trigger('click')
+      expect(wrapper.find('button[type="submit"]').attributes('disabled')).toBeUndefined()
       expect(wrapper.text()).toContain('videoStudio.estimate $0.75')
       await wrapper.find('form').trigger('submit')
       await flushPromises()
       expect(api.submitTask).toHaveBeenCalledWith('key-1', {
-        model: 'muse-video', prompt: 'muse-long-video', resolution: 'auto', aspect_ratio: '16:9', duration: 10,
+        model: 'muse-video', prompt: 'muse-long-video', resolution: '1080p', aspect_ratio: '9:16', duration: 10,
       }, expect.any(AbortSignal))
     } finally { wrapper.unmount() }
   })

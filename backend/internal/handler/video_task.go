@@ -96,7 +96,7 @@ func (h *OpenAIGatewayHandler) serveStoredGrokVideoContent(
 			return true
 		}
 		prepared, contentType, upgradeErr := h.videoTasks.UpgradeStoredContent(
-			c.Request.Context(), owner, record.ID, resp.Header.Get("Content-Type"), data,
+			service.WithMuseVideoOutput(c.Request.Context(), record.Metadata), owner, record.ID, resp.Header.Get("Content-Type"), data,
 		)
 		if len(prepared) == 0 {
 			h.errorResponse(c, http.StatusBadGateway, "video_conversion_error", "Failed to convert the video to a browser-supported format")

@@ -50,9 +50,8 @@ func (s *OpenAIGatewayService) ResolveVideoStudioRoutingModel(ctx context.Contex
 	return model
 }
 
-// ParseMuseVideoRequest accepts both the workbench's common video fields and
-// Muse's native size/seconds/input_reference fields. Muse has no resolution
-// control: size and duration are requests expressed through its media prompt.
+// ParseMuseVideoRequest accepts the workbench fields and Muse's native
+// size/seconds/input_reference. Resolution controls the downloaded file.
 func ParseMuseVideoRequest(body []byte) (GrokMediaRequestInfo, error) {
 	info := GrokMediaRequestInfo{N: 1, Resolution: "auto", DurationSeconds: 5}
 	if !gjson.ValidBytes(body) || !gjson.ParseBytes(body).IsObject() {
@@ -94,8 +93,14 @@ func ParseMuseVideoRequest(body []byte) (GrokMediaRequestInfo, error) {
 		return info, fmt.Errorf("size or aspect_ratio must not exceed 16 characters; use a ratio such as 16:9 or a size such as 1080x1920")
 	}
 	info.AspectRatio = info.Size
-	if value := gjson.GetBytes(body, "resolution"); value.Exists() && value.Type != gjson.Null && value.String() != "" && value.String() != "auto" {
-		return info, fmt.Errorf("muse-video does not support a fixed resolution; use auto")
+	if value := gjson.GetBytes(body, "resolution"); value.Exists() && value.Type != gjson.Null {
+		if value.Type != gjson.String {
+			return info, fmt.Errorf("resolution must be auto, 720p or 1080p")
+		}
+		info.Resolution = firstNonEmpty(strings.TrimSpace(value.String()), "auto")
+	}
+	if _, err := museVideoTargetDimensions(info.Resolution, info.AspectRatio); err != nil {
+		return info, err
 	}
 	if value := gjson.GetBytes(body, "n"); value.Exists() && (value.Type != gjson.Number || value.Float() != 1) {
 		return info, fmt.Errorf("muse-video creates one video per request")
@@ -122,6 +127,25 @@ func ParseMuseVideoRequest(body []byte) (GrokMediaRequestInfo, error) {
 		}
 	}
 	return info, nil
+}
+
+type museVideoOutputContextKey struct{}
+
+// WithMuseVideoOutput restores the submission's output settings for content
+// downloads and playback upgrades. Other providers use their own output size.
+func WithMuseVideoOutput(ctx context.Context, metadata VideoTaskMetadata) context.Context {
+	if !IsMuseVideoModel(metadata.Model) || metadata.Resolution == "" || metadata.Resolution == "auto" {
+		return ctx
+	}
+	return context.WithValue(ctx, museVideoOutputContextKey{}, metadata)
+}
+
+func museVideoOutputFromContext(ctx context.Context) VideoTaskMetadata {
+	if ctx == nil {
+		return VideoTaskMetadata{}
+	}
+	metadata, _ := ctx.Value(museVideoOutputContextKey{}).(VideoTaskMetadata)
+	return metadata
 }
 
 func museVideoAPIBase(base string) string {

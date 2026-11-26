@@ -24,6 +24,8 @@ func museVideoTestAccount() *Account {
 func TestMuseVideoCreateAdaptsWorkbenchAndNativeParameters(t *testing.T) {
 	for _, body := range []string{
 		`{"model":"muse-video","prompt":"waves","resolution":"auto","aspect_ratio":"9:16","duration":10,"image":{"url":"data:image/png;base64,aW1hZ2U="}}`,
+		`{"model":"muse-video","prompt":"waves","resolution":"1080p","aspect_ratio":"9:16","duration":10,"image":{"url":"data:image/png;base64,aW1hZ2U="}}`,
+		`{"model":"muse-video","prompt":"waves","resolution":"720p","size":"9:16","seconds":10,"input_reference":"data:image/png;base64,aW1hZ2U="}`,
 		`{"model":"muse-video","prompt":"waves","size":"9:16","seconds":10,"input_reference":"data:image/png;base64,aW1hZ2U="}`,
 	} {
 		upstream := &httpUpstreamRecorder{resp: grokMediaContentStatusResponse(`{"id":"task_muse","status":"queued","progress":0,"created_at":123,"model":"muse-video","result":null,"error":null}`)}
@@ -37,7 +39,7 @@ func TestMuseVideoCreateAdaptsWorkbenchAndNativeParameters(t *testing.T) {
 		require.Equal(t, "task_muse", result.ResponseID)
 		require.Zero(t, result.VideoCount, "submitting a task must not charge")
 		require.Equal(t, 10, result.VideoDurationSeconds)
-		require.Equal(t, "auto", result.VideoResolution)
+		require.Equal(t, firstNonEmpty(gjson.Get(body, "resolution").String(), "auto"), result.VideoResolution)
 		require.Equal(t, "pending", gjson.Get(w.Body.String(), "status").String())
 		require.Equal(t, "task_muse", gjson.Get(w.Body.String(), "request_id").String())
 	}
@@ -50,7 +52,8 @@ func TestMuseVideoParameterValidation(t *testing.T) {
 		`{"model":"muse-video","prompt":"waves","seconds":11}`,
 		`{"model":"muse-video","prompt":"waves","duration":0}`, `{"model":"muse-video","prompt":"waves","seconds":-1}`,
 		`{"model":"muse-video","prompt":"waves","duration":5.5}`, `{"model":"muse-video","prompt":"waves","duration":"5"}`,
-		`{"model":"muse-video","prompt":"waves","resolution":"4k"}`, `{"model":"muse-video","prompt":"waves","resolution":"720p"}`,
+		`{"model":"muse-video","prompt":"waves","resolution":"4k"}`, `{"model":"muse-video","prompt":"waves","resolution":720}`,
+		`{"model":"muse-video","prompt":"waves","resolution":"720p","aspect_ratio":"vertical"}`,
 		`{"model":"muse-video","prompt":"waves","size":5}`, `{"model":"muse-video","prompt":"waves","image":[]}`,
 		`{"model":"muse-video","prompt":"waves","size":"12345678901234567"}`,
 		`{"model":"muse-video","prompt":"waves","aspect_ratio":"12345678901234567"}`,
@@ -111,7 +114,7 @@ func TestMuseVideoTaskStatesAndOwnership(t *testing.T) {
 				require.Equal(t, "done", gjson.Get(w.Body.String(), "status").String())
 				require.Equal(t, "/v1/videos/task_muse/content", gjson.Get(w.Body.String(), "video.url").String())
 				require.NotContains(t, w.Body.String(), "public.example")
-				bill := ExtractGrokVideoBillingFromStatusBody(result.GrokMediaResponseBody, &GrokVideoPendingBilling{Model: "muse-video", BillingModel: "video-priced-alias", VideoResolution: "auto", VideoDurationSeconds: 60}, "task_muse")
+				bill := ExtractGrokVideoBillingFromStatusBody(result.GrokMediaResponseBody, &GrokVideoPendingBilling{Model: "muse-video", BillingModel: "video-priced-alias", VideoResolution: "1080p", AspectRatio: "9:16", VideoDurationSeconds: 60}, "task_muse")
 				require.NotNil(t, bill)
 				require.Equal(t, 60, bill.VideoDurationSeconds)
 				require.Equal(t, "auto", bill.VideoResolution)

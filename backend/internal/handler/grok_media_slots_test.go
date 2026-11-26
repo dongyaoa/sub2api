@@ -441,3 +441,27 @@ func TestGeminiOmniVideoCompletionRecoversSubmittedModels(t *testing.T) {
 	require.Equal(t, pending.VideoResolution, bill.VideoResolution)
 	require.Equal(t, pending.VideoDurationSeconds, bill.VideoDurationSeconds)
 }
+
+func TestMuseVideoPendingSnapshotRetainsOutputSizeForDownload(t *testing.T) {
+	h, _, _, _ := newGrokMediaSlotHandler(t, false, false)
+	ctx := context.Background()
+	c, _ := grokMediaSlotContext(ctx, false)
+	key, ok := middleware2.GetAPIKeyFromContext(c)
+	require.True(t, ok)
+	subject := middleware2.AuthSubject{UserID: 10, Concurrency: 5}
+	pending := service.GrokVideoPendingBilling{Model: "muse-video", BillingModel: "muse-priced-alias", UpstreamModel: "vendor-model",
+		VideoResolution: "1080p", AspectRatio: "9:16", VideoDurationSeconds: 5}
+	require.NoError(t, h.gatewayService.StoreGrokVideoPendingBilling(ctx, "task", subject.UserID, key.ID, pending))
+	stored, err := h.gatewayService.LoadGrokVideoPendingBilling(ctx, "task", subject.UserID, key.ID)
+	require.NoError(t, err)
+	require.NotNil(t, stored)
+	require.Equal(t, "1080p", stored.VideoResolution)
+	require.Equal(t, "9:16", stored.AspectRatio)
+	status := &service.OpenAIForwardResult{Model: "muse-video", ResponseID: "task", VideoCount: 1}
+	bill := prepareGrokVideoCompletionBilling(ctx, h, zap.NewNop(), key, subject, "task", status)
+	require.NotNil(t, bill)
+	require.Equal(t, "auto", bill.VideoResolution)
+	require.Equal(t, pending.BillingModel, bill.BillingModel)
+	require.Equal(t, pending.UpstreamModel, bill.UpstreamModel)
+	require.Equal(t, 5, bill.VideoDurationSeconds)
+}
